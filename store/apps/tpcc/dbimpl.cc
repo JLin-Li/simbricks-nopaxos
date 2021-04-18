@@ -222,7 +222,7 @@ bool DBImpl::newOrderHome(int32_t warehouse_id, int32_t district_id, int32_t cus
     // Check if this is an all local transaction
     // TODO: This loops through items *again* which is slightly inefficient
     bool all_local = true;
-    for (int i = 0; i < items.size(); ++i) {
+    for (int i = 0; i < (int)items.size(); ++i) {
         if (items[i].ol_supply_w_id != warehouse_id) {
             all_local = false;
             break;
@@ -271,7 +271,7 @@ bool DBImpl::newOrderHome(int32_t warehouse_id, int32_t district_id, int32_t cus
 
     output->items.resize(items.size());
     output->total = 0;
-    for (int i = 0; i < items.size(); ++i) {
+    for (int i = 0; i < (int)items.size(); ++i) {
         line.ol_number = i+1;
         line.ol_i_id = items[i].i_id;
         line.ol_supply_w_id = items[i].ol_supply_w_id;
@@ -332,7 +332,7 @@ bool DBImpl::newOrderRemote(int32_t home_warehouse, int32_t remote_warehouse,
     allocateUndo(undo);
 
     out_quantities->resize(items.size());
-    for (int i = 0; i < items.size(); ++i) {
+    for (int i = 0; i < (int)items.size(); ++i) {
         // Skip items that don't belong to remote warehouse
         if (items[i].ol_supply_w_id != remote_warehouse) {
             (*out_quantities)[i] = INVALID_QUANTITY;
@@ -370,7 +370,7 @@ bool DBImpl::findAndValidateItems(const vector<NewOrderItem>& items,
     // implementation would need to do this.
     tryRead(&items_);
     item_tuples->resize(items.size());
-    for (int i = 0; i < items.size(); ++i) {
+    for (int i = 0; i < (int)items.size(); ++i) {
         (*item_tuples)[i] = findItem(items[i].i_id);
         if ((*item_tuples)[i] == NULL) {
             return false;
@@ -515,7 +515,7 @@ void DBImpl::internalPaymentRemote(int32_t warehouse_id, int32_t district_id, Cu
         memmove(c->c_data+characters, c->c_data, current_keep);
         memcpy(c->c_data, history, characters);
         c->c_data[characters + current_keep] = '\0';
-        assert(strlen(c->c_data) == characters + current_keep);
+        assert((int)strlen(c->c_data) == characters + current_keep);
     }
 
     output->c_credit_lim = c->c_credit_lim;
@@ -690,13 +690,13 @@ static void erase(BPlusTree<KeyType, T*, DBImpl::KEYS_PER_INTERNAL, DBImpl::KEYS
 }
 
 void DBImpl::insertItem(const Item& item) {
-    assert(item.i_id == items_.size() + 1);
+    assert(item.i_id == (int)items_.size() + 1);
     items_.push_back(item);
 }
 Item* DBImpl::findItem(int32_t id) {
     assert(1 <= id);
     id -= 1;
-    if (id >= items_.size()) return NULL;
+    if (id >= (int)items_.size()) return NULL;
     return &items_[id];
 }
 
@@ -935,7 +935,7 @@ void DBImpl::eraseHistory(const History* history) {
     bool found = false;
     for (int i = static_cast<int>(history_.size())-1; i >= 0; --i) {
         if (history == history_[i]) {
-            if (i != history_.size() - 1) {
+            if (i != (int)history_.size() - 1) {
                 // erase not at end: move the last element here
                 history_[i] = history_[history_.size() - 1];
             }

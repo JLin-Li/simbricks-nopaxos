@@ -129,8 +129,8 @@ void makeLastName(int num, char* name) {
     int indicies[] = { num/100, (num/10)%10, num%10 };
 
     int offset = 0;
-    for (int i = 0; i < sizeof(indicies)/sizeof(*indicies); ++i) {
-        ASSERT(strlen(SYLLABLES[indicies[i]]) == LENGTHS[indicies[i]]);
+    for (int i = 0; i < (int)(sizeof(indicies)/sizeof(*indicies)); ++i) {
+        ASSERT((int)strlen(SYLLABLES[indicies[i]]) == LENGTHS[indicies[i]]);
         memcpy(name + offset, SYLLABLES[indicies[i]], LENGTHS[indicies[i]]);
         offset += LENGTHS[indicies[i]];
     }

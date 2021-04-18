@@ -61,7 +61,7 @@ static set<int> selectUniqueIds(tpcc::RandomGenerator* random, int num_unique, i
         } while (rows.find(index) != rows.end());
         rows.insert(index);
     }
-    assert(rows.size() == num_unique);
+    assert((int)rows.size() == num_unique);
     return rows;
 }
 
