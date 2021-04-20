@@ -47,7 +47,7 @@
 static void
 Usage(const char *progName)
 {
-        fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-l latency-file] [-q dscp] [-d delay-ms] -c conf-file -m unreplicated|vr|fastpaxos|nopaxos\n",
+        fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-q dscp] [-d delay-ms] [-u duration-sec] -c conf-file -m unreplicated|vr|fastpaxos|nopaxos\n",
                 progName);
         exit(1);
 }
@@ -62,8 +62,7 @@ int main(int argc, char **argv)
 {
     const char *configPath = NULL;
     int numClients = 1;
-    int numRequests = 100;
-    int warmupSec = 0;
+    int duration = 1;
     int dscp = 0;
     uint64_t delay = 0;
     int tputInterval = 0;
@@ -78,11 +77,11 @@ int main(int argc, char **argv)
 	PROTO_NOPAXOS
     } proto = PROTO_UNKNOWN;
 
-    string latencyFile;
+    string statsFile;
 
     // Parse arguments
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:q:l:m:n:t:w:i:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:q:s:m:t:i:u:")) != -1) {
         switch (opt) {
         case 'c':
             configPath = optarg;
@@ -115,8 +114,8 @@ int main(int argc, char **argv)
             break;
         }
 
-        case 'l':
-            latencyFile = string(optarg);
+        case 's':
+            statsFile = string(optarg);
             break;
 
         case 'm':
@@ -127,20 +126,20 @@ int main(int argc, char **argv)
             } else if (strcasecmp(optarg, "fastpaxos") == 0) {
                 proto = PROTO_FASTPAXOS;
             } else if (strcasecmp(optarg, "nopaxos") == 0) {
-		proto = PROTO_NOPAXOS;
-	    }
-	    else {
+                proto = PROTO_NOPAXOS;
+            }
+            else {
                 fprintf(stderr, "unknown mode '%s'\n", optarg);
                 Usage(argv[0]);
             }
             break;
 
-        case 'n':
+        case 'u':
         {
             char *strtolPtr;
-            numRequests = strtoul(optarg, &strtolPtr, 10);
+            duration = strtoul(optarg, &strtolPtr, 10);
             if ((*optarg == '\0') || (*strtolPtr != '\0') ||
-                (numRequests <= 0))
+                (duration <= 0))
             {
                 fprintf(stderr,
                         "option -n requires a numeric arg\n");
@@ -163,21 +162,7 @@ int main(int argc, char **argv)
             break;
         }
 
-        case 'w':
-        {
-            char *strtolPtr;
-            warmupSec = strtoul(optarg, &strtolPtr, 10);
-            if ((*optarg == '\0') || (*strtolPtr != '\0') ||
-                (numRequests <= 0))
-            {
-                fprintf(stderr,
-                        "option -w requires a numeric arg\n");
-                Usage(argv[0]);
-            }
-            break;
-        }
-
-	case 'i':
+        case 'i':
         {
             char *strtolPtr;
             tputInterval = strtoul(optarg, &strtolPtr, 10);
@@ -189,7 +174,6 @@ int main(int argc, char **argv)
             }
             break;
         }
-
 
         default:
             fprintf(stderr, "Unknown argument %s\n", argv[optind]);
@@ -248,8 +232,8 @@ int main(int argc, char **argv)
 
         specpaxos::BenchmarkClient *bench =
             new specpaxos::BenchmarkClient(*client, transport,
-                                           numRequests, delay,
-                                           warmupSec, tputInterval);
+                                           duration, delay,
+                                           tputInterval);
 
         transport.Timer(0, [=]() { bench->Start(); });
         clients.push_back(client);
@@ -258,7 +242,7 @@ int main(int argc, char **argv)
 
     Timeout checkTimeout(&transport, 100, [&]() {
             for (auto x : benchClients) {
-                if (!x->cooldownDone) {
+                if (!x->done) {
                     return;
                 }
             }
@@ -267,16 +251,19 @@ int main(int argc, char **argv)
             Latency_t sum;
             _Latency_Init(&sum, "total");
             std::map<int, int> agg_latencies;
+            uint64_t agg_ops = 0;
             for (unsigned int i = 0; i < benchClients.size(); i++) {
                 Latency_Sum(&sum, &benchClients[i]->latency);
                 for (const auto &kv : benchClients[i]->latencies) {
                     agg_latencies[kv.first] += kv.second;
                 }
+                agg_ops += benchClients[i]->completedOps;
             }
             Latency_Dump(&sum);
-            if (latencyFile.size() > 0) {
-                std::ofstream fs(latencyFile.c_str(),
+            if (statsFile.size() > 0) {
+                std::ofstream fs(statsFile.c_str(),
                         std::ios::out);
+                fs << agg_ops / duration << std::endl;
                 for (const auto &kv : agg_latencies) {
                     fs << kv.first << " " << kv.second << std::endl;
                 }

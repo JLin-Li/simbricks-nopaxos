@@ -45,20 +45,16 @@ namespace specpaxos {
 DEFINE_LATENCY(op);
 
 BenchmarkClient::BenchmarkClient(Client &client, Transport &transport,
-                                 int numRequests, uint64_t delay,
-                                 int warmupSec,
+                                 int duration, uint64_t delay,
                                  int tputInterval)
     : tputInterval(tputInterval), client(client),
-    transport(transport), numRequests(numRequests),
-    delay(delay), warmupSec(warmupSec)
+    transport(transport), duration(duration), delay(delay)
 {
     if (delay != 0) {
         Notice("Delay between requests: %ld ms", delay);
     }
-    started = false;
     done = false;
-    cooldownDone = false;
-    finRequests = 0;
+    completedOps = 0;
     _Latency_Init(&latency, "op");
 }
 
@@ -66,16 +62,14 @@ void
 BenchmarkClient::Start()
 {
     n = 0;
-    transport.Timer(warmupSec * 1000,
-                    std::bind(&BenchmarkClient::WarmupDone,
-                               this));
 
     if (tputInterval > 0) {
-	msSinceStart = 0;
-	opLastInterval = n;
-	transport.Timer(tputInterval, std::bind(&BenchmarkClient::TimeInterval,
-						this));
+        msSinceStart = 0;
+        opLastInterval = n;
+        transport.Timer(tputInterval, std::bind(&BenchmarkClient::TimeInterval,
+                    this));
     }
+    gettimeofday(&startTime, nullptr);
     SendNext();
 }
 
@@ -96,70 +90,6 @@ BenchmarkClient::TimeInterval()
 }
 
 void
-BenchmarkClient::WarmupDone()
-{
-    started = true;
-    Notice("Completed warmup period of %d seconds with %d requests",
-           warmupSec, n);
-    gettimeofday(&startTime, NULL);
-    n = 0;
-}
-
-void
-BenchmarkClient::CooldownDone()
-{
-    enum class Mode {
-        kMedian,
-        k90,
-        k95,
-        k99
-    };
-
-    cooldownDone = true;
-    int count = 0;
-    Mode mode = Mode::kMedian;
-
-    Notice("Finished cooldown period.");
-
-    for (const auto &kv : latencies) {
-        count += kv.second;
-        switch (mode) {
-            case Mode::kMedian:
-                if (count >= finRequests/2) {
-                    Notice("Median latency is %d us", kv.first);
-                    mode = Mode::k90;
-                    // fall through
-                } else {
-                    break;
-                }
-            case Mode::k90:
-                if (count >= finRequests*90/100) {
-                    Notice("90th percentile latency is %d us", kv.first);
-                    mode = Mode::k95;
-                    // fall through
-                } else {
-                    break;
-                }
-            case Mode::k95:
-                if (count >= finRequests*95/100) {
-                    Notice("95th percentile latency is %d us", kv.first);
-                    mode = Mode::k99;
-                    // fall through
-                } else {
-                    break;
-                }
-            case Mode::k99:
-                if (count >= finRequests*99/100) {
-                    Notice("99th percentile latency is %d us", kv.first);
-                    return;
-                } else {
-                    break;
-                }
-        }
-    }
-}
-
-void
 BenchmarkClient::SendNext()
 {
     std::ostringstream msg;
@@ -175,43 +105,85 @@ BenchmarkClient::SendNext()
 void
 BenchmarkClient::OnReply(const string &request, const string &reply)
 {
-    if (cooldownDone) {
+    if (done) {
         return;
     }
 
-    if ((started) && (!done) && (n != 0)) {
-        uint64_t ns = Latency_End(&latency);
-        latencies[ns/1000]++;
-        finRequests++;
-        if (n > numRequests) {
-            Finish();
-        }
-    }
+    uint64_t ns = Latency_End(&latency);
+    latencies[ns/1000]++;
+    completedOps++;
 
-    n++;
-    if (delay == 0) {
-       SendNext();
+    gettimeofday(&endTime, NULL);
+    struct timeval diff = timeval_sub(endTime, startTime);
+
+    if (diff.tv_sec >= duration) {
+        Finish();
     } else {
-        uint64_t rdelay = rand() % delay*2;
-        transport.Timer(rdelay,
-                        std::bind(&BenchmarkClient::SendNext, this));
+        n++;
+        if (delay == 0) {
+            SendNext();
+        } else {
+            uint64_t rdelay = rand() % delay*2;
+            transport.Timer(rdelay,
+                    std::bind(&BenchmarkClient::SendNext, this));
+        }
     }
 }
 
 void
 BenchmarkClient::Finish()
 {
-    gettimeofday(&endTime, NULL);
+    enum class Mode {
+        kMedian,
+        k90,
+        k95,
+        k99
+    };
 
-    struct timeval diff = timeval_sub(endTime, startTime);
-
-    Notice("Completed %d requests in " FMT_TIMEVAL_DIFF " seconds",
-           numRequests, VA_TIMEVAL_DIFF(diff));
     done = true;
+    struct timeval diff = timeval_sub(endTime, startTime);
+    Notice("Completed %ld requests in " FMT_TIMEVAL_DIFF " seconds",
+           completedOps, VA_TIMEVAL_DIFF(diff));
 
-    transport.Timer(warmupSec * 1000,
-                    std::bind(&BenchmarkClient::CooldownDone,
-                              this));
+    uint64_t count = 0;
+    Mode mode = Mode::kMedian;
+
+    for (const auto &kv : latencies) {
+        count += kv.second;
+        switch (mode) {
+            case Mode::kMedian:
+                if (count >= completedOps/2) {
+                    Notice("Median latency is %d us", kv.first);
+                    mode = Mode::k90;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k90:
+                if (count >= completedOps*90/100) {
+                    Notice("90th percentile latency is %d us", kv.first);
+                    mode = Mode::k95;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k95:
+                if (count >= completedOps*95/100) {
+                    Notice("95th percentile latency is %d us", kv.first);
+                    mode = Mode::k99;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k99:
+                if (count >= completedOps*99/100) {
+                    Notice("99th percentile latency is %d us", kv.first);
+                    return;
+                } else {
+                    break;
+                }
+        }
+    }
 }
 
 } // namespace specpaxos

@@ -40,34 +40,27 @@ class BenchmarkClient
 {
 public:
     BenchmarkClient(Client &client, Transport &transport,
-                    int numRequests, uint64_t delay,
-                    int warmupSec,
+                    int duration, uint64_t delay,
                     int tputInterval);
     void Start();
     void OnReply(const string &request, const string &reply);
     struct Latency_t latency;
-    bool started;
     bool done;
-    bool cooldownDone;
     int tputInterval;
     std::map<int, int> latencies;
+    uint64_t completedOps;
 
 private:
     void SendNext();
     void Finish();
-    void WarmupDone();
-    void CooldownDone();
     void TimeInterval();
     Client &client;
     Transport &transport;
-    int numRequests;
-    int finRequests;
+    int duration;
     uint64_t delay;
     int n;
-    int warmupSec;
     struct timeval startTime;
     struct timeval endTime;
-    string latencyFilename;
     int msSinceStart;
     int opLastInterval;
 };
