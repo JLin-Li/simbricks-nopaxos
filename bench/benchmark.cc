@@ -47,12 +47,10 @@ DEFINE_LATENCY(op);
 BenchmarkClient::BenchmarkClient(Client &client, Transport &transport,
                                  int numRequests, uint64_t delay,
                                  int warmupSec,
-				 int tputInterval,
-                                 string latencyFilename)
+                                 int tputInterval)
     : tputInterval(tputInterval), client(client),
     transport(transport), numRequests(numRequests),
-    delay(delay), warmupSec(warmupSec),
-    latencyFilename(latencyFilename)
+    delay(delay), warmupSec(warmupSec)
 {
     if (delay != 0) {
         Notice("Delay between requests: %ld ms", delay);
@@ -60,8 +58,8 @@ BenchmarkClient::BenchmarkClient(Client &client, Transport &transport,
     started = false;
     done = false;
     cooldownDone = false;
+    finRequests = 0;
     _Latency_Init(&latency, "op");
-    latencies.reserve(numRequests);
 }
 
 void
@@ -85,7 +83,7 @@ void
 BenchmarkClient::TimeInterval()
 {
     if (done) {
-	return;
+        return;
     }
 
     struct timeval tv;
@@ -110,27 +108,55 @@ BenchmarkClient::WarmupDone()
 void
 BenchmarkClient::CooldownDone()
 {
+    enum class Mode {
+        kMedian,
+        k90,
+        k95,
+        k99
+    };
 
-    char buf[1024];
     cooldownDone = true;
+    int count = 0;
+    Mode mode = Mode::kMedian;
+
     Notice("Finished cooldown period.");
-    std::sort(latencies.begin(), latencies.end());
 
-    uint64_t ns = latencies[latencies.size()/2];
-    LatencyFmtNS(ns, buf);
-    Notice("Median latency is %ld ns (%s)", ns, buf);
-
-    ns = latencies[latencies.size()*90/100];
-    LatencyFmtNS(ns, buf);
-    Notice("90th percentile latency is %ld ns (%s)", ns, buf);
-
-    ns = latencies[latencies.size()*95/100];
-    LatencyFmtNS(ns, buf);
-    Notice("95th percentile latency is %ld ns (%s)", ns, buf);
-
-    ns = latencies[latencies.size()*99/100];
-    LatencyFmtNS(ns, buf);
-    Notice("99th percentile latency is %ld ns (%s)", ns, buf);
+    for (const auto &kv : latencies) {
+        count += kv.second;
+        switch (mode) {
+            case Mode::kMedian:
+                if (count >= finRequests/2) {
+                    Notice("Median latency is %d us", kv.first);
+                    mode = Mode::k90;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k90:
+                if (count >= finRequests*90/100) {
+                    Notice("90th percentile latency is %d us", kv.first);
+                    mode = Mode::k95;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k95:
+                if (count >= finRequests*95/100) {
+                    Notice("95th percentile latency is %d us", kv.first);
+                    mode = Mode::k99;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k99:
+                if (count >= finRequests*99/100) {
+                    Notice("99th percentile latency is %d us", kv.first);
+                    return;
+                } else {
+                    break;
+                }
+        }
+    }
 }
 
 void
@@ -154,11 +180,12 @@ BenchmarkClient::OnReply(const string &request, const string &reply)
     }
 
     if ((started) && (!done) && (n != 0)) {
-	uint64_t ns = Latency_End(&latency);
-	latencies.push_back(ns);
-	if (n > numRequests) {
-	    Finish();
-	}
+        uint64_t ns = Latency_End(&latency);
+        latencies[ns/1000]++;
+        finRequests++;
+        if (n > numRequests) {
+            Finish();
+        }
     }
 
     n++;
@@ -185,12 +212,6 @@ BenchmarkClient::Finish()
     transport.Timer(warmupSec * 1000,
                     std::bind(&BenchmarkClient::CooldownDone,
                               this));
-
-
-    if (latencyFilename.size() > 0) {
-        Latency_FlushTo(latencyFilename.c_str());
-    }
 }
-
 
 } // namespace specpaxos

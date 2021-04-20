@@ -28,6 +28,8 @@
  *
  **********************************************************************/
 
+#include <map>
+
 #include "common/client.h"
 #include "lib/latency.h"
 #include "lib/transport.h"
@@ -40,8 +42,7 @@ public:
     BenchmarkClient(Client &client, Transport &transport,
                     int numRequests, uint64_t delay,
                     int warmupSec,
-		    int tputInterval,
-                    string latencyFilename = "");
+                    int tputInterval);
     void Start();
     void OnReply(const string &request, const string &reply);
     struct Latency_t latency;
@@ -49,7 +50,7 @@ public:
     bool done;
     bool cooldownDone;
     int tputInterval;
-    std::vector<uint64_t> latencies;
+    std::map<int, int> latencies;
 
 private:
     void SendNext();
@@ -60,6 +61,7 @@ private:
     Client &client;
     Transport &transport;
     int numRequests;
+    int finRequests;
     uint64_t delay;
     int n;
     int warmupSec;

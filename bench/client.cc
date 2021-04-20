@@ -79,7 +79,6 @@ int main(int argc, char **argv)
     } proto = PROTO_UNKNOWN;
 
     string latencyFile;
-    string latencyRawFile;
 
     // Parse arguments
     int opt;
@@ -267,22 +266,19 @@ int main(int argc, char **argv)
 
             Latency_t sum;
             _Latency_Init(&sum, "total");
+            std::map<int, int> agg_latencies;
             for (unsigned int i = 0; i < benchClients.size(); i++) {
                 Latency_Sum(&sum, &benchClients[i]->latency);
+                for (const auto &kv : benchClients[i]->latencies) {
+                    agg_latencies[kv.first] += kv.second;
+                }
             }
             Latency_Dump(&sum);
             if (latencyFile.size() > 0) {
-                Latency_FlushTo(latencyFile.c_str());
-            }
-
-            latencyRawFile = latencyFile+".raw";
-            std::ofstream rawFile(latencyRawFile.c_str(),
-                                  std::ios::out | std::ios::binary);
-            for (auto x : benchClients) {
-                rawFile.write((char *)&x->latencies[0],
-                              (x->latencies.size()*sizeof(x->latencies[0])));
-                if (!rawFile) {
-                    Warning("Failed to write raw latency output");
+                std::ofstream fs(latencyFile.c_str(),
+                        std::ios::out);
+                for (const auto &kv : agg_latencies) {
+                    fs << kv.first << " " << kv.second << std::endl;
                 }
             }
             exit(0);
