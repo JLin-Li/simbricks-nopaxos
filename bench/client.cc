@@ -260,10 +260,64 @@ int main(int argc, char **argv)
                 agg_ops += benchClients[i]->completedOps;
             }
             Latency_Dump(&sum);
+
+            Notice("Total throughput is %ld ops/sec", agg_ops / duration);
+            enum class Mode {
+                kMedian,
+                k90,
+                k95,
+                k99
+            };
+            uint64_t count = 0;
+            int median, p90, p95, p99;
+            Mode mode = Mode::kMedian;
+            for (const auto &kv : agg_latencies) {
+                count += kv.second;
+                switch (mode) {
+                    case Mode::kMedian:
+                        if (count >= agg_ops/2) {
+                            median = kv.first;
+                            Notice("Median latency is %d us", median);
+                            mode = Mode::k90;
+                            // fall through
+                        } else {
+                            break;
+                        }
+                    case Mode::k90:
+                        if (count >= agg_ops*90/100) {
+                            p90 = kv.first;
+                            Notice("90th percentile latency is %d us", p90);
+                            mode = Mode::k95;
+                            // fall through
+                        } else {
+                            break;
+                        }
+                    case Mode::k95:
+                        if (count >= agg_ops*95/100) {
+                            p95 = kv.first;
+                            Notice("95th percentile latency is %d us", p95);
+                            mode = Mode::k99;
+                            // fall through
+                        } else {
+                            break;
+                        }
+                    case Mode::k99:
+                        if (count >= agg_ops*99/100) {
+                            p99 = kv.first;
+                            Notice("99th percentile latency is %d us", p99);
+                            goto done;
+                        } else {
+                            break;
+                        }
+                }
+            }
+
+done:
             if (statsFile.size() > 0) {
                 std::ofstream fs(statsFile.c_str(),
                         std::ios::out);
                 fs << agg_ops / duration << std::endl;
+                fs << median << " " << p90 << " " << p95 << " " << p99 << std::endl;
                 for (const auto &kv : agg_latencies) {
                     fs << kv.first << " " << kv.second << std::endl;
                 }

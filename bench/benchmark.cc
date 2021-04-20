@@ -133,57 +133,10 @@ BenchmarkClient::OnReply(const string &request, const string &reply)
 void
 BenchmarkClient::Finish()
 {
-    enum class Mode {
-        kMedian,
-        k90,
-        k95,
-        k99
-    };
-
     done = true;
     struct timeval diff = timeval_sub(endTime, startTime);
     Notice("Completed %ld requests in " FMT_TIMEVAL_DIFF " seconds",
            completedOps, VA_TIMEVAL_DIFF(diff));
-
-    uint64_t count = 0;
-    Mode mode = Mode::kMedian;
-
-    for (const auto &kv : latencies) {
-        count += kv.second;
-        switch (mode) {
-            case Mode::kMedian:
-                if (count >= completedOps/2) {
-                    Notice("Median latency is %d us", kv.first);
-                    mode = Mode::k90;
-                    // fall through
-                } else {
-                    break;
-                }
-            case Mode::k90:
-                if (count >= completedOps*90/100) {
-                    Notice("90th percentile latency is %d us", kv.first);
-                    mode = Mode::k95;
-                    // fall through
-                } else {
-                    break;
-                }
-            case Mode::k95:
-                if (count >= completedOps*95/100) {
-                    Notice("95th percentile latency is %d us", kv.first);
-                    mode = Mode::k99;
-                    // fall through
-                } else {
-                    break;
-                }
-            case Mode::k99:
-                if (count >= completedOps*99/100) {
-                    Notice("99th percentile latency is %d us", kv.first);
-                    return;
-                } else {
-                    break;
-                }
-        }
-    }
 }
 
 } // namespace specpaxos
