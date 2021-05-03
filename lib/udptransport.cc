@@ -225,7 +225,8 @@ UDPTransport::~UDPTransport()
 
 void
 UDPTransport::RegisterInternal(TransportReceiver *receiver,
-                               const specpaxos::ReplicaAddress *addr)
+                               const specpaxos::ReplicaAddress *addr,
+                               int groupIdx, int replicaIdx)
 {
     struct sockaddr_in sin;
 

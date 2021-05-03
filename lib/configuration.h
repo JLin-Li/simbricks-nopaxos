@@ -49,7 +49,7 @@ struct ReplicaAddress
     string host;
     string port;
     string interface;
-    ReplicaAddress(const string &host, const string &port, const string &interface);
+    ReplicaAddress(const string &host, const string &port, const string &interface = "");
     bool operator==(const ReplicaAddress &other) const;
     inline bool operator!=(const ReplicaAddress &other) const {
         return !(*this == other);
@@ -62,8 +62,8 @@ public:
     Configuration(const Configuration &c);
     Configuration(int g, int n, int f,
                   const std::map<int, std::vector<ReplicaAddress>> &replicas,
-                  const std::vector<ReplicaAddress> &sequencers,
                   const ReplicaAddress *multicast_address = nullptr,
+                  const std::vector<ReplicaAddress> &sequencers = std::vector<ReplicaAddress>(),
                   const ReplicaAddress *fc_address = nullptr);
     Configuration(std::ifstream &file);
     virtual ~Configuration();

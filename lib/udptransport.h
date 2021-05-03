@@ -74,7 +74,8 @@ public:
                  int dscp = 0, event_base *evbase = nullptr);
     virtual ~UDPTransport();
     virtual void RegisterInternal(TransportReceiver *receiver,
-                                  const specpaxos::ReplicaAddress *addr) override;
+                                  const specpaxos::ReplicaAddress *addr,
+                                  int groupIdx, int replicaIdx) override;
     virtual void ListenOnMulticast(TransportReceiver *receiver,
                                    const specpaxos::Configuration &config) override;
     virtual bool SendBuffer(TransportReceiver *src,

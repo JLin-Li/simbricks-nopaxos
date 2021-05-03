@@ -69,8 +69,8 @@ Configuration::Configuration(const Configuration &c)
 
 Configuration::Configuration(int g, int n, int f,
                              const std::map<int, std::vector<ReplicaAddress>> &replicas,
-                             const std::vector<ReplicaAddress> &sequencers,
                              const ReplicaAddress *multicast,
+                             const std::vector<ReplicaAddress> &sequencers,
                              const ReplicaAddress *fc)
     : g(g), n(n), f(f), replicas_(replicas), sequencers_(sequencers)
 {

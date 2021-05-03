@@ -90,9 +90,9 @@ protected:
         receiver2  = new TestReceiver();
 
         transport = new SimulatedTransport();
-        transport->Register(receiver0, config, 0, 0);
-        transport->Register(receiver1, config, 0, 1);
-        transport->Register(receiver2, config, 0, 2);
+        transport->RegisterReplica(receiver0, config, 0, 0);
+        transport->RegisterReplica(receiver1, config, 0, 1);
+        transport->RegisterReplica(receiver2, config, 0, 2);
     }
 
     virtual void TearDown() {

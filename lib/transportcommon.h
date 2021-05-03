@@ -65,7 +65,8 @@ public:
         ASSERT(groupIdx < config.g);
         ASSERT(replicaIdx < config.n);
         RegisterConfiguration(receiver, config, groupIdx, replicaIdx);
-        RegisterInternal(receiver, &config.replica(groupIdx, replicaIdx));
+        RegisterInternal(receiver, &config.replica(groupIdx, replicaIdx),
+                groupIdx, replicaIdx);
     }
 
     virtual void
@@ -74,7 +75,7 @@ public:
                     const specpaxos::ReplicaAddress *addr) override
     {
         RegisterConfiguration(receiver, config, -1, -1);
-        RegisterInternal(receiver, addr);
+        RegisterInternal(receiver, addr, -1, -1);
     }
 
     virtual void
@@ -248,7 +249,8 @@ public:
 
 protected:
     virtual void RegisterInternal(TransportReceiver *receiver,
-                                  const specpaxos::ReplicaAddress *addr) = 0;
+                                  const specpaxos::ReplicaAddress *addr,
+                                  int groupIdx, int replicaIdx) = 0;
     virtual bool SendMessageInternal(TransportReceiver *src,
                                      const ADDR &dst,
                                      const Message &m) = 0;
