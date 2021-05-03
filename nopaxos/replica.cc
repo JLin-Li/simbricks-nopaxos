@@ -63,6 +63,7 @@ NOPaxosReplica::NOPaxosReplica(const Configuration &config, int myIdx, bool init
     startViewQuorum(config.QuorumSize()-1),
     syncPrepareQuorum(config.QuorumSize()-1)
 {
+    transport->ListenOnMulticast(this, config);
     this->status = STATUS_NORMAL;
     this->sessnum = 0;
     this->view = 0;

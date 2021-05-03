@@ -57,6 +57,56 @@ public:
         }
     }
 
+    virtual void
+    RegisterReplica(TransportReceiver *receiver,
+                    const specpaxos::Configuration &config,
+                    int groupIdx, int replicaIdx) override
+    {
+        ASSERT(groupIdx < config.g);
+        ASSERT(replicaIdx < config.n);
+        RegisterConfiguration(receiver, config, groupIdx, replicaIdx);
+        RegisterInternal(receiver, &config.replica(groupIdx, replicaIdx));
+    }
+
+    virtual void
+    RegisterAddress(TransportReceiver *receiver,
+                    const specpaxos::Configuration &config,
+                    const specpaxos::ReplicaAddress *addr) override
+    {
+        RegisterConfiguration(receiver, config, -1, -1);
+        RegisterInternal(receiver, addr);
+    }
+
+    virtual void
+    ListenOnMulticast(TransportReceiver *receiver,
+                      const specpaxos::Configuration &config) override
+    {
+        // Transport that requires multicast support needs to override
+        // this function
+        return;
+    }
+
+    virtual bool
+    SendBufferToAll(TransportReceiver *src, const void *buf, size_t len) override
+    {
+        const specpaxos::Configuration *cfg = configurations[src];
+
+        if (!replicaAddressesInitialized) {
+            LookupAddresses();
+        }
+
+        const ADDR &srcAddr = dynamic_cast<const ADDR &>(src->GetAddress());
+        for (const auto &kv : replicaAddresses[cfg][0]) {
+            if (srcAddr == kv.second) {
+                continue;
+            }
+            if (!SendBuffer(src, kv.second, buf, len)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     virtual bool
     SendMessage(TransportReceiver *src, const TransportAddress &dst,
                 const Message &m) override
@@ -117,12 +167,6 @@ public:
     {
         ASSERT(this->replicaGroups.find(src) != this->replicaGroups.end());
         int groupIdx = this->replicaGroups[src] == -1 ? 0 : this->replicaGroups[src];
-        const specpaxos::Configuration *cfg = configurations[src];
-        ASSERT(cfg != NULL);
-
-        if (!replicaAddressesInitialized) {
-            LookupAddresses();
-        }
 
         return SendMessageToGroup(src, groupIdx, m);
     }
@@ -203,16 +247,12 @@ public:
     }
 
 protected:
+    virtual void RegisterInternal(TransportReceiver *receiver,
+                                  const specpaxos::ReplicaAddress *addr) = 0;
     virtual bool SendMessageInternal(TransportReceiver *src,
                                      const ADDR &dst,
                                      const Message &m) = 0;
-    virtual ADDR LookupAddress(const specpaxos::Configuration &cfg,
-                               int groupIdx,
-                               int replicaIdx) = 0;
-    virtual const ADDR *
-    LookupMulticastAddress(const specpaxos::Configuration *cfg) = 0;
-    virtual const ADDR *
-    LookupFCAddress(const specpaxos::Configuration *cfg) = 0;
+    virtual ADDR LookupAddress(const specpaxos::ReplicaAddress &addr) = 0;
 
     std::unordered_map<specpaxos::Configuration,
         specpaxos::Configuration *> canonicalConfigs;
@@ -222,6 +262,8 @@ protected:
         std::map<int, std::map<int, ADDR> > > replicaAddresses; // config->groupid->replicaid->ADDR
     std::map<const specpaxos::Configuration *,
         std::map<int, std::map<int, TransportReceiver *> > > replicaReceivers;
+    std::map<const specpaxos::Configuration *,
+        std::vector<ADDR>> sequencerAddresses;
     std::map<const specpaxos::Configuration *, ADDR> multicastAddresses;
     std::map<const specpaxos::Configuration *, ADDR> fcAddresses;
     std::map<TransportReceiver *, int> replicaGroups;
@@ -268,6 +310,7 @@ protected:
     {
         // Clear any existing list of addresses
         replicaAddresses.clear();
+        sequencerAddresses.clear();
         multicastAddresses.clear();
         fcAddresses.clear();
 
@@ -278,26 +321,25 @@ protected:
 
             for (int i = 0; i < cfg->g; i++) {
                 for (int j = 0; j < cfg->n; j++) {
-                    const ADDR addr = LookupAddress(*cfg, i, j);
+                    const ADDR addr = LookupAddress(cfg->replica(i, j));
                     replicaAddresses[cfg][i].insert(std::make_pair(j, addr));
                 }
             }
 
+            // Add sequencer addresses
+            for (int i = 0; i < cfg->NumSequencers(); i++) {
+                sequencerAddresses[cfg].push_back(LookupAddress(cfg->sequencer(i)));
+            }
+
             // And check if there's a multicast address
             if (cfg->multicast()) {
-                const ADDR *addr = LookupMulticastAddress(cfg);
-                if (addr) {
-                    multicastAddresses.insert(std::make_pair(cfg, *addr));
-                    delete addr;
-                }
+                multicastAddresses.insert(std::make_pair(cfg,
+                            LookupAddress(*cfg->multicast())));
             }
+
             // Failure coordinator address
             if (cfg->fc()) {
-                const ADDR *addr = LookupFCAddress(cfg);
-                if (addr) {
-                    fcAddresses.insert(std::make_pair(cfg, *addr));
-                    delete addr;
-                }
+                fcAddresses.insert(std::make_pair(cfg, LookupAddress(*cfg->fc())));
             }
         }
 

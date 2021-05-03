@@ -48,7 +48,8 @@ struct ReplicaAddress
 {
     string host;
     string port;
-    ReplicaAddress(const string &host, const string &port);
+    string interface;
+    ReplicaAddress(const string &host, const string &port, const string &interface);
     bool operator==(const ReplicaAddress &other) const;
     inline bool operator!=(const ReplicaAddress &other) const {
         return !(*this == other);
@@ -60,16 +61,17 @@ class Configuration
 public:
     Configuration(const Configuration &c);
     Configuration(int g, int n, int f,
-                  std::map<int, std::vector<ReplicaAddress> > replicas,
-                  ReplicaAddress *multicastAddress = nullptr,
-                  ReplicaAddress *fcAddress = nullptr,
-                  std::map<int, std::vector<std::string> > interfaces = std::map<int, std::vector<std::string> >());
+                  const std::map<int, std::vector<ReplicaAddress>> &replicas,
+                  const std::vector<ReplicaAddress> &sequencers,
+                  const ReplicaAddress *multicast_address = nullptr,
+                  const ReplicaAddress *fc_address = nullptr);
     Configuration(std::ifstream &file);
     virtual ~Configuration();
-    ReplicaAddress replica(int group, int idx) const;
+    const ReplicaAddress &replica(int group, int id) const;
+    int NumSequencers() const;
+    const ReplicaAddress &sequencer(int index) const;
     const ReplicaAddress *multicast() const;
     const ReplicaAddress *fc() const;
-    std::string Interface(int group, int idx) const;
     inline int GetLeaderIndex(view_t view) const {
         return (view % n);
     };
@@ -84,13 +86,12 @@ public:
     int g;                      // number of groups
     int n;                      // number of replicas per group
     int f;                      // number of failures tolerated (assume homogeneous across groups)
+
 private:
-    std::map<int, std::vector<ReplicaAddress> > replicas;
-    ReplicaAddress *multicastAddress;
-    bool hasMulticast;
-    ReplicaAddress *fcAddress;
-    bool hasFC;
-    std::map<int, std::vector<std::string> > interfaces;
+    std::map<int, std::vector<ReplicaAddress>> replicas_;
+    std::vector<ReplicaAddress> sequencers_;
+    ReplicaAddress *multicast_;
+    ReplicaAddress *fc_;
 };
 
 }      // namespace specpaxos
@@ -122,6 +123,5 @@ template <> struct hash<specpaxos::Configuration>
         }
 };
 }
-
 
 #endif  /* _LIB_CONFIGURATION_H_ */

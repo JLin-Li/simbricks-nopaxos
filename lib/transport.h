@@ -44,6 +44,7 @@ class TransportAddress
 public:
     virtual ~TransportAddress() { }
     virtual TransportAddress *clone() const = 0;
+    virtual std::string Serialize() const = 0;
 };
 
 class TransportReceiver
@@ -52,14 +53,21 @@ protected:
     typedef ::google::protobuf::Message Message;
 
 public:
+    enum class ReceiveMode {
+        kReceiveMessage,
+        kReceiveBuffer
+    };
+
     virtual ~TransportReceiver();
     virtual void SetAddress(const TransportAddress *addr);
     virtual const TransportAddress& GetAddress();
-
+    virtual ReceiveMode GetReceiveMode();
     virtual void ReceiveMessage(const TransportAddress &remote,
                                 const string &type,
                                 const string &data,
-                                void * meta_data) = 0;
+                                void * meta_data);
+    virtual void ReceiveBuffer(const TransportAddress &remote,
+                               void *buf, size_t len);
 
 protected:
     const TransportAddress *myAddress;
@@ -79,12 +87,23 @@ protected:
     typedef ::google::protobuf::Message Message;
 public:
     virtual ~Transport() {}
-    /* -1 in replicaIdx and groupIdx indicates client */
-    virtual void Register(TransportReceiver *receiver,
-                          const specpaxos::Configuration &config,
-                          int groupIdx,
-                          int replicaIdx) = 0;
-
+    virtual void RegisterReplica(TransportReceiver *receiver,
+                                 const specpaxos::Configuration &config,
+                                 int groupIdx,
+                                 int replicaIdx) = 0;
+    /* Set addr to nullptr if receiver can be bound to any address */
+    virtual void RegisterAddress(TransportReceiver *receiver,
+                                 const specpaxos::Configuration &config,
+                                 const specpaxos::ReplicaAddress *addr) = 0;
+    virtual void ListenOnMulticast(TransportReceiver *receiver,
+                                   const specpaxos::Configuration &config) = 0;
+    virtual bool SendBuffer(TransportReceiver *src,
+                            const TransportAddress &dst,
+                            const void *buf,
+                            size_t len) = 0;
+    virtual bool SendBufferToAll(TransportReceiver *src,
+                                 const void *buf,
+                                 size_t len) = 0;
     virtual bool SendMessage(TransportReceiver *src,
                              const TransportAddress &dst,
                              const Message &m) = 0;

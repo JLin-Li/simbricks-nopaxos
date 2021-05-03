@@ -50,6 +50,7 @@ ErisServer::ErisServer(const Configuration &config, int myShard, int myIdx,
     gapReplyQuorum(config.n - 1),
     viewChangeQuorum(config.n - 1)
 {
+    transport->ListenOnMulticast(this, config);
     this->status = STATUS_NORMAL;
     this->sessnum = 0;
     this->view = 0;

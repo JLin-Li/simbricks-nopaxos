@@ -85,6 +85,7 @@ SpecReplica::SpecReplica(Configuration config, int myIdx,
         RPanic("Recovery not implemented");
     }
 
+    transport->ListenOnMulticast(this, config);
     this->status = STATUS_NORMAL;
     this->view = 0;
     this->lastSpeculative = 0;

@@ -42,7 +42,7 @@ Fcor::Fcor(const Configuration &config,
     epochNum(0), lastNormalEpoch(0), status(STATUS_NORMAL)
 {
     this->sender = new TransportSender();
-    this->transport->Register(this->sender, config, -1, -1);
+    this->transport->RegisterAddress(this->sender, config, config.fc());
 }
 
 Fcor::~Fcor()

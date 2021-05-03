@@ -43,7 +43,7 @@ Replica::Replica(const Configuration &configuration, int groupIdx, int replicaId
     : configuration(configuration), groupIdx(groupIdx), replicaIdx(replicaIdx),
     transport(transport), app(app)
 {
-    transport->Register(this, configuration, groupIdx, replicaIdx);
+    transport->RegisterReplica(this, configuration, groupIdx, replicaIdx);
 }
 
 Replica::~Replica()

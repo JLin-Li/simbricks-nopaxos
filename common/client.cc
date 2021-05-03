@@ -53,7 +53,7 @@ Client::Client(const Configuration &config, Transport *transport,
         this->clientid = dis(gen);
     }
 
-    transport->Register(this, config, -1, -1);
+    transport->RegisterAddress(this, config, nullptr);
 }
 
 Client::~Client()

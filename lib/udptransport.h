@@ -51,7 +51,10 @@
 class UDPTransportAddress : public TransportAddress
 {
 public:
+    UDPTransportAddress(const std::string &s);
     UDPTransportAddress * clone() const;
+    virtual std::string Serialize() const override;
+
 private:
     UDPTransportAddress(const sockaddr_in &addr);
     sockaddr_in addr;
@@ -70,10 +73,14 @@ public:
     UDPTransport(double dropRate = 0.0, double reorderRate = 0.0,
                  int dscp = 0, event_base *evbase = nullptr);
     virtual ~UDPTransport();
-    virtual void Register(TransportReceiver *receiver,
-                          const specpaxos::Configuration &config,
-                          int groupIdx,
-                          int replicaIdx) override;
+    virtual void RegisterInternal(TransportReceiver *receiver,
+                                  const specpaxos::ReplicaAddress *addr) override;
+    virtual void ListenOnMulticast(TransportReceiver *receiver,
+                                   const specpaxos::Configuration &config) override;
+    virtual bool SendBuffer(TransportReceiver *src,
+                            const TransportAddress &dst,
+                            const void *buffer,
+                            size_t len) override;
     virtual bool OrderedMulticast(TransportReceiver *src,
                                   const std::vector<int> &groups,
                                   const Message &m) override;
@@ -113,7 +120,6 @@ private:
     std::map<TransportReceiver*, int> fds; // receiver -> fd
     std::map<const specpaxos::Configuration *, int> multicastFds;
     std::map<int, const specpaxos::Configuration *> multicastConfigs;
-    std::set<int> rawFds;
     int lastTimerId;
     std::map<int, UDPTransportTimerInfo *> timers;
     std::mutex timersLock;
@@ -135,19 +141,7 @@ private:
                              const Message &m) override;
 
     UDPTransportAddress
-    LookupAddress(const specpaxos::ReplicaAddress &addr);
-    UDPTransportAddress
-    LookupAddress(const specpaxos::Configuration &cfg,
-                  int groupIdx,
-                  int replicaIdx) override;
-    const UDPTransportAddress *
-    LookupMulticastAddress(const specpaxos::Configuration *cfg) override;
-    const UDPTransportAddress *
-        LookupFCAddress(const specpaxos::Configuration *cfg) override;
-    void ListenOnMulticastPort(const specpaxos::Configuration
-                               *canonicalConfig,
-                               int groupIdx,
-                               int replicaIdx);
+    LookupAddress(const specpaxos::ReplicaAddress &addr) override;
     void OnReadable(int fd);
     void ProcessPacket(int fd, sockaddr_in sender, socklen_t senderSize,
                      char *buf, ssize_t sz);
