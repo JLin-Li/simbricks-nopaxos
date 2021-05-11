@@ -5,7 +5,6 @@
 CC = gcc
 CXX = g++
 LD = g++
-EXPAND = lib/tmpl/expand
 
 CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -O3
 CXXFLAGS := -std=c++0x -O3
@@ -174,7 +173,7 @@ define compile
 	$(call trace,$(1),$<,\
 	  $(CC) -iquote. $(CFLAGS) $(CFLAGS-$<) $(2) $(DEPFLAGS) -E $<)
 	$(Q)$(CC) -iquote. $(CFLAGS) $(CFLAGS-$<) $(2) -E -o .obj/$*.t $<
-	$(Q)$(EXPAND) $(EXPANDARGS) -o .obj/$*.i .obj/$*.t
+	-o .obj/$*.i .obj/$*.t
 	$(Q)$(CC) $(CFLAGS) $(CFLAGS-$<) $(2) -c -o $@ .obj/$*.i
 endef
 
