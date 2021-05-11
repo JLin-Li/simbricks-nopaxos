@@ -29,8 +29,7 @@
  **********************************************************************/
 
 #include "common/replica.h"
-#include "vr/replica.h"
-#include "vr/vr-proto.pb.h"
+#include "replication/vr/replica.h"
 
 #include "lib/assert.h"
 #include "lib/configuration.h"

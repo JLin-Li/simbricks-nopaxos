@@ -36,7 +36,7 @@
 #include "common/log.h"
 #include "common/replica.h"
 #include "common/quorumset.h"
-#include "vr/vr-proto.pb.h"
+#include "replication/vr/vr-proto.pb.h"
 
 #include <map>
 #include <memory>

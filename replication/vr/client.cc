@@ -33,8 +33,7 @@
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/transport.h"
-#include "vr/client.h"
-#include "vr/vr-proto.pb.h"
+#include "replication/vr/client.h"
 
 namespace specpaxos {
 namespace vr {

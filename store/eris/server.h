@@ -38,7 +38,7 @@
 #include "common/log.h"
 #include "common/replica.h"
 #include "common/quorumset.h"
-#include "vr/client.h"
+#include "replication/vr/client.h"
 #include "store/eris/eris-proto.pb.h"
 
 #include <map>

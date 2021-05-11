@@ -35,8 +35,8 @@
 
 #include "common/client.h"
 #include "common/replica.h"
-#include "vr/client.h"
-#include "vr/replica.h"
+#include "replication/vr/client.h"
+#include "replication/vr/replica.h"
 
 #include <stdlib.h>
 #include <stdio.h>

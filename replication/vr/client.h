@@ -34,7 +34,7 @@
 
 #include "common/client.h"
 #include "lib/configuration.h"
-#include "vr/vr-proto.pb.h"
+#include "replication/vr/vr-proto.pb.h"
 
 namespace specpaxos {
 namespace vr {

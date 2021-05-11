@@ -13,6 +13,3 @@ OBJS-vr-client := $(o)client.o $(o)vr-proto.o \
 OBJS-vr-replica := $(o)replica.o $(o)vr-proto.o \
                    $(OBJS-replica) $(LIB-message) \
                    $(LIB-configuration) $(LIB-latency)
-
-include $(d)tests/Rules.mk
-

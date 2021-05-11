@@ -29,7 +29,7 @@
  **********************************************************************/
 
 #include "lib/udptransport.h"
-#include "vr/replica.h"
+#include "replication/vr/replica.h"
 #include "store/eris/fcor.h"
 
 using namespace std;
