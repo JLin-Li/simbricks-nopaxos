@@ -1,7 +1,7 @@
 // -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
- * unreplicated/client.h:
+ * unreplicated/replica.h:
  *   dummy implementation of replication interface that just uses a
  *   single replica and passes commands directly to it
  *
@@ -29,57 +29,48 @@
  *
  **********************************************************************/
 
-#ifndef _UNREPLICATED_CLIENT_H_
-#define _UNREPLICATED_CLIENT_H_
+#ifndef _UNREPLICATED_REPLICA_H_
+#define _UNREPLICATED_REPLICA_H_
 
-#include "common/client.h"
-#include "lib/configuration.h"
-#include "unreplicated/unreplicated-proto.pb.h"
+#include "common/replica.h"
+#include "replication/unreplicated/unreplicated-proto.pb.h"
+
+#include "common/log.h"
 
 namespace specpaxos {
 namespace unreplicated {
 
-class UnreplicatedClient : public Client
+class UnreplicatedReplica : public Replica
 {
 public:
-    UnreplicatedClient(const Configuration &config,
-                       Transport *transport,
-                       uint64_t clientid = 0);
-    virtual ~UnreplicatedClient();
-    virtual void Invoke(const string &request, continuation_t continuation) override;
-    virtual void InvokeUnlogged(int replicaIdx,
-                                const string &request,
-                                continuation_t continuation,
-                                timeout_continuation_t timeoutContinuation = nullptr,
-                                uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
-    virtual void ReceiveMessage(const TransportAddress &remote,
+    UnreplicatedReplica(Configuration config, int myIdx,
+                        bool initialize,
+                        Transport *transport, AppReplica *app);
+    void ReceiveMessage(const TransportAddress &remote,
                         const string &type, const string &data,
                         void *meta_data) override;
 
-protected:
-    struct PendingRequest
-    {
-        string request;
-	uint64_t clientid;
-	uint64_t clientreqid;
-        continuation_t continuation;
-        inline PendingRequest(string request, uint64_t clientreqid, continuation_t continuation)
-            : request(request), clientreqid(clientreqid), continuation(continuation) { }
-    };
-    PendingRequest *pendingRequest;
-    PendingRequest *pendingUnloggedRequest;
-    Timeout *requestTimeout;
-    uint64_t lastReqId;
+private:
+    void HandleRequest(const TransportAddress &remote,
+                       const proto::RequestMessage &msg);
+    void HandleUnloggedRequest(const TransportAddress &remote,
+                       const proto::UnloggedRequestMessage &msg);
 
-    void HandleReply(const TransportAddress &remote,
-                     const proto::ReplyMessage &msg);
-    void HandleUnloggedReply(const TransportAddress &remote,
-                             const proto::UnloggedReplyMessage &msg);
-    void SendRequest();
-    void ResendRequest();
+    void UpdateClientTable(const Request &req,
+			   const proto::ReplyMessage &reply);
+
+    opnum_t last_op_;
+    Log<int> log;
+    struct ClientTableEntry
+    {
+	uint64_t lastReqId;
+	proto::ReplyMessage reply;
+    };
+    std::map<uint64_t, ClientTableEntry> clientTable;
 };
 
+typedef Log<int>::LogEntry LogEntry;
 } // namespace specpaxos::unreplicated
 } // namespace specpaxos
 
-#endif  /* _UNREPLICATED_CLIENT_H_ */
+#endif  /* _UNREPLICATED_REPLICA_H_ */

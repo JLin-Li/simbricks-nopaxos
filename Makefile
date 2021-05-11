@@ -132,13 +132,14 @@ endef
 
 include lib/Rules.mk
 include common/Rules.mk
-include unreplicated/Rules.mk
+include replication/Rules.mk
 include vr/Rules.mk
 include fastpaxos/Rules.mk
 include nopaxos/Rules.mk
 include bench/Rules.mk
 include store/Rules.mk
 include sequencer/Rules.mk
+include tests/Rules.mk
 
 ##################################################################
 # General rules

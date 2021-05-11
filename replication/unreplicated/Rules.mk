@@ -13,6 +13,3 @@ OBJS-unreplicated-client := $(o)client.o $(o)unreplicated-proto.o \
 OBJS-unreplicated-replica := $(o)replica.o $(o)unreplicated-proto.o \
                $(OBJS-replica) $(LIB-message) \
                $(LIB-configuration)
-
-include $(d)tests/Rules.mk
-

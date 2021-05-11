@@ -32,8 +32,8 @@
 #include "common/request.pb.h"
 #include "lib/message.h"
 #include "lib/transport.h"
-#include "unreplicated/client.h"
-#include "unreplicated/unreplicated-proto.pb.h"
+#include "replication/unreplicated/client.h"
+#include "replication/unreplicated/unreplicated-proto.pb.h"
 
 namespace specpaxos {
 namespace unreplicated {

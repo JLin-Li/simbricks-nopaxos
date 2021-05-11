@@ -33,8 +33,8 @@
 #include "common/replica.h"
 #include "lib/transport.h"
 #include "lib/simtransport.h"
-#include "unreplicated/client.h"
-#include "unreplicated/replica.h"
+#include "replication/unreplicated/client.h"
+#include "replication/unreplicated/replica.h"
 
 #include <stdlib.h>
 #include <stdio.h>

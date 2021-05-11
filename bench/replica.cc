@@ -32,7 +32,7 @@
 #include "common/replica.h"
 #include "lib/udptransport.h"
 #include "fastpaxos/replica.h"
-#include "unreplicated/replica.h"
+#include "replication/unreplicated/replica.h"
 #include "vr/replica.h"
 #include "nopaxos/replica.h"
 

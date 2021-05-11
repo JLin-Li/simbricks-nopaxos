@@ -30,8 +30,7 @@
  **********************************************************************/
 
 #include "common/replica.h"
-#include "unreplicated/replica.h"
-#include "unreplicated/unreplicated-proto.pb.h"
+#include "replication/unreplicated/replica.h"
 
 #include "lib/message.h"
 #include "lib/transport.h"

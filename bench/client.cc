@@ -36,7 +36,7 @@
 #include "common/client.h"
 #include "lib/configuration.h"
 #include "fastpaxos/client.h"
-#include "unreplicated/client.h"
+#include "replication/unreplicated/client.h"
 #include "vr/client.h"
 #include "nopaxos/client.h"
 
