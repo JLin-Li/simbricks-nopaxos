@@ -33,8 +33,7 @@
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/transport.h"
-#include "fastpaxos/client.h"
-#include "fastpaxos/fastpaxos-proto.pb.h"
+#include "replication/fastpaxos/client.h"
 
 namespace specpaxos {
 namespace fastpaxos {

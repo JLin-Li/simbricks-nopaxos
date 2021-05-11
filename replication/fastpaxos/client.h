@@ -33,7 +33,7 @@
 
 #include "common/client.h"
 #include "lib/configuration.h"
-#include "fastpaxos/fastpaxos-proto.pb.h"
+#include "replication/fastpaxos/fastpaxos-proto.pb.h"
 
 namespace specpaxos {
 namespace fastpaxos {

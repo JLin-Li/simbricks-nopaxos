@@ -35,9 +35,9 @@
 #include "bench/benchmark.h"
 #include "common/client.h"
 #include "lib/configuration.h"
-#include "fastpaxos/client.h"
-#include "replication/unreplicated/client.h"
 #include "replication/vr/client.h"
+#include "replication/fastpaxos/client.h"
+#include "replication/unreplicated/client.h"
 #include "nopaxos/client.h"
 
 #include <unistd.h>

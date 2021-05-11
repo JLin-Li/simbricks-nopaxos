@@ -35,7 +35,7 @@
 #include "common/log.h"
 #include "common/replica.h"
 #include "common/quorumset.h"
-#include "fastpaxos/fastpaxos-proto.pb.h"
+#include "replication/fastpaxos/fastpaxos-proto.pb.h"
 
 #include <map>
 #include <memory>

@@ -29,8 +29,7 @@
  **********************************************************************/
 
 #include "common/replica.h"
-#include "fastpaxos/replica.h"
-#include "fastpaxos/fastpaxos-proto.pb.h"
+#include "replication/fastpaxos/replica.h"
 
 #include "lib/assert.h"
 #include "lib/configuration.h"

@@ -1,3 +1,3 @@
 d := $(dir $(lastword $(MAKEFILE_LIST)))
 
-include $(d)vr/Rules.mk $(d)unreplicated/Rules.mk
+include $(d)vr/Rules.mk $(d)fastpaxos/Rules.mk $(d)unreplicated/Rules.mk
