@@ -61,7 +61,7 @@ public:
                 bool was_split;
                 if( depth == 0 ) {
                         // The root is a leaf node
-                        assert( *reinterpret_cast<NodeType*>(root) == 
+                        assert( *reinterpret_cast<NodeType*>(root) ==
                                 NODE_LEAF);
                         was_split= leaf_insert(reinterpret_cast<LeafNode*>
                                 (root), key, value, &result);
@@ -118,7 +118,7 @@ bool find(const KEY& key, VALUE* value= 0) const {
 
 
 // Looks for the given key. If it is not found, it returns false,
-// if it is found, it returns true and sets 
+// if it is found, it returns true and sets
 // the associated value to NULL
 // Note: del currently leaks memory. Fix later.
 bool del(const KEY& key) {
@@ -203,7 +203,7 @@ bool findLastLessThan(const KEY& key, VALUE* value = 0, KEY* out_key = 0) const 
         unsigned sizeof_leaf_node() const {
                 return sizeof(LeafNode);
         }
-        
+
 
 private:
         // Used when debugging
@@ -244,7 +244,7 @@ private:
         struct AlignedMemoryAllocator {
                 typedef std::size_t size_type;
                 typedef std::ptrdiff_t difference_type;
-                
+
                 static char* malloc(const size_type bytes)
                 {
                         void* result;
@@ -291,7 +291,7 @@ private:
                 // Alternatively: delete node;
                 innerPool.destroy(node);
         }
-        
+
         // Data type returned by the private insertion methods.
         struct InsertionResult {
                 KEY key;
