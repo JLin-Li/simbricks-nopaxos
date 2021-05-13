@@ -1,9 +1,9 @@
-#include "common/replica.h"
+#include "pbft/replica.h"
 
+#include "pbft/pbft-proto.pb.h"
+#include "common/replica.h"
 #include "lib/message.h"
 #include "lib/transport.h"
-#include "pbft/pbft-proto.pb.h"
-#include "pbft/replica.h"
 
 namespace specpaxos {
 namespace pbft {

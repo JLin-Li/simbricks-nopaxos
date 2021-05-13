@@ -7,7 +7,7 @@ CXX = g++
 LD = g++
 EXPAND = lib/tmpl/expand
 
-CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -O3
+CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -Wno-array-bounds -O3
 CXXFLAGS := -std=c++0x -O3
 LDFLAGS := -levent_pthreads -ldl
 LIBPATH := -I./
@@ -137,10 +137,10 @@ include unreplicated/Rules.mk
 include vr/Rules.mk
 include fastpaxos/Rules.mk
 include nopaxos/Rules.mk
+include pbft/Rules.mk
 include bench/Rules.mk
 include store/Rules.mk
 include sequencer/Rules.mk
-include pbft/Rules.mk
 
 ##################################################################
 # General rules
