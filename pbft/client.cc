@@ -12,13 +12,24 @@ namespace pbft {
 PbftClient::PbftClient(const Configuration &config, Transport *transport,
                        uint64_t clientid)
     : Client(config, transport, clientid) {
-  pendingRequest = NULL;
-  pendingUnloggedRequest = NULL;
   lastReqId = 0;
+  pendingRequest = nullptr;
   requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
+
+  pendingUnloggedRequest = nullptr;
+  unloggedRequestTimeout = new Timeout(transport, 1000, [this]() {
+    if (!unloggedTimeoutContinuation) {
+      return;
+    }
+    unloggedTimeoutContinuation(pendingUnloggedRequest->request);
+  });
+
+  f = config.f;
 }
 
 PbftClient::~PbftClient() {
+  delete requestTimeout;
+  delete unloggedRequestTimeout;
   if (pendingRequest) {
     delete pendingRequest;
   }
@@ -32,10 +43,8 @@ void PbftClient::Invoke(const string &request, continuation_t continuation) {
   if (pendingRequest != NULL) {
     Panic("Client only supports one pending request");
   }
-
-  ++lastReqId;
+  lastReqId += 1;
   pendingRequest = new PendingRequest(request, lastReqId, continuation);
-
   SendRequest();
 }
 
@@ -44,9 +53,8 @@ void PbftClient::SendRequest() {
   reqMsg.mutable_req()->set_op(pendingRequest->request);
   reqMsg.mutable_req()->set_clientid(clientid);
   reqMsg.mutable_req()->set_clientreqid(lastReqId);
-  // Pbft: just send to replica 0
+  // todo
   transport->SendMessageToReplica(this, 0, reqMsg);
-
   requestTimeout->Reset();
 }
 
@@ -70,11 +78,11 @@ void PbftClient::InvokeUnlogged(int replicaIdx, const string &request,
   reqMsg.mutable_req()->set_clientid(clientid);
   reqMsg.mutable_req()->set_clientreqid(0);
 
-  // Pbft: just send to replica 0
-  if (replicaIdx != 0) {
-    Panic("Attempt to invoke unlogged operation on replica that doesn't exist");
+  if (timeoutContinuation) {
+    unloggedTimeoutContinuation = timeoutContinuation;
+    unloggedRequestTimeout->Reset();
   }
-  transport->SendMessageToReplica(this, 0, reqMsg);
+  transport->SendMessageToReplica(this, replicaIdx, reqMsg);
 }
 
 void PbftClient::ReceiveMessage(const TransportAddress &remote,
@@ -96,7 +104,7 @@ void PbftClient::ReceiveMessage(const TransportAddress &remote,
 
 void PbftClient::HandleReply(const TransportAddress &remote,
                              const proto::ReplyMessage &msg) {
-  if (pendingRequest == NULL) {
+  if (!pendingRequest) {
     Warning("Received reply when no request was pending");
     return;
   }
@@ -115,14 +123,15 @@ void PbftClient::HandleReply(const TransportAddress &remote,
 
 void PbftClient::HandleUnloggedReply(const TransportAddress &remote,
                                      const proto::UnloggedReplyMessage &msg) {
-  if (pendingUnloggedRequest == NULL) {
+  if (pendingUnloggedRequest == nullptr) {
     Warning("Received unloggedReply when no request was pending");
   }
 
   Debug("Client received unloggedReply");
-  PendingRequest *req = pendingUnloggedRequest;
-  pendingUnloggedRequest = NULL;
+  unloggedRequestTimeout->Stop();
 
+  PendingRequest *req = pendingUnloggedRequest;
+  pendingUnloggedRequest = nullptr;
   req->continuation(req->request, msg.reply());
   delete req;
 }

@@ -23,27 +23,34 @@ class PbftClient : public Client {
                               const string &type, const string &data,
                               void *meta_data) override;
 
- protected:
+ private:
+  int f;  // the number of faulty servers that could be toleranced
+
   struct PendingRequest {
     string request;
-    uint64_t clientid;
     uint64_t clientreqid;
     continuation_t continuation;
-    inline PendingRequest(string request, uint64_t clientreqid,
-                          continuation_t continuation)
+    PendingRequest(string request, uint64_t clientreqid,
+                   continuation_t continuation)
         : request(request),
           clientreqid(clientreqid),
           continuation(continuation) {}
   };
-  PendingRequest *pendingRequest;
-  PendingRequest *pendingUnloggedRequest;
-  Timeout *requestTimeout;
+
   uint64_t lastReqId;
+  PendingRequest *pendingRequest;
+  Timeout *requestTimeout;
+
+  PendingRequest *pendingUnloggedRequest;
+  Timeout *unloggedRequestTimeout;
+  timeout_continuation_t unloggedTimeoutContinuation;
 
   void HandleReply(const TransportAddress &remote,
                    const proto::ReplyMessage &msg);
   void HandleUnloggedReply(const TransportAddress &remote,
                            const proto::UnloggedReplyMessage &msg);
+
+  // only for (logged request)
   void SendRequest();
   void ResendRequest();
 };
