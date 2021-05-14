@@ -77,16 +77,12 @@ TEST(Pbft, OneOp) {
   map<int, vector<ReplicaAddress> > replicaAddrs = {
       {0, {{"localhost", "12345"}}}};
   Configuration c(1, 1, 0, replicaAddrs);
-
   SimulatedTransport transport;
-
   PbftTestApp app;
-
   PbftReplica replica(c, 0, true, &transport, &app);
   PbftClient client(c, &transport);
 
   client.Invoke(string("test"), ClientUpcallHandler);
-
   transport.Run();
 
   EXPECT_EQ(replicaLastOp, "test");
@@ -99,15 +95,12 @@ TEST(Pbft, Unlogged) {
   map<int, vector<ReplicaAddress> > replicaAddrs = {
       {0, {{"localhost", "12345"}}}};
   Configuration c(1, 1, 0, replicaAddrs);
-
   SimulatedTransport transport;
   PbftTestApp app;
-
   PbftReplica replica(c, 0, true, &transport, &app);
   PbftClient client(c, &transport);
 
   client.InvokeUnlogged(0, string("test2"), ClientUpcallHandler);
-
   transport.Run();
 
   EXPECT_EQ(replicaLastOp, "test");

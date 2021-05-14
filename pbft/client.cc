@@ -44,7 +44,6 @@ void PbftClient::SendRequest() {
   reqMsg.mutable_req()->set_op(pendingRequest->request);
   reqMsg.mutable_req()->set_clientid(clientid);
   reqMsg.mutable_req()->set_clientreqid(lastReqId);
-
   // Pbft: just send to replica 0
   transport->SendMessageToReplica(this, 0, reqMsg);
 
@@ -64,7 +63,6 @@ void PbftClient::InvokeUnlogged(int replicaIdx, const string &request,
   if (pendingUnloggedRequest != NULL) {
     Panic("Client only supports one pending request");
   }
-
   pendingUnloggedRequest = new PendingRequest(request, 0, continuation);
 
   proto::UnloggedRequestMessage reqMsg;
@@ -102,18 +100,15 @@ void PbftClient::HandleReply(const TransportAddress &remote,
     Warning("Received reply when no request was pending");
     return;
   }
-
   if (msg.req().clientreqid() != pendingRequest->clientreqid) {
     return;
   }
 
   Debug("Client received reply");
-
   requestTimeout->Stop();
 
   PendingRequest *req = pendingRequest;
   pendingRequest = NULL;
-
   req->continuation(req->request, msg.reply());
   delete req;
 }
@@ -125,7 +120,6 @@ void PbftClient::HandleUnloggedReply(const TransportAddress &remote,
   }
 
   Debug("Client received unloggedReply");
-
   PendingRequest *req = pendingUnloggedRequest;
   pendingUnloggedRequest = NULL;
 
