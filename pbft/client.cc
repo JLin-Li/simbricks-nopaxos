@@ -22,7 +22,9 @@ PbftClient::PbftClient(const Configuration &config, Transport *transport,
         if (!unloggedTimeoutContinuation) {
           return;
         }
+        Debug("Unlogged timeout call cont");
         unloggedTimeoutContinuation(pendingUnloggedRequest->request);
+        unloggedRequestTimeout->Stop();
       });
 
   f = config.f;
@@ -80,9 +82,11 @@ void PbftClient::InvokeUnlogged(int replicaIdx, const string &request,
   reqMsg.mutable_req()->set_clientreqid(clientReqId);
 
   if (timeoutContinuation) {
+    Debug("Set unlogged timeout");
     unloggedTimeoutContinuation = timeoutContinuation;
+    unloggedRequestTimeout->Stop();
     unloggedRequestTimeout->SetTimeout(timeout);
-    unloggedRequestTimeout->Reset();
+    unloggedRequestTimeout->Start();
   }
   transport->SendMessageToReplica(this, replicaIdx, reqMsg);
 }

@@ -44,6 +44,7 @@
 using namespace specpaxos;
 using namespace specpaxos::pbft;
 using namespace specpaxos::pbft::proto;
+using namespace google::protobuf;
 using std::map;
 using std::vector;
 
@@ -107,6 +108,26 @@ TEST(Pbft, Unlogged) {
   EXPECT_EQ(replicaLastUnloggedOp, "test2");
   EXPECT_EQ(clientLastOp, "test2");
   EXPECT_EQ(clientLastReply, "unlreply: test2");
+}
+
+TEST(Pbft, UnloggedTimeout) {
+  map<int, vector<ReplicaAddress> > replicaAddrs = {
+      {0, {{"localhost", "12345"}}}};
+  Configuration c(1, 1, 0, replicaAddrs);
+  SimulatedTransport transport;
+  PbftTestApp app;
+  PbftReplica replica(c, 0, true, &transport, &app);
+  PbftClient client(c, &transport);
+
+  transport.AddFilter(
+      0, [](TransportReceiver *, std::pair<int, int>, TransportReceiver *,
+            std::pair<int, int>, Message &, uint64_t &delay,
+            const multistamp_t &stamp) { return false; });
+  bool finished = true;
+  client.InvokeUnlogged(0, string("willdrop"), ClientUpcallHandler,
+                        [&](const std::string &) { finished = false; });
+  transport.Run();
+  ASSERT_FALSE(finished);
 }
 
 TEST(Pbft, OneOpFourServers) {
