@@ -35,6 +35,7 @@
 #include "common/client.h"
 #include "common/replica.h"
 #include "lib/configuration.h"
+#include "lib/message.h"
 #include "lib/simtransport.h"
 #include "lib/transport.h"
 #include "pbft/client.h"
@@ -46,10 +47,11 @@ using namespace specpaxos::pbft::proto;
 using std::map;
 using std::vector;
 
+// todo: replicas overwrite each other with these single-copied static global
 static string replicaLastOp;
+static string replicaLastUnloggedOp;
 static string clientLastOp;
 static string clientLastReply;
-static string replicaLastUnloggedOp;
 
 class PbftTestApp : public AppReplica {
  public:
@@ -88,7 +90,6 @@ TEST(Pbft, OneOp) {
   EXPECT_EQ(replicaLastOp, "test");
   EXPECT_EQ(clientLastOp, "test");
   EXPECT_EQ(clientLastReply, "reply: test");
-  EXPECT_EQ(replicaLastUnloggedOp, "");
 }
 
 TEST(Pbft, Unlogged) {
@@ -103,8 +104,36 @@ TEST(Pbft, Unlogged) {
   client.InvokeUnlogged(0, string("test2"), ClientUpcallHandler);
   transport.Run();
 
-  EXPECT_EQ(replicaLastOp, "test");
   EXPECT_EQ(replicaLastUnloggedOp, "test2");
   EXPECT_EQ(clientLastOp, "test2");
   EXPECT_EQ(clientLastReply, "unlreply: test2");
+}
+
+TEST(Pbft, OneOpFourServers) {
+  map<int, vector<ReplicaAddress> > replicaAddrs = {{0,
+                                                     {{"localhost", "1509"},
+                                                      {"localhost", "1510"},
+                                                      {"localhost", "1511"},
+                                                      {"localhost", "1512"}}}};
+  Configuration c(1, 4, 1, replicaAddrs);
+  SimulatedTransport transport(true);
+  PbftTestApp app;
+  PbftReplica replica0(c, 0, true, &transport, &app);
+  PbftReplica replica1(c, 1, true, &transport, &app);
+  PbftReplica replica2(c, 2, true, &transport, &app);
+  PbftReplica replica3(c, 3, true, &transport, &app);
+  PbftClient client(c, &transport);
+
+  client.Invoke(string("test3"), ClientUpcallHandler);
+  bool finished = true;
+  transport.Timer(3000, [&]() {
+    transport.Stop();
+    finished = false;
+  });
+  transport.Run();
+  ASSERT_TRUE(finished) << "Should finish on time";
+
+  EXPECT_EQ(replicaLastOp, "test3");
+  EXPECT_EQ(clientLastOp, "test3");
+  EXPECT_EQ(clientLastReply, "reply: test3");
 }

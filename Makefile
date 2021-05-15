@@ -7,8 +7,9 @@ CXX = g++
 LD = g++
 EXPAND = lib/tmpl/expand
 
-CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -Wno-array-bounds -O3
-CXXFLAGS := -std=c++0x -O3
+# CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -Wno-array-bounds -O3
+CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -Wno-array-bounds
+CXXFLAGS := -std=c++0x
 LDFLAGS := -levent_pthreads -ldl
 LIBPATH := -I./
 CFLAGS += $(LIBPATH)

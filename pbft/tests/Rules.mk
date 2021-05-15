@@ -4,7 +4,7 @@ GTEST_SRCS += $(d)pbft-test.cc
 
 $(d)pbft-test: $(o)pbft-test.o \
 	$(OBJS-pbft-replica) $(OBJS-pbft-client) \
-        $(LIB-simtransport) \
+        $(LIB-simtransport) $(LIB-message) \
         $(GTEST_MAIN)
 
 TEST_BINS += $(d)pbft-test

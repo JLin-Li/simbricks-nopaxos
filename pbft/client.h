@@ -1,6 +1,9 @@
 #ifndef _PBFT_CLIENT_H_
 #define _PBFT_CLIENT_H_
 
+#include <map>
+#include <set>
+
 #include "common/client.h"
 #include "lib/configuration.h"
 #include "pbft/pbft-proto.pb.h"
@@ -30,6 +33,8 @@ class PbftClient : public Client {
     string request;
     uint64_t clientreqid;
     continuation_t continuation;
+    // in each group the result is the same
+    std::map<std::string, std::set<int>> replyGroupMap;
     PendingRequest(string request, uint64_t clientreqid,
                    continuation_t continuation)
         : request(request),

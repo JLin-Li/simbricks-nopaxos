@@ -17,12 +17,13 @@ PbftClient::PbftClient(const Configuration &config, Transport *transport,
   requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
 
   pendingUnloggedRequest = nullptr;
-  unloggedRequestTimeout = new Timeout(transport, 1000, [this]() {
-    if (!unloggedTimeoutContinuation) {
-      return;
-    }
-    unloggedTimeoutContinuation(pendingUnloggedRequest->request);
-  });
+  unloggedRequestTimeout =
+      new Timeout(transport, DEFAULT_UNLOGGED_OP_TIMEOUT, [this]() {
+        if (!unloggedTimeoutContinuation) {
+          return;
+        }
+        unloggedTimeoutContinuation(pendingUnloggedRequest->request);
+      });
 
   f = config.f;
 }
@@ -39,7 +40,6 @@ PbftClient::~PbftClient() {
 }
 
 void PbftClient::Invoke(const string &request, continuation_t continuation) {
-  // XXX Can only handle one pending request for now
   if (pendingRequest != NULL) {
     Panic("Client only supports one pending request");
   }
@@ -67,19 +67,21 @@ void PbftClient::InvokeUnlogged(int replicaIdx, const string &request,
                                 continuation_t continuation,
                                 timeout_continuation_t timeoutContinuation,
                                 uint32_t timeout) {
-  // XXX Can only handle one pending request for now
   if (pendingUnloggedRequest != NULL) {
     Panic("Client only supports one pending request");
   }
-  pendingUnloggedRequest = new PendingRequest(request, 0, continuation);
+  uint64_t clientReqId = 0;
+  pendingUnloggedRequest =
+      new PendingRequest(request, clientReqId, continuation);
 
   proto::UnloggedRequestMessage reqMsg;
   reqMsg.mutable_req()->set_op(pendingUnloggedRequest->request);
   reqMsg.mutable_req()->set_clientid(clientid);
-  reqMsg.mutable_req()->set_clientreqid(0);
+  reqMsg.mutable_req()->set_clientreqid(clientReqId);
 
   if (timeoutContinuation) {
     unloggedTimeoutContinuation = timeoutContinuation;
+    unloggedRequestTimeout->SetTimeout(timeout);
     unloggedRequestTimeout->Reset();
   }
   transport->SendMessageToReplica(this, replicaIdx, reqMsg);
@@ -113,10 +115,18 @@ void PbftClient::HandleReply(const TransportAddress &remote,
   }
 
   Debug("Client received reply");
-  requestTimeout->Stop();
+  std::set<int> &replicaGroup = pendingRequest->replyGroupMap[msg.reply()];
+  replicaGroup.insert(0);  // todo: include replica id and signature in reply
+  int count = replicaGroup.size();
+  if (count < f + 1) {
+    Debug("%d replies has same result as current one, waiting for more", count);
+    return;
+  }
 
+  Debug("f + 1 replies received, current request done");
+  requestTimeout->Stop();
   PendingRequest *req = pendingRequest;
-  pendingRequest = NULL;
+  pendingRequest = nullptr;
   req->continuation(req->request, msg.reply());
   delete req;
 }
