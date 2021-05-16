@@ -68,7 +68,7 @@ private:
                         proto::PrepareOKMessage> > pendingPrepareOKs;
     proto::PrepareMessage lastPrepare;
 
-    Log<int> log;
+    Log log;
     std::map<uint64_t, std::unique_ptr<TransportAddress> > clientAddresses;
     struct ClientTableEntry
     {
@@ -108,8 +108,6 @@ private:
     void HandleStateTransfer(const TransportAddress &remote,
                              const proto::StateTransferMessage &msg);
 };
-
-typedef Log<int>::LogEntry LogEntry;
 
 } // namespace specpaxos::vr
 } // namespace specpaxos

@@ -71,7 +71,7 @@ private:
     opnum_t lastBatchEnd;
     bool batchComplete;
 
-    Log<int> log;
+    Log log;
     std::map<uint64_t, std::unique_ptr<TransportAddress> > clientAddresses;
     struct ClientTableEntry
     {
@@ -135,8 +135,6 @@ private:
     void HandleRecoveryResponse(const TransportAddress &remote,
                                 const proto::RecoveryResponseMessage &msg);
 };
-
-typedef Log<int>::LogEntry LogEntry;
 
 } // namespace specpaxos::vr
 } // namespace specpaxos

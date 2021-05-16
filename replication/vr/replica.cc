@@ -553,7 +553,7 @@ VRReplica::HandleRequest(const TransportAddress &remote,
         RDebug("Received REQUEST, assigning " FMT_VIEWSTAMP, VA_VIEWSTAMP(v));
 
         /* Add the request to my log */
-        log.Append(v, request, LOG_STATE_PREPARED);
+        log.Append(LogEntry(v, LOG_STATE_PREPARED, request));
 
         if (batchComplete ||
             (lastOp - lastBatchEnd+1 > (unsigned int)batchSize)) {
@@ -652,8 +652,7 @@ VRReplica::HandlePrepare(const TransportAddress &remote,
             continue;
         }
         this->lastOp++;
-        log.Append(viewstamp_t(msg.view(), op),
-                   req, LOG_STATE_PREPARED);
+        log.Append(LogEntry(viewstamp_t(msg.view(), op), LOG_STATE_PREPARED, req));
         UpdateClientTable(req);
     }
     ASSERT(op == msg.opnum());
@@ -861,7 +860,7 @@ VRReplica::HandleStateTransfer(const TransportAddress &remote,
                 oldLastOp = lastOp;
 
                 viewstamp_t vs = { newEntry.view(), newEntry.opnum() };
-                log.Append(vs, newEntry.request(), LOG_STATE_PREPARED);
+                log.Append(LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
             }
         } else {
             // This is a new operation to us. Add it to the log.
@@ -869,7 +868,7 @@ VRReplica::HandleStateTransfer(const TransportAddress &remote,
 
             lastOp++;
             viewstamp_t vs = { newEntry.view(), newEntry.opnum() };
-            log.Append(vs, newEntry.request(), LOG_STATE_PREPARED);
+            log.Append(LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
         }
     }
 

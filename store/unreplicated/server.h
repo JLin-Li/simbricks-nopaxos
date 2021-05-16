@@ -56,7 +56,7 @@ public:
                         const std::string &type, const std::string &data,
                         void *meta_data) override;
 public:
-    Log<int> log;
+    Log log;
 
 private:
     /* Server states */
@@ -77,8 +77,6 @@ private:
 
     void UpdateClientTable(const Request &req, const proto::ReplyMessage &reply);
 };
-
-typedef Log<int>::LogEntry LogEntry;
 
 } // namespace unreplicated
 } // namespace store

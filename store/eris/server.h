@@ -49,6 +49,33 @@ namespace specpaxos {
 namespace store {
 namespace eris {
 
+struct TxnData {
+    txnid_t txnid;
+    proto::RequestType type;
+
+    TxnData() : txnid(0), type(proto::UNKNOWN) { }
+    TxnData(txnid_t txnid, proto::RequestType type)
+        : txnid(txnid), type(type) { }
+    TxnData(const TxnData &t)
+        : txnid(t.txnid), type(t.type) { }
+};
+
+class ErisLogEntry : public LogEntry
+{
+public:
+    ErisLogEntry(viewstamp_t viewstamp,
+            LogEntryState state,
+            const Request &request)
+        : LogEntry(viewstamp, state, request) { }
+    ErisLogEntry(viewstamp_t viewstamp,
+            LogEntryState state,
+            const Request &request,
+            const TxnData &txnData)
+        : LogEntry(viewstamp, state, request),
+        txnData(txnData) { }
+    TxnData txnData;
+};
+
 class ErisServer : public Replica
 {
 public:
@@ -62,16 +89,7 @@ public:
                         void *meta_data) override;
 
 public:
-    /* Log entry additional data */
-    struct EntryData {
-        txnid_t txnid;
-        proto::RequestType type;
-
-        EntryData() : txnid(0), type(proto::UNKNOWN) { }
-        EntryData(txnid_t txnid, proto::RequestType type)
-            : txnid(txnid), type(type) { }
-    };
-    Log<EntryData> log;
+    Log log;
 
 private:
     /* Replica states */
@@ -285,8 +303,6 @@ private:
     void CompleteECStateTransfer();
     void RewindLog(opnum_t opnum);
 };
-
-typedef Log<struct ErisServer::EntryData>::LogEntry LogEntry;
 
 } // namespace eris
 } // namespace store

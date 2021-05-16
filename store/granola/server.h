@@ -47,6 +47,61 @@ namespace specpaxos {
 namespace store {
 namespace granola {
 
+typedef uint64_t timestamp_t;
+
+struct TxnData {
+    txnid_t txnid;
+    bool indep;
+    bool ro;
+    timestamp_t proposed_ts;
+    timestamp_t final_ts;
+    bool ts_decided;
+    proto::Status status;
+
+    TxnData()
+        : txnid(0), indep(false), ro(false),
+        proposed_ts(0), final_ts(0), ts_decided(false) { }
+    TxnData(txnid_t txnid,
+            bool indep,
+            bool ro,
+            timestamp_t proposed_ts,
+            timestamp_t final_ts,
+            bool ts_decided)
+        : txnid(txnid), indep(indep), ro(ro),
+        proposed_ts(proposed_ts), final_ts(final_ts), ts_decided(ts_decided) { }
+    TxnData(const TxnData &t)
+        : txnid(t.txnid), indep(t.indep), ro(t.ro),
+        proposed_ts(t.proposed_ts), final_ts(t.final_ts),
+        ts_decided(t.ts_decided) { }
+};
+
+class GranolaLogEntry : public LogEntry
+{
+public:
+    GranolaLogEntry(viewstamp_t viewstamp,
+            LogEntryState state,
+            const Request &request)
+        : LogEntry(viewstamp, state, request) { }
+    GranolaLogEntry(viewstamp_t viewstamp,
+            LogEntryState state,
+            const Request &request,
+            const TxnData &txnData)
+        : LogEntry(viewstamp, state, request),
+        txnData(txnData) { }
+    TxnData txnData;
+};
+
+class GranolaLog : public Log
+{
+public:
+    GranolaLog();
+    virtual LogEntry & Append(const LogEntry &entry) override;
+    LogEntry * Find(const std::pair<uint64_t, uint64_t> &reqid);
+
+private:
+    std::map<std::pair<uint64_t, uint64_t>, opnum_t> clientReqMap;
+};
+
 class GranolaServer : public Replica
 {
 public:
@@ -60,36 +115,10 @@ public:
 
     void SetMode(bool locking) { this->locking = locking; }
 
-private:
-    /* Log entry additional data */
-    typedef uint64_t timestamp_t;
-    struct EntryData {
-        txnid_t txnid;
-        bool indep;
-        bool ro;
-        timestamp_t proposed_ts;
-        timestamp_t final_ts;
-        bool ts_decided;
-        proto::Status status;
-
-        EntryData()
-            : txnid(0), indep(false), ro(false),
-            proposed_ts(0), final_ts(0), ts_decided(false) { }
-        EntryData(txnid_t txnid,
-                  bool indep,
-                  bool ro,
-                  timestamp_t proposed_ts,
-                  timestamp_t final_ts,
-                  bool ts_decided)
-            : txnid(txnid), indep(indep), ro(ro),
-            proposed_ts(proposed_ts), final_ts(final_ts), ts_decided(ts_decided) { }
-    };
-
 public:
-    Log<EntryData> log;
+    GranolaLog log;
 
 private:
-    typedef Log<EntryData>::LogEntry LogEntry;
     /* Replica states */
     view_t view;
     opnum_t lastOp;
@@ -150,8 +179,8 @@ private:
                               const proto::FinalTimestampMessage &msg);
 
     void CommitUpTo(opnum_t opnum);
-    void CheckVoteQuorum(LogEntry *entry);
-    void ExecuteTxn(LogEntry *entry);
+    void CheckVoteQuorum(GranolaLogEntry *entry);
+    void ExecuteTxn(GranolaLogEntry *entry);
     void ExecuteTxns();
     void UpdateClientTable(const Request &req);
     void SendPrepare();

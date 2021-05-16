@@ -68,7 +68,7 @@ UnreplicatedReplica::HandleRequest(const TransportAddress &remote,
     v.opnum = last_op_;
     v.sessnum = 0;
     v.msgnum = 0;
-    log.Append(v, msg.req(), LOG_STATE_RECEIVED);
+    log.Append(LogEntry(v, LOG_STATE_RECEIVED, msg.req()));
 
     Debug("Received request %s", (char *)msg.req().op().c_str());
 

@@ -275,14 +275,14 @@ ErisServer::HandleGapRequest(const TransportAddress &remote,
     reply.set_op_num(msg.op_num());
     reply.set_replica_num(this->replicaIdx);
 
-    LogEntry *entry = log.Find(msg.op_num());
+    ErisLogEntry *entry = (ErisLogEntry *)log.Find(msg.op_num());
 
     if (entry) {
         if (entry->state == LOG_STATE_RECEIVED) {
             reply.set_isfound(true);
             reply.set_isgap(false);
-            reply.mutable_req()->set_txnid(entry->data.txnid);
-            reply.mutable_req()->set_type(entry->data.type);
+            reply.mutable_req()->set_txnid(entry->txnData.txnid);
+            reply.mutable_req()->set_type(entry->txnData.type);
             *(reply.mutable_req()->mutable_request()) = entry->request;
             RDebug("Replying log entry %lu to the gap requester", msg.op_num());
         } else if (entry->state == LOG_STATE_NOOP) {
@@ -381,7 +381,9 @@ ErisServer::HandleFCToErisMessage(const TransportAddress &remote,
         // Try to find the missing transaction in log,
         // by searching the reverse lookup map txnLookup
         const auto& it = this->txnLookup.find(stamp);
-        LogEntry *entry = it != this->txnLookup.end() ? log.Find(it->second) : nullptr;
+        ErisLogEntry *entry = it != this->txnLookup.end() ?
+            (ErisLogEntry *)log.Find(it->second) :
+            nullptr;
 
         // If we have promised FC to drop the message, it should
         // not appear in the log.
@@ -398,8 +400,8 @@ ErisServer::HandleFCToErisMessage(const TransportAddress &remote,
             // in permDrops
             ASSERT(entry->state == LOG_STATE_RECEIVED);
             RequestMessage m;
-            m.set_txnid(entry->data.txnid);
-            m.set_type(entry->data.type);
+            m.set_txnid(entry->txnData.txnid);
+            m.set_type(entry->txnData.type);
             *m.mutable_request() = entry->request;
             *(reply.mutable_txn_received()->mutable_txn()) = m;
         }
@@ -815,7 +817,7 @@ ErisServer::HandleStateTransferRequest(const TransportAddress &remote,
 
     // Dump log entries
     for (uint64_t i = msg.begin(); i < msg.end(); i++) {
-        LogEntry *log_entry = log.Find(i);
+        ErisLogEntry *log_entry = (ErisLogEntry *)log.Find(i);
         ASSERT(log_entry != nullptr);
         StateTransferReplyMessage_MsgLogEntry *msg_entry = reply.add_entries();
         msg_entry->set_view(log_entry->viewstamp.view);
@@ -824,8 +826,8 @@ ErisServer::HandleStateTransferRequest(const TransportAddress &remote,
         msg_entry->set_msg_num(log_entry->viewstamp.msgnum);
         msg_entry->set_shard_num(log_entry->viewstamp.shardnum);
         msg_entry->set_state(log_entry->state);
-        msg_entry->mutable_request()->set_txnid(log_entry->data.txnid);
-        msg_entry->mutable_request()->set_type(log_entry->data.type);
+        msg_entry->mutable_request()->set_txnid(log_entry->txnData.txnid);
+        msg_entry->mutable_request()->set_type(log_entry->txnData.type);
         if (log_entry->state == LOG_STATE_NOOP) {
             // Avoid protobuf serialization issue
             msg_entry->mutable_request()->mutable_request()->set_op("");
@@ -902,12 +904,12 @@ ErisServer::HandleEpochChangeStateTransferRequest(const TransportAddress &remote
     for (uint64_t i = msg.begin(); i < msg.end(); i++) {
         auto it = this->txnLookup.find(MsgStamp(msg.shard_num(), i, msg.state_transfer_sess_num()));
         if (it != this->txnLookup.end()) {
-            LogEntry *log_entry = this->log.Find(it->second);
+            ErisLogEntry *log_entry = (ErisLogEntry *)this->log.Find(it->second);
             ASSERT(log_entry != nullptr);
             EpochChangeStateTransferReply_MsgEntry *msg_entry = reply.add_entries();
             msg_entry->set_msg_num(i);
-            msg_entry->mutable_request()->set_txnid(log_entry->data.txnid);
-            msg_entry->mutable_request()->set_type(log_entry->data.type);
+            msg_entry->mutable_request()->set_txnid(log_entry->txnData.txnid);
+            msg_entry->mutable_request()->set_type(log_entry->txnData.type);
             *(msg_entry->mutable_request()->mutable_request()) = log_entry->request;
         }
     }
@@ -945,12 +947,13 @@ ErisServer::HandleEpochChangeStateTransferReply(const TransportAddress &remote,
             // We might have temporarily installed this entry as NOOP before,
             // replace it with the actual message.
             opnum_t opnum = this->lastOp + 1 - (this->nextMsgnum - it->msg_num());
-            LogEntry *log_entry = this->log.Find(opnum);
+            ErisLogEntry *log_entry = (ErisLogEntry *)this->log.Find(opnum);
             ASSERT(log_entry != nullptr);
             if (log_entry->state == LOG_STATE_NOOP) {
                 log_entry->request = it->request().request();
                 log_entry->state = LOG_STATE_RECEIVED;
-                log_entry->data = EntryData(it->request().txnid(), it->request().type());
+                log_entry->txnData =
+                    TxnData(it->request().txnid(), it->request().type());
                 // Remove it from the set of drops that we are sending to FC
                 this->pendingECStateTransfer.drops.erase(MsgStamp(this->groupIdx,
                                                                   it->msg_num(),
@@ -965,15 +968,17 @@ ErisServer::HandleEpochChangeStateTransferReply(const TransportAddress &remote,
                 this->nextMsgnum += 1;
                 viewstamp_t vs(this->view, this->lastOp, this->lastNormalSessnum, i, this->groupIdx);
                 if (i < it->msg_num()) {
-                    this->log.Append(vs, Request(), LOG_STATE_NOOP, EntryData());
+                    this->log.Append(ErisLogEntry(vs, LOG_STATE_NOOP, Request()));
                     // Temporarily add it to the set of drops that we are sending to FC.
                     // (FC might have already dropped these txns, but thats fine)
                     this->pendingECStateTransfer.drops.insert(MsgStamp(this->groupIdx,
                                                                        i,
                                                                        this->lastNormalSessnum));
                 } else {
-                    this->log.Append(vs, it->request().request(), LOG_STATE_RECEIVED,
-                                     EntryData(it->request().txnid(), it->request().type()));
+                    this->log.Append(ErisLogEntry(vs,
+                                LOG_STATE_RECEIVED,
+                                it->request().request(),
+                                TxnData(it->request().txnid(), it->request().type())));
                 }
             }
         }
@@ -1234,12 +1239,12 @@ ErisServer::ExecuteUptoOp(opnum_t opnum) {
 void
 ErisServer::ExecuteTxn(opnum_t opnum) {
     ReplyMessage reply;
-    LogEntry *logEntry = this->log.Find(opnum);
+    ErisLogEntry *logEntry = (ErisLogEntry *)this->log.Find(opnum);
     ASSERT(logEntry != nullptr);
     ASSERT(logEntry->viewstamp.opnum == opnum);
     ASSERT(logEntry->state == LOG_STATE_RECEIVED);
-    txnid_t txnid = logEntry->data.txnid;
-    RequestType type = logEntry->data.type;
+    txnid_t txnid = logEntry->txnData.txnid;
+    RequestType type = logEntry->txnData.type;
 
     txnarg_t txnarg;
     txnret_t txnret;
@@ -1660,7 +1665,9 @@ ErisServer::InstallLogEntry(const viewstamp_t &vs,
 {
     this->lastOp = vs.opnum;
     this->nextMsgnum = vs.msgnum+1;
-    this->log.Append(vs, msg.request(), state, EntryData(msg.txnid(), msg.type()));
+    this->log.Append(ErisLogEntry(vs,
+                state, msg.request(),
+                TxnData(msg.txnid(), msg.type())));
     if (state == LOG_STATE_RECEIVED) {
         for (auto it = msg.request().ops().begin();
              it != msg.request().ops().end();

@@ -42,10 +42,31 @@ namespace granola {
 using namespace std;
 using namespace proto;
 
+GranolaLog::GranolaLog()
+    : Log(false) { }
+
+LogEntry &
+GranolaLog::Append(const LogEntry &entry)
+{
+    this->clientReqMap[std::make_pair(entry.request.clientid(),
+                                      entry.request.clientreqid())] =
+        entry.viewstamp.opnum;
+    return Log::Append(entry);
+}
+
+LogEntry *
+GranolaLog::Find(const std::pair<uint64_t, uint64_t> &reqid)
+{
+    if (clientReqMap.find(reqid) == clientReqMap.end()) {
+        return nullptr;
+    }
+
+    return Log::Find(clientReqMap.at(reqid));
+}
+
 GranolaServer::GranolaServer(const Configuration&config, int myShard, int myIdx,
                              bool initialize, Transport *transport, AppReplica *app, bool locking)
     : Replica(config, myShard, myIdx, initialize, transport, app),
-    log(false),
     locking(locking),
     prepareOKQuorum(config.QuorumSize()-1),
     voteQuorum(1)
@@ -159,28 +180,28 @@ GranolaServer::HandleClientRequest(const TransportAddress &remote,
     v.opnum = this->lastOp;
 
     // Add the request to my log
-    EntryData entryData;
+    TxnData txnData;
     // XXX set proposed timestamp here. For now use the local clock.
     ++this->localClock;
-    entryData.txnid = msg.txnid();
-    entryData.indep = msg.indep();
-    entryData.ro = msg.ro();
-    entryData.proposed_ts = this->localClock;
-    entryData.status = proto::COMMIT;
+    txnData.txnid = msg.txnid();
+    txnData.indep = msg.indep();
+    txnData.ro = msg.ro();
+    txnData.proposed_ts = this->localClock;
+    txnData.status = proto::COMMIT;
     if (msg.request().ops_size() == 1) {
         // Single-shard transactions use local timestamp
         // as the final timestamp.
         // XXX set the final timestamp here.
-        entryData.final_ts = this->localClock;
-        entryData.ts_decided = true;
+        txnData.final_ts = this->localClock;
+        txnData.ts_decided = true;
     }
 
     if (!this->locking) {
         /* Insert transaction into pending transactions */
-        this->pendingTransactions.insert(make_pair(v.opnum, entryData.proposed_ts));
+        this->pendingTransactions.insert(make_pair(v.opnum, txnData.proposed_ts));
     }
 
-    this->log.Append(v, msg.request(), LOG_STATE_PREPARED, entryData);
+    this->log.Append(GranolaLogEntry(v, LOG_STATE_PREPARED, msg.request(), txnData));
 
     // Set vote quorum size (only for multi-shard transactions)
     if (msg.request().ops_size() > 1) {
@@ -221,26 +242,30 @@ GranolaServer::HandlePrepare(const TransportAddress &remote,
     // XXX Hack here to get around state transfer
     while (this->lastOp + 1 < msg.opnum()) {
         this->lastOp++;
-        this->log.Append(viewstamp_t(msg.view(), this->lastOp), Request(), LOG_STATE_EXECUTED);
+        this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+                    LOG_STATE_EXECUTED,
+                    Request()));
     }
 
     this->lastOp++;
-    EntryData entryData;
-    entryData.txnid = msg.txnid();
-    entryData.indep = msg.indep();
-    entryData.ro = msg.ro();
-    entryData.proposed_ts = msg.timestamp();
-    entryData.status = proto::COMMIT;
+    TxnData txnData;
+    txnData.txnid = msg.txnid();
+    txnData.indep = msg.indep();
+    txnData.ro = msg.ro();
+    txnData.proposed_ts = msg.timestamp();
+    txnData.status = proto::COMMIT;
     if (msg.request().ops_size() == 1) {
-        entryData.final_ts = entryData.proposed_ts;
-        entryData.ts_decided = true;
+        txnData.final_ts = txnData.proposed_ts;
+        txnData.ts_decided = true;
     }
 
     if (!this->locking) {
-        this->pendingTransactions.insert(make_pair(this->lastOp, entryData.proposed_ts));
+        this->pendingTransactions.insert(make_pair(this->lastOp, txnData.proposed_ts));
     }
-    this->log.Append(viewstamp_t(msg.view(), this->lastOp), msg.request(), LOG_STATE_PREPARED,
-                     entryData);
+    this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+                LOG_STATE_PREPARED,
+                msg.request(),
+                txnData));
     UpdateClientTable(msg.request());
 
     PrepareOKMessage prepareOKMessage;
@@ -301,9 +326,9 @@ GranolaServer::HandleVote(const TransportAddress &remote,
 
     pair<uint64_t, uint64_t> reqID = make_pair(msg.clientid(), msg.clientreqid());
 
-    LogEntry *entry = this->log.Find(reqID);
+    GranolaLogEntry *entry = (GranolaLogEntry *)this->log.Find(reqID);
     if (entry) {
-        if (entry->data.ts_decided) {
+        if (entry->txnData.ts_decided) {
             // Final timestamp already decided
             return;
         }
@@ -332,7 +357,7 @@ GranolaServer::HandleVoteRequest(const TransportAddress &remote,
 
     pair<uint64_t, uint64_t> reqID = make_pair(msg.clientid(), msg.clientreqid());
 
-    LogEntry *entry = this->log.Find(reqID);
+    GranolaLogEntry *entry = (GranolaLogEntry *)this->log.Find(reqID);
     if (entry == NULL) {
         return;
     }
@@ -342,7 +367,7 @@ GranolaServer::HandleVoteRequest(const TransportAddress &remote,
         voteMessage.set_clientreqid(entry->request.clientreqid());
         voteMessage.set_shard_num(this->groupIdx);
         voteMessage.set_nshards(entry->request.ops_size());
-        voteMessage.set_status(entry->data.status);
+        voteMessage.set_status(entry->txnData.status);
 
         if (!this->transport->SendMessage(this, remote, voteMessage)) {
             RWarning("Failed to send VoteMessage to requester");
@@ -361,7 +386,9 @@ GranolaServer::HandleFinalTimestamp(const TransportAddress &remote,
         // XXX Hack here to work around state transfer
         while (this->lastOp < msg.opnum()) {
             this->lastOp++;
-            this->log.Append(viewstamp_t(msg.view(), this->lastOp), Request(), LOG_STATE_EXECUTED);
+            this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+                        LOG_STATE_EXECUTED,
+                        Request()));
         }
         CommitUpTo(msg.opnum());
         if (!this->locking) {
@@ -369,11 +396,11 @@ GranolaServer::HandleFinalTimestamp(const TransportAddress &remote,
         }
     }
 
-    LogEntry *entry = this->log.Find(msg.opnum());
+    GranolaLogEntry *entry = (GranolaLogEntry *)this->log.Log::Find(msg.opnum());
     ASSERT(entry != NULL);
-    entry->data.final_ts = msg.timestamp();
-    entry->data.ts_decided = true;
-    entry->data.status = msg.status();
+    entry->txnData.final_ts = msg.timestamp();
+    entry->txnData.ts_decided = true;
+    entry->txnData.status = msg.status();
 
     /* Requests with final timestamp are guaranteed to be committed */
     CommitUpTo(msg.opnum());
@@ -405,7 +432,7 @@ GranolaServer::CommitUpTo(opnum_t opnum)
 
     while (this->lastCommitted < opnum) {
         this->lastCommitted++;
-        LogEntry *entry = this->log.Find(this->lastCommitted);
+        GranolaLogEntry *entry = (GranolaLogEntry *)this->log.Log::Find(this->lastCommitted);
         if (!entry) {
             RPanic("Did not find operation %lu in log", this->lastCommitted);
         }
@@ -420,21 +447,21 @@ GranolaServer::CommitUpTo(opnum_t opnum)
             ReplyMessage reply;
             txnarg_t arg;
             txnret_t ret;
-            arg.txnid = entry->data.txnid;
+            arg.txnid = entry->txnData.txnid;
             arg.type = TXN_PREPARE;
 
             Execute(entry->viewstamp.opnum, entry->request, reply, (void *)&arg, (void *)&ret);
 
             if (ret.blocked) {
                 // Cannot acquire all locks
-                entry->data.status = proto::CONFLICT;
+                entry->txnData.status = proto::CONFLICT;
             } else {
-                entry->data.status = ret.commit ? COMMIT : ABORT;
+                entry->txnData.status = ret.commit ? COMMIT : ABORT;
             }
 
             reply.set_clientreqid(entry->request.clientreqid());
             reply.set_shard_num(this->groupIdx);
-            reply.set_status(entry->data.status);
+            reply.set_status(entry->txnData.status);
             /* Update client table */
             ClientTableEntry &cte = this->clientTable[entry->request.clientid()];
             if (cte.lastReqId <= entry->request.clientreqid()) {
@@ -454,7 +481,7 @@ GranolaServer::CommitUpTo(opnum_t opnum)
             voteMessage.set_clientreqid(entry->request.clientreqid());
             voteMessage.set_shard_num(this->groupIdx);
             voteMessage.set_nshards(entry->request.ops_size());
-            voteMessage.set_status(entry->data.status);
+            voteMessage.set_status(entry->txnData.status);
 
             vector<int> shards;
             for (int i = 0; i < entry->request.ops_size(); i++) {
@@ -487,7 +514,7 @@ GranolaServer::CommitUpTo(opnum_t opnum)
 }
 
 void
-GranolaServer::CheckVoteQuorum(LogEntry *entry)
+GranolaServer::CheckVoteQuorum(GranolaLogEntry *entry)
 {
     ASSERT(entry != NULL);
 
@@ -496,7 +523,7 @@ GranolaServer::CheckVoteQuorum(LogEntry *entry)
         return;
     }
 
-    if (!entry->data.ts_decided) {
+    if (!entry->txnData.ts_decided) {
         /* Check if we have all the votes to decide the
          * final timestamp (multi-shard only). Votes
          * should include this shard, so wait until
@@ -511,19 +538,19 @@ GranolaServer::CheckVoteQuorum(LogEntry *entry)
             entry->state == LOG_STATE_COMMITTED &&
             msgs != NULL) {
             // XXX Determine the final timestamp here
-            entry->data.final_ts = entry->data.proposed_ts;
-            entry->data.ts_decided = true;
+            entry->txnData.final_ts = entry->txnData.proposed_ts;
+            entry->txnData.ts_decided = true;
 
             if (this->locking) {
                 // Determine commit/abort/conflict decision of the transaction
-                if (entry->data.status != proto::ABORT) {
+                if (entry->txnData.status != proto::ABORT) {
                     for (const auto &kv : *msgs) {
                         ASSERT(kv.second.find(0) != kv.second.end());
                         if (kv.second.at(0).status() == proto::ABORT) {
-                            entry->data.status = proto::ABORT;
+                            entry->txnData.status = proto::ABORT;
                             break;
                         } else if (kv.second.at(0).status() == proto::CONFLICT) {
-                            entry->data.status = proto::CONFLICT;
+                            entry->txnData.status = proto::CONFLICT;
                         }
                     }
                 }
@@ -532,13 +559,13 @@ GranolaServer::CheckVoteQuorum(LogEntry *entry)
                  * transaction in the correct timestamp order. (only
                  * if final timestamp differs from proposed timestamp.
                  */
-                if (entry->data.final_ts != entry->data.proposed_ts) {
+                if (entry->txnData.final_ts != entry->txnData.proposed_ts) {
                     auto iter = this->pendingTransactions.find(make_pair(entry->viewstamp.opnum,
-                                                                         entry->data.proposed_ts));
+                                                                         entry->txnData.proposed_ts));
                     ASSERT(iter != this->pendingTransactions.end());
                     this->pendingTransactions.erase(iter);
                     this->pendingTransactions.insert(make_pair(entry->viewstamp.opnum,
-                                                               entry->data.final_ts));
+                                                               entry->txnData.final_ts));
                 }
             }
 
@@ -548,8 +575,8 @@ GranolaServer::CheckVoteQuorum(LogEntry *entry)
             FinalTimestampMessage finalTimestampMessage;
             finalTimestampMessage.set_view(this->view);
             finalTimestampMessage.set_opnum(entry->viewstamp.opnum);
-            finalTimestampMessage.set_timestamp(entry->data.final_ts);
-            finalTimestampMessage.set_status(entry->data.status);
+            finalTimestampMessage.set_timestamp(entry->txnData.final_ts);
+            finalTimestampMessage.set_status(entry->txnData.status);
 
             if (!this->transport->SendMessageToAll(this,
                                                    finalTimestampMessage)) {
@@ -559,7 +586,7 @@ GranolaServer::CheckVoteQuorum(LogEntry *entry)
     }
 
     /* Try executing transactions */
-    if (entry->data.ts_decided) {
+    if (entry->txnData.ts_decided) {
         if (this->voteTimeouts.find(entry->viewstamp.opnum) != this->voteTimeouts.end()) {
             // Cancel timeout now
             this->voteTimeouts[entry->viewstamp.opnum]->Stop();
@@ -576,19 +603,19 @@ GranolaServer::CheckVoteQuorum(LogEntry *entry)
     }
 }
 void
-GranolaServer::ExecuteTxn(LogEntry *entry)
+GranolaServer::ExecuteTxn(GranolaLogEntry *entry)
 {
     ASSERT(entry != nullptr);
     if (entry->state == LOG_STATE_EXECUTED) {
         return;
     }
     ASSERT(entry->state == LOG_STATE_COMMITTED);
-    if (entry->data.status == proto::COMMIT || entry->data.status == proto::ABORT) {
+    if (entry->txnData.status == proto::COMMIT || entry->txnData.status == proto::ABORT) {
         ReplyMessage reply;
         txnarg_t arg;
         txnret_t ret;
-        arg.txnid = entry->data.txnid;
-        arg.type = entry->data.status == proto::COMMIT ? TXN_COMMIT : TXN_ABORT;
+        arg.txnid = entry->txnData.txnid;
+        arg.type = entry->txnData.status == proto::COMMIT ? TXN_COMMIT : TXN_ABORT;
         Execute(entry->viewstamp.opnum, entry->request, reply, (void *)&arg, (void *)&ret);
         ASSERT(ret.commit == true);
         ASSERT(ret.blocked == false);
@@ -600,7 +627,7 @@ GranolaServer::ExecuteTxn(LogEntry *entry)
         cte.lastReqId = entry->request.clientreqid();
         cte.replied = true;
         // Use reply from the prepare phase
-        cte.reply.set_status(entry->data.status);
+        cte.reply.set_status(entry->txnData.status);
 
         // Only leader send reply
         if (this->configuration.GetLeaderIndex(entry->viewstamp.view) == this->replicaIdx) {
@@ -621,18 +648,18 @@ GranolaServer::ExecuteTxns()
 
     /* Execute in timestamp order */
     while (iter != this->pendingTransactions.end()) {
-        const LogEntry *entry = this->log.Find(iter->first);
+        const GranolaLogEntry *entry = (GranolaLogEntry *)this->log.Log::Find(iter->first);
         if (!entry) {
             RPanic("Did not find operation %lu in log", iter->first);
         }
 
         // Can only execute if the final timestamp is decided and
         // it is already committed
-        if (entry->data.ts_decided && entry->state == LOG_STATE_COMMITTED) {
+        if (entry->txnData.ts_decided && entry->state == LOG_STATE_COMMITTED) {
             ReplyMessage reply;
             txnarg_t arg;
             txnret_t ret;
-            arg.txnid = entry->data.txnid;
+            arg.txnid = entry->txnData.txnid;
             // XXX change it to the actual type of txn
             arg.type = TXN_INDEP;
 
@@ -694,15 +721,15 @@ GranolaServer::UpdateClientTable(const Request &req)
 void
 GranolaServer::SendPrepare()
 {
-    LogEntry *entry = this->log.Find(this->lastOp);
+    GranolaLogEntry *entry = (GranolaLogEntry *)this->log.Log::Find(this->lastOp);
     ASSERT(entry != nullptr);
     PrepareMessage prepareMessage;
     prepareMessage.set_view(entry->viewstamp.view);
     prepareMessage.set_opnum(entry->viewstamp.opnum);
-    prepareMessage.set_txnid(entry->data.txnid);
-    prepareMessage.set_indep(entry->data.indep);
-    prepareMessage.set_ro(entry->data.ro);
-    prepareMessage.set_timestamp(entry->data.proposed_ts);
+    prepareMessage.set_txnid(entry->txnData.txnid);
+    prepareMessage.set_indep(entry->txnData.indep);
+    prepareMessage.set_ro(entry->txnData.ro);
+    prepareMessage.set_timestamp(entry->txnData.proposed_ts);
     *(prepareMessage.mutable_request()) = entry->request;
 
     if (!this->transport->SendMessageToAll(this,

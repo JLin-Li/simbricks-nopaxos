@@ -47,6 +47,35 @@ namespace specpaxos {
 namespace store {
 namespace spanner {
 
+struct TxnData {
+    txnid_t txnid;
+    proto::RequestType type;
+    bool decided;
+
+    TxnData()
+        : txnid(0), type(proto::UNKNOWN), decided(false) { }
+    TxnData(txnid_t txnid, proto::RequestType type)
+        : txnid(txnid), type(type), decided(false) { }
+    TxnData(const TxnData &t)
+        : txnid(t.txnid), type(t.type), decided(t.decided) { }
+};
+
+class SpannerLogEntry : public LogEntry
+{
+public:
+    SpannerLogEntry(viewstamp_t viewstamp,
+            LogEntryState state,
+            const Request &request)
+        : LogEntry(viewstamp, state, request) { }
+    SpannerLogEntry(viewstamp_t viewstamp,
+            LogEntryState state,
+            const Request &request,
+            const TxnData &txnData)
+        : LogEntry(viewstamp, state, request),
+        txnData(txnData) { }
+    TxnData txnData;
+};
+
 class SpannerServer : public Replica
 {
 public:
@@ -58,24 +87,10 @@ public:
                         const std::string &type, const std::string &data,
                         void *meta_data) override;
 
-private:
-    /* Log entry additional data */
-    struct EntryData {
-        txnid_t txnid;
-        proto::RequestType type;
-        bool decided;
-
-        EntryData()
-            : txnid(0), type(proto::UNKNOWN), decided(false) { }
-        EntryData(txnid_t txnid, proto::RequestType type)
-            : txnid(txnid), type(type), decided(false) { }
-    };
-
 public:
-    Log<EntryData> log;
+    Log log;
 
 private:
-    typedef Log<EntryData>::LogEntry LogEntry;
     /* Replica states */
     view_t view;
     opnum_t lastOp;
@@ -110,7 +125,7 @@ private:
                       const proto::CommitMessage &msg);
 
     void CommitUpTo(opnum_t opnum);
-    void ExecuteTxn(LogEntry *entry);
+    void ExecuteTxn(SpannerLogEntry *entry);
     void UpdateClientTable(const Request &req);
 
     void SendPrepare();

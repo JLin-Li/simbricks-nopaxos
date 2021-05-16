@@ -102,7 +102,7 @@ UnreplicatedServer::HandleClientRequest(const TransportAddress &remote,
     viewstamp_t v;
     v.opnum = this->lastOp;
 
-    this->log.Append(v, msg.request(), LOG_STATE_EXECUTED);
+    this->log.Append(LogEntry(v, LOG_STATE_EXECUTED, msg.request()));
 
     ReplyMessage reply;
     txnarg_t arg;

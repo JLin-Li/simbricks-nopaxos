@@ -58,7 +58,7 @@ public:
                         void *meta_data) override;
 
 public:
-    Log<int> log;
+    Log log;
 
 private:
 
@@ -204,8 +204,6 @@ private:
     inline bool CheckViewNumAndStatus(sessnum_t sessnum, view_t view);
     inline void RewindLogToOpnum(opnum_t opnum);
 };
-
-typedef Log<int>::LogEntry LogEntry;
 
 } // namespace specpaxos::nopaxos
 } // namespace specpaxos

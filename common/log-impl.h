@@ -32,18 +32,16 @@
 #ifndef _COMMON_LOG_IMPL_H_
 #define _COMMON_LOG_IMPL_H_
 
-template <typename D>
 template <class T>
 void
-Log<D>::Dump(opnum_t from, T out)
+Log::Dump(opnum_t from, T out)
 {
     Dump(from, LastOpnum()+1, out);
 }
 
-template <typename D>
 template <class T>
 void
-Log<D>::Dump(opnum_t from, opnum_t to, T out)
+Log::Dump(opnum_t from, opnum_t to, T out)
 {
     ASSERT(to <= LastOpnum()+1);
     for (opnum_t i = std::max(from, start); i < to; i++) {
@@ -54,8 +52,8 @@ Log<D>::Dump(opnum_t from, opnum_t to, T out)
         auto elem = out->Add();
         elem->set_view(entry->viewstamp.view);
         elem->set_opnum(entry->viewstamp.opnum);
-	elem->set_sessnum(entry->viewstamp.sessnum);
-	elem->set_msgnum(entry->viewstamp.msgnum);
+        elem->set_sessnum(entry->viewstamp.sessnum);
+        elem->set_msgnum(entry->viewstamp.msgnum);
         elem->set_shardnum(entry->viewstamp.shardnum);
         elem->set_state(entry->state);
         elem->set_hash(entry->hash);
@@ -63,10 +61,9 @@ Log<D>::Dump(opnum_t from, opnum_t to, T out)
     }
 }
 
-template <typename D>
 template <class iter>
 void
-Log<D>::Install(iter start, iter end)
+Log::Install(iter start, iter end)
 {
     // Find the first divergence in the log
     iter it = start;
@@ -94,7 +91,7 @@ Log<D>::Install(iter start, iter end)
     // Install the new log entries
     for (; it != end; it++) {
         viewstamp_t vs = { it->view(), it->opnum() };
-        Append(vs, it->request(), LOG_STATE_PREPARED);
+        Append(LogEntry(vs, LOG_STATE_PREPARED, it->request()));
     }
 }
 

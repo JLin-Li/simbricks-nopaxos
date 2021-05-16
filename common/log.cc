@@ -36,11 +36,9 @@
 
 namespace specpaxos {
 
-template <typename D>
-const string Log<D>::EMPTY_HASH = string(SHA_DIGEST_LENGTH, '\0');
+const string EMPTY_HASH = string(SHA_DIGEST_LENGTH, '\0');
 
-template <typename D>
-Log<D>::Log(bool useHash, opnum_t start, string initialHash)
+Log::Log(bool useHash, opnum_t start, string initialHash)
     : useHash(useHash)
 {
     this->initialHash = initialHash;
@@ -53,55 +51,27 @@ Log<D>::Log(bool useHash, opnum_t start, string initialHash)
     entries.reserve(10000000);
 }
 
-template <typename D>
-typename Log<D>::LogEntry &
-Log<D>::Append(viewstamp_t vs, const Request &req, LogEntryState state)
-{
-    D data;
-    return Append(vs, req, state, data);
-}
-
-template <typename D>
-typename Log<D>::LogEntry &
-Log<D>::Append(viewstamp_t vs, const Request &req, LogEntryState state, D data)
+LogEntry &
+Log::Append(const LogEntry &entry)
 {
     if (entries.empty()) {
-        ASSERT(vs.opnum == start);
+        ASSERT(entry.viewstamp.opnum == start);
     } else {
-        ASSERT(vs.opnum == LastOpnum()+1);
+        ASSERT(entry.viewstamp.opnum == LastOpnum()+1);
     }
 
     string prevHash = LastHash();
-    entries.push_back(LogEntry(vs, state, req));
-    entries.back().data = data;
+    entries.push_back(entry);
     if (useHash) {
         entries.back().hash = ComputeHash(prevHash, entries.back());
     }
 
-    this->clientReqMap[std::make_pair(req.clientid(), req.clientreqid())] = vs.opnum;
-
     return entries.back();
 }
 
-template <typename D>
-typename Log<D>::LogEntry &
-Log<D>::Append(viewstamp_t vs,
-               const Request &req,
-               const multistamp_t *stamp,
-               LogEntryState state,
-               D data)
-{
-    ASSERT(stamp != nullptr);
-    for (const auto &kv : stamp->seqnums) {
-        vssMap[viewstamp_t(0, 0, stamp->sessnum, kv.second, kv.first)] = vs.opnum;
-    }
-    return Append(vs, req, state, data);
-}
-
 // This really ought to be const
-template <typename D>
-typename Log<D>::LogEntry *
-Log<D>::Find(opnum_t opnum)
+LogEntry *
+Log::Find(opnum_t opnum)
 {
     if (entries.empty()) {
         return NULL;
@@ -120,31 +90,8 @@ Log<D>::Find(opnum_t opnum)
     return entry;
 }
 
-template <typename D>
-typename Log<D>::LogEntry *
-Log<D>::Find(viewstamp_t vs)
-{
-    if (vssMap.find(vs) == vssMap.end()) {
-        return NULL;
-    }
-
-    return Find(vssMap[vs]);
-}
-
-template <typename D>
-typename Log<D>::LogEntry *
-Log<D>::Find(const std::pair<uint64_t, uint64_t> &reqid)
-{
-    if (clientReqMap.find(reqid) == clientReqMap.end()) {
-        return NULL;
-    }
-
-    return Find(clientReqMap[reqid]);
-}
-
-template <typename D>
 bool
-Log<D>::SetStatus(opnum_t op, LogEntryState state)
+Log::SetStatus(opnum_t op, LogEntryState state)
 {
     LogEntry *entry = Find(op);
     if (entry == NULL) {
@@ -155,9 +102,8 @@ Log<D>::SetStatus(opnum_t op, LogEntryState state)
     return true;
 }
 
-template <typename D>
 bool
-Log<D>::SetRequest(opnum_t op, const Request &req)
+Log::SetRequest(opnum_t op, const Request &req)
 {
     if (useHash) {
         Panic("Log::SetRequest on hashed log not supported.");
@@ -172,9 +118,8 @@ Log<D>::SetRequest(opnum_t op, const Request &req)
     return true;
 }
 
-template <typename D>
 void
-Log<D>::RemoveAfter(opnum_t op)
+Log::RemoveAfter(opnum_t op)
 {
 #if PARANOID
     // We'd better not be removing any committed entries.
@@ -195,9 +140,8 @@ Log<D>::RemoveAfter(opnum_t op)
     ASSERT(LastOpnum() == op-1);
 }
 
-template <typename D>
-typename Log<D>::LogEntry *
-Log<D>::Last()
+LogEntry *
+Log::Last()
 {
     if (entries.empty()) {
         return NULL;
@@ -206,9 +150,8 @@ Log<D>::Last()
     return &entries.back();
 }
 
-template <typename D>
 viewstamp_t
-Log<D>::LastViewstamp() const
+Log::LastViewstamp() const
 {
     if (entries.empty()) {
         return viewstamp_t(0, start-1);
@@ -217,9 +160,8 @@ Log<D>::LastViewstamp() const
     }
 }
 
-template <typename D>
 opnum_t
-Log<D>::LastOpnum() const
+Log::LastOpnum() const
 {
     if (entries.empty()) {
         return start-1;
@@ -228,25 +170,22 @@ Log<D>::LastOpnum() const
     }
 }
 
-template <typename D>
 opnum_t
-Log<D>::FirstOpnum() const
+Log::FirstOpnum() const
 {
     // XXX Not really sure what's appropriate to return here if the
     // log is empty
     return start;
 }
 
-template <typename D>
 bool
-Log<D>::Empty() const
+Log::Empty() const
 {
     return entries.empty();
 }
 
-template <typename D>
 const string &
-Log<D>::LastHash() const
+Log::LastHash() const
 {
     if (entries.empty()) {
         return initialHash;
@@ -255,9 +194,8 @@ Log<D>::LastHash() const
     }
 }
 
-template <typename D>
 string
-Log<D>::ComputeHash(string lastHash, const LogEntry &entry)
+Log::ComputeHash(string lastHash, const LogEntry &entry)
 {
     SHA_CTX ctx;
     unsigned char out[SHA_DIGEST_LENGTH];

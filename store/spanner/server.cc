@@ -142,9 +142,8 @@ SpannerServer::HandleClientRequest(const TransportAddress &remote,
 
     // Add the request to my log
     ASSERT(msg.type() != proto::UNKNOWN);
-    EntryData entryData(msg.txnid(), msg.type());
-
-    this->log.Append(v, msg.request(), LOG_STATE_PREPARED, entryData);
+    this->log.Append(SpannerLogEntry(v, LOG_STATE_PREPARED,
+                msg.request(), TxnData(msg.txnid(), msg.type())));
 
     // Send PrepareMessage to other replicas
     SendPrepare();
@@ -180,15 +179,14 @@ SpannerServer::HandlePrepare(const TransportAddress &remote,
     // XXX Hack here to get around state transfer
     while (this->lastOp + 1 < msg.opnum()) {
         this->lastOp++;
-        this->log.Append(viewstamp_t(msg.view(), this->lastOp), Request(), LOG_STATE_EXECUTED);
+        this->log.Append(SpannerLogEntry(viewstamp_t(msg.view(), this->lastOp),
+                    LOG_STATE_EXECUTED, Request()));
     }
 
     this->lastOp++;
     ASSERT(msg.type() != proto::UNKNOWN);
-    EntryData entryData(msg.txnid(), msg.type());
-
-    this->log.Append(viewstamp_t(msg.view(), this->lastOp), msg.request(), LOG_STATE_PREPARED,
-                     entryData);
+    this->log.Append(SpannerLogEntry(viewstamp_t(msg.view(), this->lastOp),
+                LOG_STATE_PREPARED, msg.request(), TxnData(msg.txnid(), msg.type())));
     UpdateClientTable(msg.request());
 
     PrepareOKMessage prepareOKMessage;
@@ -257,7 +255,7 @@ SpannerServer::CommitUpTo(opnum_t opnum)
 
     while (this->lastCommitted < opnum) {
         this->lastCommitted++;
-        LogEntry *entry = this->log.Find(this->lastCommitted);
+        SpannerLogEntry *entry = (SpannerLogEntry *)this->log.Find(this->lastCommitted);
         ASSERT(entry != nullptr);
         // XXX Hack to get around state transfer
         if (entry->state != LOG_STATE_EXECUTED) {
@@ -269,7 +267,7 @@ SpannerServer::CommitUpTo(opnum_t opnum)
 }
 
 void
-SpannerServer::ExecuteTxn(LogEntry *entry)
+SpannerServer::ExecuteTxn(SpannerLogEntry *entry)
 {
     ASSERT(entry != nullptr);
     ASSERT(entry->state == LOG_STATE_COMMITTED);
@@ -277,15 +275,15 @@ SpannerServer::ExecuteTxn(LogEntry *entry)
     ReplyMessage reply;
     txnarg_t arg;
     txnret_t ret;
-    arg.txnid = entry->data.txnid;
-    ASSERT(entry->data.type != proto::UNKNOWN);
-    arg.type = entry->data.type == proto::PREPARE ? TXN_PREPARE :
-        (entry->data.type == proto::COMMIT ? TXN_COMMIT : TXN_ABORT);
+    arg.txnid = entry->txnData.txnid;
+    ASSERT(entry->txnData.type != proto::UNKNOWN);
+    arg.type = entry->txnData.type == proto::PREPARE ? TXN_PREPARE :
+        (entry->txnData.type == proto::COMMIT ? TXN_COMMIT : TXN_ABORT);
 
     Execute(entry->viewstamp.opnum, entry->request, reply, (void *)&arg, (void *)&ret);
 
     ASSERT(ret.unblocked_txns.empty());
-    if (entry->data.type == proto::COMMIT || entry->data.type == proto::ABORT) {
+    if (entry->txnData.type == proto::COMMIT || entry->txnData.type == proto::ABORT) {
         ASSERT(ret.commit);
         ASSERT(!ret.blocked);
         reply.set_type(proto::ACK);
@@ -336,13 +334,13 @@ SpannerServer::UpdateClientTable(const Request &req)
 void
 SpannerServer::SendPrepare()
 {
-    LogEntry *entry = this->log.Find(this->lastOp);
+    SpannerLogEntry *entry = (SpannerLogEntry *)this->log.Find(this->lastOp);
     ASSERT(entry != nullptr);
     PrepareMessage prepareMessage;
     prepareMessage.set_view(entry->viewstamp.view);
     prepareMessage.set_opnum(entry->viewstamp.opnum);
-    prepareMessage.set_txnid(entry->data.txnid);
-    prepareMessage.set_type(entry->data.type);
+    prepareMessage.set_txnid(entry->txnData.txnid);
+    prepareMessage.set_type(entry->txnData.type);
     *(prepareMessage.mutable_request()) = entry->request;
 
     if (!this->transport->SendMessageToAll(this,

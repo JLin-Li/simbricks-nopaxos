@@ -60,7 +60,7 @@ private:
 			   const proto::ReplyMessage &reply);
 
     opnum_t last_op_;
-    Log<int> log;
+    Log log;
     struct ClientTableEntry
     {
 	uint64_t lastReqId;
@@ -69,7 +69,6 @@ private:
     std::map<uint64_t, ClientTableEntry> clientTable;
 };
 
-typedef Log<int>::LogEntry LogEntry;
 } // namespace specpaxos::unreplicated
 } // namespace specpaxos
 
