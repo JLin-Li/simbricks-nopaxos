@@ -34,7 +34,7 @@
 #include "common/client.h"
 #include "lib/configuration.h"
 #include "common/quorumset.h"
-#include "spec/spec-proto.pb.h"
+#include "replication/spec/spec-proto.pb.h"
 
 namespace specpaxos {
 namespace spec {

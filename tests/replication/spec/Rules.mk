@@ -13,4 +13,4 @@ $(d)merge-test: $(o)merge-test.o $(o)merge-test-case.o \
 	$(LIB-simtransport) \
 	$(GTEST_MAIN)
 
-TEST_BINS += $(d)merge-test $(d)spec-test 
+TEST_BINS += $(d)merge-test $(d)spec-test

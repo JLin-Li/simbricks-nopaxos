@@ -1,6 +1,6 @@
-package specpaxos.spec.test;
+syntax = "proto2";
 
-import "spec/spec-proto.proto";
+package specpaxos.spec.test;
 
 message TestLogEntry
 {

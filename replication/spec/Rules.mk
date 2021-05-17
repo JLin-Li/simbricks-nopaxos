@@ -13,5 +13,3 @@ OBJS-spec-client := $(o)client.o $(o)spec-proto.o \
 OBJS-spec-replica := $(o)replica.o $(o)spec-proto.o \
                      $(OBJS-replica) $(LIB-message) \
                      $(LIB-configuration) $(LIB-latency)
-
-#include $(d)tests/Rules.mk

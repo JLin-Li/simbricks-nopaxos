@@ -1,3 +1,5 @@
+syntax = "proto2";
+
 import "common/request.proto";
 
 package specpaxos.spec.proto;

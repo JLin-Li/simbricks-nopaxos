@@ -36,7 +36,7 @@
 #include "common/log.h"
 #include "common/replica.h"
 #include "common/quorumset.h"
-#include "spec/spec-proto.pb.h"
+#include "replication/spec/spec-proto.pb.h"
 
 #include <map>
 #include <memory>
@@ -48,8 +48,6 @@ class LogMergeTest;
 
 namespace specpaxos {
 namespace spec {
-
-typedef Log<int>::LogEntry LogEntry;
 
 class SpecReplica : public Replica
 {
@@ -63,7 +61,7 @@ public:
                         void *meta_data);
 
 public:                     // XXX public for unit testing
-    Log<int> log;
+    Log log;
 private:
     view_t view;
     opnum_t lastCommitted;

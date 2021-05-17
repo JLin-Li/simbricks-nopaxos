@@ -33,8 +33,7 @@
 #define VIEW_CHANGE_TIMEOUT_MS     5000
 
 #include "common/replica.h"
-#include "spec/replica.h"
-#include "spec/spec-proto.pb.h"
+#include "replication/spec/replica.h"
 
 #include "lib/assert.h"
 #include "lib/configuration.h"
@@ -350,7 +349,7 @@ SpecReplica::HandleRequest(const TransportAddress &remote,
 
     /* Add the request to my log and speculatively execute it */
     LogEntry &newEntry =
-        log.Append(v, msg.req(), LOG_STATE_SPECULATIVE);
+        log.Append(LogEntry(v, LOG_STATE_SPECULATIVE, msg.req()));
     Execute(v.opnum, msg.req(), reply);
 
     reply.set_loghash(log.LastHash());
@@ -965,7 +964,7 @@ SpecReplica::MergeLogs(view_t newView, opnum_t maxStart,
     // we won't necessarily know. Maybe instead just buffer these to a
     // separate output and then process them through the normal
     // request path before sending the StartView???
-    string lastHash = Log<int>::EMPTY_HASH;
+    string lastHash = EMPTY_HASH;
     if (out.empty()) {
         next = 1;
     } else {
@@ -989,7 +988,7 @@ SpecReplica::MergeLogs(view_t newView, opnum_t maxStart,
                 newEntry.viewstamp = viewstamp_t(newView,next);
                 newEntry.state = LOG_STATE_SPECULATIVE;
                 newEntry.request = entry.request();
-                newEntry.hash = Log<int>::ComputeHash(lastHash, newEntry);
+                newEntry.hash = Log::ComputeHash(lastHash, newEntry);
                 lastHash = newEntry.hash;
                 out.push_back(newEntry);
                 seen.insert(reqid);
@@ -1253,8 +1252,8 @@ SpecReplica::InstallLog(const std::vector<LogEntry> &entries)
 
         lastSpeculative++;
         LogEntry &installedEntry =
-            log.Append(newEntry->viewstamp, newEntry->request,
-                       LOG_STATE_SPECULATIVE);
+            log.Append(LogEntry(newEntry->viewstamp, LOG_STATE_SPECULATIVE,
+                        newEntry->request));
         Execute(newEntry->viewstamp.opnum, newEntry->request, reply);
 
         // Prepare a reply to send to the client. Send it to the

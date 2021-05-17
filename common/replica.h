@@ -96,6 +96,7 @@ protected:
                                      MSG &reply,
                                      void *arg = nullptr,
                                      void *ret = nullptr);
+    void Rollback(opnum_t current, opnum_t to, Log &log);
     void Commit(opnum_t op);
     void UnloggedUpcall(const string &op, string &res);
     template<class MSG> void ExecuteUnlogged(const UnloggedRequest & msg,

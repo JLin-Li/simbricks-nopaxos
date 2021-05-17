@@ -33,8 +33,7 @@
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/transport.h"
-#include "spec/client.h"
-#include "spec/spec-proto.pb.h"
+#include "replication/spec/client.h"
 
 namespace specpaxos {
 namespace spec {
