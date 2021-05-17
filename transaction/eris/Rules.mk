@@ -15,5 +15,3 @@ OBJS-eris-server := $(o)server.o $(o)eris-proto.o \
 
 OBJS-eris-fcor := $(o)fcor.o $(o)eris-proto.o \
     $(LIB-message) $(LIB-configuration) $(OBJS-replica)
-
-include $(d)tests/Rules.mk

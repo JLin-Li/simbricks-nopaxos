@@ -35,7 +35,7 @@
 #include "transaction/eris/client.h"
 #include "transaction/eris/server.h"
 #include "transaction/eris/fcor.h"
-#include "vr/replica.h"
+#include "replication/vr/replica.h"
 
 #include <stdio.h>
 #include <stdlib.h>

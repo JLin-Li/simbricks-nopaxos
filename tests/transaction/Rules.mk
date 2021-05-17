@@ -1,9 +1,13 @@
 d := $(dir $(lastword $(MAKEFILE_LIST)))
 
-GTEST_SRCS += $(d)eris-test.cc $(d)granola-test.cc $(d)unreplicated-test.cc \
-	      $(d)spanner-test.cc $(d)tapir-test.cc
+GTEST_SRCS += $(d)eris-test.cc $(d)eris-protocol-test.cc $(d)granola-test.cc \
+			  $(d)unreplicated-test.cc  $(d)spanner-test.cc $(d)tapir-test.cc
 
 COMMON-OBJS := $(OBJS-kvstore-client) $(OBJS-kvstore-txnserver) $(LIB-simtransport) $(GTEST_MAIN)
+
+$(d)eris-protocol-test: $(o)eris-protocol-test.o \
+    $(OBJS-eris-client) $(OBJS-eris-server) $(OBJS-eris-fcor) \
+    $(OBJS-vr-replica) $(LIB-simtransport) $(GTEST_MAIN)
 
 $(d)eris-test: $(o)eris-test.o \
     $(COMMON-OBJS) \
@@ -30,4 +34,4 @@ $(d)tapir-test: $(o)tapir-test.o \
     $(OBJS-tapir-client) \
     $(OBJS-tapir-server)
 
-TEST_BINS += $(d)eris-test $(d)granola-test $(d)unreplicated-test $(d)spanner-test $(d)tapir-test
+TEST_BINS += $(d)eris-test $(d)eris-protocol-test $(d)granola-test $(d)unreplicated-test $(d)spanner-test $(d)tapir-test
