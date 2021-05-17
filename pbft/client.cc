@@ -56,7 +56,8 @@ void PbftClient::SendRequest() {
   reqMsg.mutable_req()->set_clientid(clientid);
   reqMsg.mutable_req()->set_clientreqid(lastReqId);
   // todo
-  transport->SendMessageToReplica(this, 0, reqMsg);
+  // transport->SendMessageToReplica(this, 0, reqMsg);
+  transport->SendMessageToAll(this, reqMsg);
   requestTimeout->Reset();
 }
 
@@ -111,7 +112,7 @@ void PbftClient::ReceiveMessage(const TransportAddress &remote,
 void PbftClient::HandleReply(const TransportAddress &remote,
                              const proto::ReplyMessage &msg) {
   if (!pendingRequest) {
-    Warning("Received reply when no request was pending");
+    // Warning("Received reply when no request was pending");
     return;
   }
   if (msg.req().clientreqid() != pendingRequest->clientreqid) {
@@ -120,7 +121,7 @@ void PbftClient::HandleReply(const TransportAddress &remote,
 
   Debug("Client received reply");
   std::set<int> &replicaGroup = pendingRequest->replyGroupMap[msg.reply()];
-  replicaGroup.insert(0);  // todo: include replica id and signature in reply
+  replicaGroup.insert(msg.replicaid());  // todo: include signature in reply
   int count = replicaGroup.size();
   if (count < f + 1) {
     Debug("%d replies has same result as current one, waiting for more", count);
@@ -137,7 +138,7 @@ void PbftClient::HandleReply(const TransportAddress &remote,
 
 void PbftClient::HandleUnloggedReply(const TransportAddress &remote,
                                      const proto::UnloggedReplyMessage &msg) {
-  if (pendingUnloggedRequest == nullptr) {
+  if (!pendingUnloggedRequest) {
     Warning("Received unloggedReply when no request was pending");
   }
 

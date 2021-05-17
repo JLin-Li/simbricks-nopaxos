@@ -54,6 +54,8 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   // meaningful.
   reply.set_view(0);
   reply.set_opnum(0);
+  
+  reply.set_replicaid(replicaIdx);
   *(reply.mutable_req()) = msg.req();
   if (!(transport->SendMessage(this, remote, reply)))
     Warning("Failed to send reply message");

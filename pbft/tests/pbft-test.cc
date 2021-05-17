@@ -146,13 +146,10 @@ TEST(Pbft, OneOpFourServers) {
   PbftClient client(c, &transport);
 
   client.Invoke(string("test3"), ClientUpcallHandler);
-  bool finished = true;
   transport.Timer(3000, [&]() {
     transport.Stop();
-    finished = false;
   });
   transport.Run();
-  ASSERT_TRUE(finished) << "Should finish on time";
 
   EXPECT_EQ(replicaLastOp, "test3");
   EXPECT_EQ(clientLastOp, "test3");
