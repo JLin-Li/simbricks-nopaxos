@@ -37,7 +37,6 @@
 #include "common/request.pb.h"
 #include "lib/transport.h"
 #include "lib/viewstamp.h"
-#include "store/common/type.h"
 #include "lib/workertasks.h"
 
 namespace specpaxos {
