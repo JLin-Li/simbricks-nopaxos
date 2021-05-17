@@ -133,7 +133,6 @@ endef
 include lib/Rules.mk
 include common/Rules.mk
 include replication/Rules.mk
-include nopaxos/Rules.mk
 include bench/Rules.mk
 include store/Rules.mk
 include sequencer/Rules.mk

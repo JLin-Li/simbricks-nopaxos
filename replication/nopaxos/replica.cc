@@ -28,8 +28,7 @@
  *
  **********************************************************************/
 
-#include "nopaxos/replica.h"
-#include "nopaxos/nopaxos-proto.pb.h"
+#include "replication/nopaxos/replica.h"
 
 #include "lib/message.h"
 #include "lib/assert.h"

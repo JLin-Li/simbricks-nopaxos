@@ -35,7 +35,7 @@
 #include "common/client.h"
 #include "common/quorumset.h"
 #include "lib/configuration.h"
-#include "nopaxos/nopaxos-proto.pb.h"
+#include "replication/nopaxos/nopaxos-proto.pb.h"
 
 namespace specpaxos {
 namespace nopaxos {

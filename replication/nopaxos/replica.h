@@ -36,7 +36,7 @@
 #include "common/log.h"
 #include "common/replica.h"
 #include "common/quorumset.h"
-#include "nopaxos/nopaxos-proto.pb.h"
+#include "replication/nopaxos/nopaxos-proto.pb.h"
 
 #include <map>
 #include <list>

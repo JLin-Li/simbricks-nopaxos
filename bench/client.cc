@@ -38,7 +38,7 @@
 #include "replication/vr/client.h"
 #include "replication/fastpaxos/client.h"
 #include "replication/unreplicated/client.h"
-#include "nopaxos/client.h"
+#include "replication/nopaxos/client.h"
 
 #include <unistd.h>
 #include <stdlib.h>

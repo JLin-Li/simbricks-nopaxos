@@ -32,8 +32,8 @@
 #include "lib/message.h"
 #include "lib/simtransport.h"
 
-#include "nopaxos/client.h"
-#include "nopaxos/replica.h"
+#include "replication/nopaxos/client.h"
+#include "replication/nopaxos/replica.h"
 
 #include <stdio.h>
 #include <stdlib.h>

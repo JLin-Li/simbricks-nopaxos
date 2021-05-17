@@ -29,7 +29,7 @@
  *
  **********************************************************************/
 
-#include "nopaxos/client.h"
+#include "replication/nopaxos/client.h"
 #include "lib/assert.h"
 #include "lib/message.h"
 

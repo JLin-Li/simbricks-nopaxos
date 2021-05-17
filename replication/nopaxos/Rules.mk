@@ -13,5 +13,3 @@ OBJS-nopaxos-client := $(o)client.o $(o)nopaxos-proto.o \
 OBJS-nopaxos-replica := $(o)replica.o $(o)nopaxos-proto.o \
 		        $(OBJS-replica) $(LIB-message) \
 		        $(LIB-configuration)
-
-include $(d)tests/Rules.mk

@@ -34,7 +34,7 @@
 #include "replication/vr/replica.h"
 #include "replication/fastpaxos/replica.h"
 #include "replication/unreplicated/replica.h"
-#include "nopaxos/replica.h"
+#include "replication/nopaxos/replica.h"
 
 #include <unistd.h>
 #include <stdlib.h>
