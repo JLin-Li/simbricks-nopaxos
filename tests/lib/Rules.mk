@@ -4,9 +4,8 @@ d := $(dir $(lastword $(MAKEFILE_LIST)))
 # gtest-based tests
 #
 GTEST_SRCS += $(addprefix $(d), \
-		configuration-test.cc \
-	        simtransport-test.cc \
-		workertasks-test.cc)
+			  configuration-test.cc \
+			  simtransport-test.cc)
 
 PROTOS += $(d)simtransport-testmessage.proto
 

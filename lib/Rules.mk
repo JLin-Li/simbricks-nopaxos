@@ -25,6 +25,3 @@ LIB-transport := $(o)transport.o $(o)workertasks.o $(LIB-message) $(LIB-configur
 LIB-simtransport := $(o)simtransport.o $(LIB-transport) $(LIB-request) $(LIB-no-proto) $(LIB-mcast-proto)
 
 LIB-udptransport := $(o)udptransport.o $(LIB-transport)
-
-
-include $(d)tests/Rules.mk

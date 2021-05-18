@@ -136,7 +136,7 @@ TEST(Configuration, Leader)
 
 TEST(Configuration, FromFile)
 {
-    std::ifstream stream("lib/tests/configuration-test-1.conf");
+    std::ifstream stream("tests/lib/configuration-test-1.conf");
     Configuration c(stream);
 
     EXPECT_EQ(c.n, 3);
