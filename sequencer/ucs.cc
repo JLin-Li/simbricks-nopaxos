@@ -11,10 +11,10 @@ const uint32_t NONFRAG_MAGIC = 0x20050318;
 Sequencer::Sequencer(const Configuration &config, Transport *transport, SeqId id)
     : config_(config), transport_(transport), seq_id_(id)
 {
-    if (config.NumSequencers() < 1) {
-        Panic("Configuration requires at least one sequencer address");
+    if (config.NumSequencers() <= (int)id) {
+        Panic("Address for sequencer %lu not properly configured", id);
     }
-    transport_->RegisterAddress(this, config, &config.sequencer(0));
+    transport_->RegisterAddress(this, config, &config.sequencer(id));
 }
 
 Sequencer::~Sequencer() { }
