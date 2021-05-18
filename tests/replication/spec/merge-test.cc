@@ -35,8 +35,8 @@
 #include "lib/configuration.h"
 #include "common/log.h"
 #include "common/replica.h"
-#include "spec/replica.h"
-#include "spec/tests/merge-test-case.pb.h"
+#include "replication/spec/replica.h"
+#include "tests/replication/spec/merge-test-case.pb.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -69,7 +69,7 @@ protected:
     Configuration *config;
 
     virtual void SetUp() {
-        map<int, vector<ReplicaAddress> > replicaAddrs =
+        std::map<int, std::vector<ReplicaAddress> > replicaAddrs =
         {
             {0, {
                     { "localhost", "12345" },
@@ -101,7 +101,7 @@ protected:
         // Convert logs to DoViewChange messages
         std::map<int, DoViewChangeMessage> dvcs;
         for (auto x : tc.log()) {
-            string hash = Log::EMPTY_HASH;
+            string hash = EMPTY_HASH;
             int i = x.replicaidx();
             opnum_t lastCommitted = 0;
             opnum_t lastSpeculative = 0;
@@ -153,7 +153,7 @@ protected:
         }
 
         // Do the merge
-        vector<LogEntry> out;
+        std::vector<LogEntry> out;
         replica->MergeLogs(tc.newview(), 0, dvcs, out);
 
         // Check it against the expected result
