@@ -35,7 +35,6 @@
 #include "lib/configuration.h"
 #include "lib/transport.h"
 #include "lib/transportcommon.h"
-#include "lib/workertasks.h"
 
 #include <event2/event.h>
 
