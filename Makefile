@@ -9,7 +9,7 @@ LD = g++
 CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -O3
 CXXFLAGS := -std=c++0x -O3
 LDFLAGS := -levent_pthreads -ldl
-LIBPATH := -I./ -Iinclude/
+LIBPATH := -I./
 CFLAGS += $(LIBPATH)
 ## Debian package: check
 # CHECK_CFLAGS := $(shell pkg-config --cflags check)
