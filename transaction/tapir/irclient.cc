@@ -34,7 +34,7 @@
 #include <math.h>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tapir {
 
 using namespace std;
@@ -553,6 +553,6 @@ IRClient::PrepareDecide(const set<string> &results)
 }
 
 } // namespace tapir
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 

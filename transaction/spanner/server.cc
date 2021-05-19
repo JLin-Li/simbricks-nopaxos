@@ -36,7 +36,7 @@
 #define RPanic(fmt, ...) Panic("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace spanner {
 
 using namespace std;
@@ -358,5 +358,5 @@ SpannerServer::AmLeader()
 }
 
 } // namespace granola
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

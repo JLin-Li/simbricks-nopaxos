@@ -15,7 +15,6 @@
 #include <algorithm>
 
 using namespace std;
-using namespace storeapp;
 
 DEFINE_LATENCY(op)
 
@@ -49,7 +48,7 @@ main(int argc, char **argv)
     vector<uint64_t> latencies;
     phase_t phase = WARMUP;
 
-    kvstore::KVClient *client;
+    kvtransaction::KVClient *client;
 
     // Mode for strongstore.
 
@@ -160,7 +159,7 @@ main(int argc, char **argv)
     }
 
     UDPTransport *transport = new UDPTransport(0, 0, 0, 0);
-    client = new kvstore::KVClient(configs, transport, nShards);
+    client = new kvtransaction::KVClient(configs, transport, nShards);
 
     // Read in the keys from a file.
     string key, value;
@@ -205,11 +204,11 @@ main(int argc, char **argv)
         }
 
         Latency_Start(&latency);
-        vector<kvstore::KVOp> ops;
+        vector<kvtransaction::KVOp> ops;
         vector<string> results;
-        kvstore::KVOp readOp, writeOp;
-        readOp.opType = kvstore::KVOp::GET;
-        writeOp.opType = kvstore::KVOp::PUT;
+        kvtransaction::KVOp readOp, writeOp;
+        readOp.opType = kvtransaction::KVOp::GET;
+        writeOp.opType = kvtransaction::KVOp::PUT;
 
         keyIdx.clear();
 

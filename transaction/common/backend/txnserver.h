@@ -39,7 +39,7 @@
 #include <list>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 
 class TxnServer : public AppReplica
 {
@@ -53,7 +53,7 @@ public:
                                    txnarg_t *arg, txnret_t *ret) = 0;
 };
 
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __TXNSERVER_H__ */

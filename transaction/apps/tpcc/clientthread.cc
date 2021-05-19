@@ -10,7 +10,7 @@ using std::map;
 
 ClientThread::ClientThread(int total_warehouses, int warehouses_per_partition,
                            int clients_per_warehouse, int client_id,
-                           int remote_item_milli_p, dsnet::store::TxnClient *txnClient)
+                           int remote_item_milli_p, dsnet::transaction::TxnClient *txnClient)
     : txnClient(txnClient)
 {
     tpcc::RealRandomGenerator* random = new tpcc::RealRandomGenerator();

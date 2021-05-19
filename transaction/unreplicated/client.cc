@@ -31,7 +31,7 @@
 #include "transaction/unreplicated/client.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace unreplicated {
 
 using namespace std;
@@ -221,5 +221,5 @@ UnreplicatedClient::SendRequest()
 }
 
 } // namespace unreplicated
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

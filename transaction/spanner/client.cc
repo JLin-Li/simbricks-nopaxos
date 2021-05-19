@@ -31,7 +31,7 @@
 #include "transaction/spanner/client.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace spanner {
 
 using namespace std;
@@ -224,6 +224,6 @@ SpannerClient::SendRequest()
 }
 
 } // namespace spanner
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 

@@ -31,7 +31,7 @@
 #include "transaction/eris/client.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace eris {
 
 using namespace proto;
@@ -293,5 +293,5 @@ ErisClient::IsLeader(view_t view, int replicaIdx) {
 }
 
 } // namespace eris
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

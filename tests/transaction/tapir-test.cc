@@ -46,9 +46,9 @@
 
 using google::protobuf::Message;
 using namespace dsnet;
-using namespace dsnet::store;
-using namespace dsnet::store::kvstore;
-using namespace dsnet::store::tapir;
+using namespace dsnet::transaction;
+using namespace dsnet::transaction::kvstore;
+using namespace dsnet::transaction::tapir;
 
 class TapirTest : public ::testing::Test
 {

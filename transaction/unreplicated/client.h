@@ -40,7 +40,7 @@
 #include "transaction/unreplicated/unreplicated-proto.pb.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace unreplicated {
 
 class UnreplicatedClient : public Client
@@ -102,7 +102,7 @@ private:
 };
 
 } // namespace unreplicated
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __STORE_UNREPLICATED_CLIENT_H__ */

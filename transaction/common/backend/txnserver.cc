@@ -31,7 +31,7 @@
 #include "transaction/common/backend/txnserver.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 
 TxnServer::TxnServer() { }
 TxnServer::~TxnServer() { }
@@ -50,5 +50,5 @@ TxnServer::ReplicaUpcall(opnum_t opnum, const string &str1, string &str2, void *
     InvokeTransaction(str1, str2, (txnarg_t *)arg, (txnret_t *)ret);
 }
 
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

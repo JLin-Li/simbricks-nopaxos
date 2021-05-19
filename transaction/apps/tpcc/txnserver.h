@@ -37,7 +37,7 @@
 #include <unordered_map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tpcc {
 
 typedef struct {
@@ -71,7 +71,7 @@ private:
 };
 
 } // namespace tpcc
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __TPCC_TXNSERVER_H__ */

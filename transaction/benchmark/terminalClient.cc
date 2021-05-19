@@ -17,8 +17,8 @@
 
 using namespace std;
 using namespace dsnet;
-using namespace dsnet::store;
-using namespace dsnet::store::kvstore;
+using namespace dsnet::transaction;
+using namespace dsnet::transaction::kvstore;
 
 int
 main(int argc, char **argv)

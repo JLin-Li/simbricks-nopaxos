@@ -31,7 +31,7 @@
 #include "transaction/common/frontend/txnclientcommon.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 
 using namespace std;
 
@@ -98,5 +98,5 @@ TxnClientCommon::InvokeCallback(const map<shardnum_t, string> &requests,
     }
 }
 
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

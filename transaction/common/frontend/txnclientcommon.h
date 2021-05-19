@@ -42,9 +42,9 @@
 #include <map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 
-class TxnClientCommon : public store::TxnClient
+class TxnClientCommon : public transaction::TxnClient
 {
 public:
     TxnClientCommon(Transport *transport,
@@ -69,7 +69,7 @@ private:
     void RunProxy();
 };
 
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __TXNCLIENT_H__ */

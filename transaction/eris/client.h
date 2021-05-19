@@ -40,7 +40,7 @@
 #include "transaction/eris/eris-proto.pb.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace eris {
 
 class ErisClient : public Client
@@ -71,21 +71,21 @@ private:
     struct PendingRequest
     {
         proto::RequestMessage request_msg;
-	opnum_t client_req_id;
+        opnum_t client_req_id;
         proto::RequestType txn_type;
         bool commit;
         std::map<shardnum_t, std::string> requests;
-	std::map<shardnum_t, std::string> replies;
+        std::map<shardnum_t, std::string> replies;
         std::map<shardnum_t, bool> has_replies;
         std::vector<int> shards;
-	g_continuation_t continuation;
-	inline PendingRequest(const proto::RequestMessage &request_msg,
-                              opnum_t client_req_id,
-                              proto::RequestType txn_type,
-                              const std::map<shardnum_t, std::string> &requests,
-			      const std::map<shardnum_t, std::string> &replies,
-                              const std::vector<int> &shards,
-			      g_continuation_t continuation)
+        g_continuation_t continuation;
+        inline PendingRequest(const proto::RequestMessage &request_msg,
+                opnum_t client_req_id,
+                proto::RequestType txn_type,
+                const std::map<shardnum_t, std::string> &requests,
+                const std::map<shardnum_t, std::string> &replies,
+                const std::vector<int> &shards,
+                g_continuation_t continuation)
             : request_msg(request_msg), client_req_id(client_req_id),
             txn_type(txn_type), commit(true), requests(requests),
             replies(replies), shards(shards), continuation(continuation) {
@@ -113,7 +113,7 @@ private:
 };
 
 } // namespace eris
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __ERIS_CLIENT_H__ */

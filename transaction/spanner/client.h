@@ -40,7 +40,7 @@
 #include "transaction/spanner/spanner-proto.pb.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace spanner {
 
 class SpannerClient : public Client
@@ -106,7 +106,7 @@ private:
 };
 
 } // namespace spanner
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __SPANNER_CLIENT_H__ */

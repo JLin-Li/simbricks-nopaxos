@@ -43,7 +43,7 @@
 #include "transaction/tapir/tapir-proto.pb.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tapir {
 
 class TapirServer : public Replica
@@ -76,7 +76,7 @@ public:
                                  const proto::FinalizeConsensusMessage &msg);
 };
 
-} // namespace dsnet::store::tapir
+} // namespace dsnet::transaction::tapir
 } // namespace dsnet::store
 } // namespace dsnet
 

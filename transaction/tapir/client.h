@@ -42,10 +42,10 @@
 #include "transaction/tapir/tapir-proto.pb.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tapir {
 
-class TapirClient : public store::TxnClient
+class TapirClient : public transaction::TxnClient
 {
 public:
     TapirClient(const Configuration &config,
@@ -73,7 +73,7 @@ private:
 };
 
 } // namespace tapir
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __TAPIR_CLIENT_H__ */

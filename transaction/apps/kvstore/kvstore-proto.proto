@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package dsnet.store.kvstore.proto;
+package dsnet.transaction.kvstore.proto;
 
 message GetMessage {
   required string key = 1;

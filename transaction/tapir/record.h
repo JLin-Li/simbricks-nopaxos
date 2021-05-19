@@ -42,7 +42,7 @@
 #include <utility>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tapir {
 
 enum RecordEntryState {
@@ -90,7 +90,7 @@ private:
 
 };
 
-} // namespace dsnet::store::tapir
+} // namespace dsnet::transaction::tapir
 } // namespace dsnet::store
 } // namespace dsnet
 

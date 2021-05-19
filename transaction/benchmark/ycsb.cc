@@ -27,8 +27,8 @@
 
 using namespace std;
 using namespace dsnet;
-using namespace dsnet::store;
-using namespace dsnet::store::kvstore;
+using namespace dsnet::transaction;
+using namespace dsnet::transaction::kvstore;
 
 DEFINE_LATENCY(op);
 
@@ -252,7 +252,7 @@ main(int argc, char **argv)
         break;
     }
     case PROTO_UNREPLICATED: {
-        protoClient = new store::unreplicated::UnreplicatedClient(config, transport);
+        protoClient = new transaction::unreplicated::UnreplicatedClient(config, transport);
         break;
     }
     case PROTO_SPANNER: {

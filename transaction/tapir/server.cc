@@ -38,7 +38,7 @@
 #define RPanic(fmt, ...) Panic("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tapir {
 
 using namespace std;
@@ -262,6 +262,6 @@ TapirServer::HandleFinalizeConsensus(const TransportAddress &remote,
 }
 
 
-} // namespace dsnet::store::tapir
+} // namespace dsnet::transaction::tapir
 } // namespace dsnet::store
 } // namespace dsnet

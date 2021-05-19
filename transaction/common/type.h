@@ -14,7 +14,7 @@
 #include <string>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 
 typedef uint64_t txnid_t;       // Transaction id
 
@@ -49,7 +49,7 @@ typedef struct {
     bool ro;
 } clientarg_t;
 
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* TRANSACTION_TYPE_H */

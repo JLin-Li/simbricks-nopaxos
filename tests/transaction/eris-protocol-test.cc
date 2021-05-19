@@ -43,9 +43,9 @@
 
 using google::protobuf::Message;
 using namespace dsnet;
-using namespace dsnet::store;
-using namespace dsnet::store::eris;
-using namespace dsnet::store::eris::proto;
+using namespace dsnet::transaction;
+using namespace dsnet::transaction::eris;
+using namespace dsnet::transaction::eris::proto;
 using namespace std;
 
 class ErisTestApp : public AppReplica

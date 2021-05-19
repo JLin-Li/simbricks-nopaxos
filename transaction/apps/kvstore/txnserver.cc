@@ -32,7 +32,7 @@
 #include "transaction/apps/kvstore/txnserver.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace kvstore {
 
 using namespace std;
@@ -254,5 +254,5 @@ KVTxnServer::ReleaseLocks(struct kvtxn_t *txn,
 }
 
 } // namespace kvstore
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

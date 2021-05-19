@@ -49,7 +49,7 @@
 #include <map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tapir {
 
 class IRClient : public Client
@@ -164,7 +164,7 @@ protected:
 };
 
 } // namespace tapir
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif  /* __TAPIR_IR_CLIENT_H__ */

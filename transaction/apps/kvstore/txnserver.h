@@ -39,7 +39,7 @@
 #include "transaction/apps/kvstore/kvstore-proto.pb.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace kvstore {
 
 typedef struct {
@@ -82,7 +82,7 @@ private:
 };
 
 } // namespace kvstore
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __KVSTORE_TXNSERVER_H__ */

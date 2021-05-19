@@ -45,7 +45,7 @@
 #include <map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace spanner {
 
 struct TxnData {
@@ -134,7 +134,7 @@ private:
 };
 
 } // namespace spanner
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __SPANNER_SERVER_H__ */

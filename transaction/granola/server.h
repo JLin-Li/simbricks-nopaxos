@@ -45,7 +45,7 @@
 #include <map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace granola {
 
 typedef uint64_t timestamp_t;
@@ -190,7 +190,7 @@ private:
 };
 
 } // namespace granola
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* _GRANOLA_SERVER_H_ */

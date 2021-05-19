@@ -41,7 +41,7 @@
 #include <map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 
 class TxnClient
 {
@@ -56,7 +56,7 @@ public:
 private:
 };
 
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __TXNCLIENT_H__ */

@@ -47,7 +47,7 @@
 #include <memory>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace eris {
 
 struct TxnData {
@@ -306,7 +306,7 @@ private:
 };
 
 } // namespace eris
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __ERIS_SERVER_H__ */

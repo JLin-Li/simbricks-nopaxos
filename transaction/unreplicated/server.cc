@@ -36,7 +36,7 @@
 #define RPanic(fmt, ...) Panic("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace unreplicated {
 
 using namespace std;
@@ -146,6 +146,6 @@ UnreplicatedServer::UpdateClientTable(const Request &req, const ReplyMessage &re
 }
 
 } // namespace unreplicated
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 

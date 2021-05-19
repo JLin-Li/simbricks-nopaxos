@@ -40,7 +40,7 @@
 #include "transaction/granola/granola-proto.pb.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace granola {
 
 class GranolaClient : public Client
@@ -103,7 +103,7 @@ private:
 };
 
 } // namespace granola
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __GRANOLA_CLIENT_H__ */

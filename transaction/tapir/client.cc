@@ -35,7 +35,7 @@
 #include <random>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tapir {
 
 using namespace std;
@@ -160,5 +160,5 @@ TapirClient::Prepare(const map<shardnum_t, string> &requests,
 }
 
 } // namespace tapir
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

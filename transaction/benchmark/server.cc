@@ -41,7 +41,7 @@
 
 using namespace std;
 using namespace dsnet;
-using namespace dsnet::store;
+using namespace dsnet::transaction;
 
 int
 main(int argc, char **argv)
@@ -52,7 +52,7 @@ main(int argc, char **argv)
     const char *configPath = nullptr;
     const char *fcorConfigPath = nullptr;
     const char *keyPath = nullptr;
-    store::tpcc::TPCCTxnServerArg tpccArg;
+    transaction::tpcc::TPCCTxnServerArg tpccArg;
     kvstore::KVStoreTxnServerArg kvArg;
     TxnServer *txnServer = nullptr;
     app_t app = APP_UNKNOWN;
@@ -257,7 +257,7 @@ main(int argc, char **argv)
         } else {
             tpccArg.locking = true;
         }
-        txnServer = new store::tpcc::TPCCTxnServer(tpccArg);
+        txnServer = new transaction::tpcc::TPCCTxnServer(tpccArg);
         break;
     }
     default:
@@ -321,7 +321,7 @@ main(int argc, char **argv)
         break;
     }
     case PROTO_UNREPLICATED: {
-        protoServer = new store::unreplicated::UnreplicatedServer(config, shard_num, replica_num,
+        protoServer = new transaction::unreplicated::UnreplicatedServer(config, shard_num, replica_num,
                                                                   true, transport, txnServer);
         break;
     }

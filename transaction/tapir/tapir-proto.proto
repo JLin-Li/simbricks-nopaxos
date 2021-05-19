@@ -2,7 +2,7 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package dsnet.store.tapir.proto;
+package dsnet.transaction.tapir.proto;
 
 message TimestampMessage {
     required uint64 id = 1;

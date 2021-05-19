@@ -42,7 +42,7 @@
 #include <map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace kvstore {
 
 typedef struct {
@@ -98,7 +98,7 @@ private:
 };
 
 } // namespace kvstore
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __KVSTORE_CLIENT_H__ */

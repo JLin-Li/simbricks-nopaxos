@@ -2,7 +2,7 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package dsnet.store.unreplicated.proto;
+package dsnet.transaction.unreplicated.proto;
 
 message RequestMessage {
     enum RequestType {

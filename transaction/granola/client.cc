@@ -31,7 +31,7 @@
 #include "transaction/granola/client.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace granola {
 
 using namespace std;
@@ -220,5 +220,5 @@ GranolaClient::SendRequest()
 }
 
 } // namespace granola
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

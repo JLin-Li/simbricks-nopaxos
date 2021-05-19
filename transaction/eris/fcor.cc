@@ -32,7 +32,7 @@
 #include "transaction/eris/fcor.h"
 
 using namespace dsnet;
-using namespace store;
+using namespace transaction;
 using namespace eris;
 using namespace proto;
 

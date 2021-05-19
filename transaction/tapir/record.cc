@@ -31,7 +31,7 @@
 #include "transaction/tapir/record.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tapir {
 
 RecordEntry &
@@ -124,6 +124,6 @@ Record::Empty() const
 }
 
 
-} // namespace dsnet::store::tapir
+} // namespace dsnet::transaction::tapir
 } // namespace dsnet::store
 } // namespace dsnet

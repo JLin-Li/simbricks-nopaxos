@@ -40,7 +40,7 @@
 #include <map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace eris {
 
 class TransportSender : public TransportReceiver
@@ -182,7 +182,7 @@ private:
 };
 
 } // namespace eris
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* __ERIS_FCOR_H__ */

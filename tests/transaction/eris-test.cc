@@ -47,9 +47,9 @@
 
 using google::protobuf::Message;
 using namespace dsnet;
-using namespace dsnet::store;
-using namespace dsnet::store::kvstore;
-using namespace dsnet::store::eris;
+using namespace dsnet::transaction;
+using namespace dsnet::transaction::kvstore;
+using namespace dsnet::transaction::eris;
 
 class ErisTest : public ::testing::Test
 {

@@ -38,7 +38,7 @@
 #include "transaction/apps/tpcc/dbserver.h"
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace tpcc {
 
 TPCCTxnServer::TPCCTxnServer(TPCCTxnServerArg arg)
@@ -181,5 +181,5 @@ TPCCTxnServer::InvokeTransaction(const string &ops, string &result, txnarg_t *ar
 }
 
 } // namespace tpcc
-} // namespace store
+} // namespace transaction
 } // namespace dsnet

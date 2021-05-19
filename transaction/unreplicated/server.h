@@ -43,7 +43,7 @@
 #include <map>
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace unreplicated {
 
 class UnreplicatedServer : public Replica
@@ -80,7 +80,7 @@ private:
 };
 
 } // namespace unreplicated
-} // namespace store
+} // namespace transaction
 } // namespace dsnet
 
 #endif /* _STORE_UNREPLICATED_SERVER_H_ */

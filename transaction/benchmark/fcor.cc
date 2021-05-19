@@ -34,7 +34,7 @@
 
 using namespace std;
 using namespace dsnet::vr;
-using namespace dsnet::store::eris;
+using namespace dsnet::transaction::eris;
 
 static void
 Usage(const char *prog)

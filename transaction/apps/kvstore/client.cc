@@ -41,7 +41,7 @@
 using namespace std;
 
 namespace dsnet {
-namespace store {
+namespace transaction {
 namespace kvstore {
 
 KVClient::KVClient(TxnClient *txn_client,
@@ -69,7 +69,7 @@ KVClient::KVClient(string configPath, int nshards, int mode)
         break;
     }
     case 3: {
-        this->protoClient = new store::unreplicated::UnreplicatedClient(config, this->transport);
+        this->protoClient = new transaction::unreplicated::UnreplicatedClient(config, this->transport);
         break;
     }
     case 4: {
@@ -231,5 +231,5 @@ KVClient::ParseReplies(const map<shardnum_t, string> &replies,
 }
 
 } // namespace kvstore
-} // namespace store
-} // namespace storeapp
+} // namespace transaction
+} // namespace dsnet
