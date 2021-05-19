@@ -45,10 +45,10 @@
 #include <random>
 
 using google::protobuf::Message;
-using namespace specpaxos;
-using namespace specpaxos::store;
-using namespace specpaxos::store::kvstore;
-using namespace specpaxos::store::tapir;
+using namespace dsnet;
+using namespace dsnet::store;
+using namespace dsnet::store::kvstore;
+using namespace dsnet::store::tapir;
 
 class TapirTest : public ::testing::Test
 {

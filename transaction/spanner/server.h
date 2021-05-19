@@ -44,7 +44,7 @@
 #include <string>
 #include <map>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace spanner {
 
@@ -135,7 +135,7 @@ private:
 
 } // namespace spanner
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __SPANNER_SERVER_H__ */
 

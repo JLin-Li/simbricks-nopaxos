@@ -4,7 +4,7 @@
 
 #include "lib/transport.h"
 
-namespace specpaxos {
+namespace dsnet {
 
 typedef uint64_t SeqId;
 typedef uint32_t GroupId;
@@ -28,4 +28,4 @@ private:
     SeqId seq_id_;
 };
 
-} // namespace specpaxos
+} // namespace dsnet

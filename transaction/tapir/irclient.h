@@ -48,7 +48,7 @@
 #include <unordered_map>
 #include <map>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tapir {
 
@@ -165,6 +165,6 @@ protected:
 
 } // namespace tapir
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif  /* __TAPIR_IR_CLIENT_H__ */

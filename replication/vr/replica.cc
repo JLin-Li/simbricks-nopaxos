@@ -45,7 +45,7 @@
 #define RWarning(fmt, ...) Warning("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 
-namespace specpaxos {
+namespace dsnet {
 namespace vr {
 
 using namespace proto;
@@ -1194,5 +1194,5 @@ VRReplica::HandleRecoveryResponse(const TransportAddress &remote,
     }
 }
 
-} // namespace specpaxos::vr
-} // namespace specpaxos
+} // namespace dsnet::vr
+} // namespace dsnet

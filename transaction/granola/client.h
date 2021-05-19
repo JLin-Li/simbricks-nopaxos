@@ -39,7 +39,7 @@
 #include "transaction/common/type.h"
 #include "transaction/granola/granola-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace granola {
 
@@ -104,6 +104,6 @@ private:
 
 } // namespace granola
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __GRANOLA_CLIENT_H__ */

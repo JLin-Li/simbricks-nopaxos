@@ -41,7 +41,7 @@
 #include <string>
 #include <map>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace kvstore {
 
@@ -99,6 +99,6 @@ private:
 
 } // namespace kvstore
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __KVSTORE_CLIENT_H__ */

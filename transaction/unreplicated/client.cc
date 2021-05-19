@@ -30,7 +30,7 @@
 
 #include "transaction/unreplicated/client.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace unreplicated {
 
@@ -222,4 +222,4 @@ UnreplicatedClient::SendRequest()
 
 } // namespace unreplicated
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

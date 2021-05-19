@@ -40,9 +40,9 @@
 #include <stdio.h>
 #include <gtest/gtest.h>
 
-using namespace specpaxos;
-using namespace specpaxos::unreplicated;
-using namespace specpaxos::unreplicated::proto;
+using namespace dsnet;
+using namespace dsnet::unreplicated;
+using namespace dsnet::unreplicated::proto;
 using std::map;
 using std::vector;
 

@@ -39,7 +39,7 @@
 #include "transaction/common/type.h"
 #include "transaction/spanner/spanner-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace spanner {
 
@@ -107,7 +107,7 @@ private:
 
 } // namespace spanner
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __SPANNER_CLIENT_H__ */
 

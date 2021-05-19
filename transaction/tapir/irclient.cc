@@ -33,7 +33,7 @@
 #include "transaction/tapir/irclient.h"
 #include <math.h>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tapir {
 
@@ -554,5 +554,5 @@ IRClient::PrepareDecide(const set<string> &results)
 
 } // namespace tapir
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 

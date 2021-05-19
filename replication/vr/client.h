@@ -36,7 +36,7 @@
 #include "lib/configuration.h"
 #include "replication/vr/vr-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace vr {
 
 class VRClient : public Client
@@ -88,7 +88,7 @@ protected:
     void UnloggedRequestTimeoutCallback();
 };
 
-} // namespace specpaxos::vr
-} // namespace specpaxos
+} // namespace dsnet::vr
+} // namespace dsnet
 
 #endif  /* _VR_CLIENT_H_ */

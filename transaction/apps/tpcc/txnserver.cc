@@ -37,7 +37,7 @@
 #include "transaction/apps/tpcc/dbimpl.h"
 #include "transaction/apps/tpcc/dbserver.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tpcc {
 
@@ -182,4 +182,4 @@ TPCCTxnServer::InvokeTransaction(const string &ops, string &result, txnarg_t *ar
 
 } // namespace tpcc
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

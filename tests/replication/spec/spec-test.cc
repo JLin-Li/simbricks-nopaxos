@@ -51,9 +51,9 @@ static string clientLastReply;
 
 using google::protobuf::Message;
 
-namespace specpaxos {
+namespace dsnet {
 
-using namespace specpaxos::spec;
+using namespace dsnet::spec;
 
 class SpecTestApp : public AppReplica
 {
@@ -631,4 +631,4 @@ TEST_F(SpecTest, Stress)
     }
 }
 
-} // namespace specpaxos
+} // namespace dsnet

@@ -30,7 +30,7 @@
 
 #include "transaction/granola/client.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace granola {
 
@@ -221,4 +221,4 @@ GranolaClient::SendRequest()
 
 } // namespace granola
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

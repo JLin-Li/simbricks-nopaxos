@@ -39,7 +39,7 @@
 #include "transaction/common/type.h"
 #include "transaction/unreplicated/unreplicated-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace unreplicated {
 
@@ -103,6 +103,6 @@ private:
 
 } // namespace unreplicated
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __STORE_UNREPLICATED_CLIENT_H__ */

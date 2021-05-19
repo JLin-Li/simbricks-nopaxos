@@ -46,7 +46,7 @@
 
 class LogMergeTest;
 
-namespace specpaxos {
+namespace dsnet {
 namespace spec {
 
 class SpecReplica : public Replica
@@ -142,7 +142,7 @@ private:
     friend class ::LogMergeTest;
 };
 
-} // namespace specpaxos::spec
-} // namespace specpaxos
+} // namespace dsnet::spec
+} // namespace dsnet
 
 #endif  /* _SPEC_REPLICA_H_ */

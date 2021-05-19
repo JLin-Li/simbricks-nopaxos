@@ -2,10 +2,10 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package specpaxos.fastpaxos.proto;
+package dsnet.fastpaxos.proto;
 
 message RequestMessage {
-    required specpaxos.Request req = 1;
+    required dsnet.Request req = 1;
 }
 
 message ReplyMessage {
@@ -16,7 +16,7 @@ message ReplyMessage {
 }
 
 message UnloggedRequestMessage {
-    required specpaxos.UnloggedRequest req = 1;
+    required dsnet.UnloggedRequest req = 1;
 }
 
 message UnloggedReplyMessage {
@@ -27,20 +27,20 @@ message PrepareOKMessage {
     required uint64 view = 1;
     required uint64 opnum = 2;
     required uint32 replicaIdx = 3;
-    required specpaxos.Request req = 4;
+    required dsnet.Request req = 4;
     required uint32 slowpath = 5;
 }
 
 message PrepareMessage {
     required uint64 view = 1;
     required uint64 opnum = 2;
-    required specpaxos.Request req = 3;
+    required dsnet.Request req = 3;
 }
 
 message CommitMessage {
     required uint64 view = 1;
     required uint64 opnum = 2;
-    required specpaxos.Request req = 3;
+    required dsnet.Request req = 3;
 }
 
 message RequestStateTransferMessage {
@@ -51,7 +51,7 @@ message RequestStateTransferMessage {
 message StateTransferMessage {
     required uint64 view = 1;
     required uint64 opnum = 2;
-    repeated specpaxos.MsgLogEntry entries = 3;
+    repeated dsnet.MsgLogEntry entries = 3;
     required uint64 lastop = 4;
 }
 

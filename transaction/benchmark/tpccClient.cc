@@ -24,8 +24,8 @@
 #include <algorithm>
 
 using namespace std;
-using namespace specpaxos;
-using namespace specpaxos::store;
+using namespace dsnet;
+using namespace dsnet::store;
 
 DEFINE_LATENCY(op);
 
@@ -159,7 +159,7 @@ main(int argc, char **argv) {
             Panic("unable to read configuration file: %s", configPath);
         }
 
-        specpaxos::Configuration config(configStream);
+        dsnet::Configuration config(configStream);
 
 	total_warehouses = nshards * warehouse_per_shard;
 	UDPTransport *transport = new UDPTransport();

@@ -49,9 +49,9 @@ static string clientLastOp;
 static string clientLastReply;
 
 using google::protobuf::Message;
-using namespace specpaxos;
-using namespace specpaxos::fastpaxos;
-using namespace specpaxos::fastpaxos::proto;
+using namespace dsnet;
+using namespace dsnet::fastpaxos;
+using namespace dsnet::fastpaxos::proto;
 
 class FastPaxosTestApp : public AppReplica
 {

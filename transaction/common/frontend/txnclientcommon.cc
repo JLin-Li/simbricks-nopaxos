@@ -30,7 +30,7 @@
 
 #include "transaction/common/frontend/txnclientcommon.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 
 using namespace std;
@@ -99,4 +99,4 @@ TxnClientCommon::InvokeCallback(const map<shardnum_t, string> &requests,
 }
 
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

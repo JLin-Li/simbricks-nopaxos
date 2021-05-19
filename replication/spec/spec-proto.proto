@@ -2,10 +2,10 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package specpaxos.spec.proto;
+package dsnet.spec.proto;
 
 message RequestMessage {
-    required specpaxos.Request req = 1;
+    required dsnet.Request req = 1;
 }
 
 message SpeculativeReplyMessage {
@@ -19,7 +19,7 @@ message SpeculativeReplyMessage {
 }
 
 message UnloggedRequestMessage {
-    required specpaxos.UnloggedRequest req = 1;
+    required dsnet.UnloggedRequest req = 1;
 }
 
 message UnloggedReplyMessage {
@@ -59,7 +59,7 @@ message DoViewChangeMessage {
     required uint64 lastNormalView = 2;
     required uint64 lastSpeculative = 3;
     required uint64 lastCommitted = 4;
-    repeated specpaxos.MsgLogEntry entries = 5;
+    repeated dsnet.MsgLogEntry entries = 5;
     required uint32 replicaIdx = 6;
 }
 
@@ -67,7 +67,7 @@ message StartViewMessage {
     required uint64 view = 1;
     required uint64 lastSpeculative = 2;
     required uint64 lastCommitted = 3;
-    repeated specpaxos.MsgLogEntry entries = 4;
+    repeated dsnet.MsgLogEntry entries = 4;
 }
 
 message InViewMessage {

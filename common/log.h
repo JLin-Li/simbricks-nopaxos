@@ -42,12 +42,12 @@
 #include <google/protobuf/message.h>
 #include <openssl/sha.h>
 
-namespace specpaxos {
+namespace dsnet {
 
 enum LogEntryState {
     LOG_STATE_COMMITTED,
     LOG_STATE_PREPARED,
-    LOG_STATE_SPECULATIVE,      // specpaxos only
+    LOG_STATE_SPECULATIVE,      // dsnet only
     LOG_STATE_FASTPREPARED,     // fastpaxos only
     LOG_STATE_RECEIVED,		// nopaxos only
     LOG_STATE_NOOP,		// nopaxos only
@@ -127,6 +127,6 @@ private:
 
 #include "common/log-impl.h"
 
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif  /* _COMMON_LOG_H_ */

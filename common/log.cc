@@ -34,7 +34,7 @@
 
 #include <openssl/sha.h>
 
-namespace specpaxos {
+namespace dsnet {
 
 const string EMPTY_HASH = string(SHA_DIGEST_LENGTH, '\0');
 
@@ -216,4 +216,4 @@ Log::ComputeHash(string lastHash, const LogEntry &entry)
     return string((char *)out, SHA_DIGEST_LENGTH);
 }
 
-} // namespace specpaxos
+} // namespace dsnet

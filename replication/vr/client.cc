@@ -35,7 +35,7 @@
 #include "lib/transport.h"
 #include "replication/vr/client.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace vr {
 
 VRClient::VRClient(const Configuration &config,
@@ -229,4 +229,4 @@ VRClient::UnloggedRequestTimeoutCallback()
 }
 
 } // namespace vr
-} // namespace specpaxos
+} // namespace dsnet

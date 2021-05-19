@@ -35,10 +35,10 @@
 #include "lib/transport.h"
 #include "replication/spec/client.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace spec {
 
-using namespace specpaxos::spec::proto;
+using namespace dsnet::spec::proto;
 
 SpecClient::SpecClient(const Configuration &config,
                        Transport *transport,
@@ -282,4 +282,4 @@ SpecClient::UnloggedRequestTimeoutCallback()
 }
 
 } // namespace spec
-} // namespace specpaxos
+} // namespace dsnet

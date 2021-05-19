@@ -2,7 +2,7 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package specpaxos.store.unreplicated.proto;
+package dsnet.store.unreplicated.proto;
 
 message RequestMessage {
     enum RequestType {

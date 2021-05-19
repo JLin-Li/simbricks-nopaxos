@@ -30,7 +30,7 @@
 
 #include "transaction/eris/client.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace eris {
 
@@ -116,7 +116,7 @@ ErisClient::InvokeTxn(const map<shardnum_t, string> &requests,
     // op accordingly.
     request.set_op(std::string());
     for (const auto &kv : requests) {
-        specpaxos::ShardOp shard_op;
+        dsnet::ShardOp shard_op;
         shard_op.set_shard(kv.first);
         /* COMMIT and ABORT do not have any application level
          * messages.
@@ -294,4 +294,4 @@ ErisClient::IsLeader(view_t view, int replicaIdx) {
 
 } // namespace eris
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

@@ -35,7 +35,7 @@
 #include "lib/transport.h"
 #include "replication/fastpaxos/client.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace fastpaxos {
 
 FastPaxosClient::FastPaxosClient(const Configuration &config,
@@ -212,4 +212,4 @@ FastPaxosClient::UnloggedRequestTimeoutCallback()
 }
 
 } // namespace vr
-} // namespace specpaxos
+} // namespace dsnet

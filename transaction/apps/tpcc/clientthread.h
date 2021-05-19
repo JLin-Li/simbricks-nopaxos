@@ -14,7 +14,7 @@ class ClientThread {
 public:
     ClientThread(int total_warehouses, int warehouses_per_partition,
                  int clients_per_warehouse, int client_id,
-                 int remote_item_milli_p, specpaxos::store::TxnClient *txnClient);
+                 int remote_item_milli_p, dsnet::store::TxnClient *txnClient);
 
     int doOps(int num_ops);
 
@@ -30,7 +30,7 @@ public:
 private:
     TPCCClient* client_;
     bool newOrderOnly_;
-    specpaxos::store::TxnClient *txnClient;
+    dsnet::store::TxnClient *txnClient;
 };
 
 #endif

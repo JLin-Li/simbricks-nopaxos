@@ -33,8 +33,8 @@
 #include "transaction/eris/fcor.h"
 
 using namespace std;
-using namespace specpaxos::vr;
-using namespace specpaxos::store::eris;
+using namespace dsnet::vr;
+using namespace dsnet::store::eris;
 
 static void
 Usage(const char *prog)
@@ -105,7 +105,7 @@ main(int argc, char **argv)
                 configPath);
         Usage(argv[0]);
     }
-    specpaxos::Configuration config(configStream);
+    dsnet::Configuration config(configStream);
 
     ifstream erisConfigStream(erisConfigPath);
     if (erisConfigStream.fail()) {
@@ -113,7 +113,7 @@ main(int argc, char **argv)
                 erisConfigPath);
         Usage(argv[0]);
     }
-    specpaxos::Configuration erisConfig(erisConfigStream);
+    dsnet::Configuration erisConfig(erisConfigStream);
 
     if (index >= config.n) {
         fprintf(stderr, "replica index %d is out of bounds; "

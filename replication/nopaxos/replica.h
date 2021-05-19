@@ -43,7 +43,7 @@
 #include <memory>
 #include <set>
 
-namespace specpaxos {
+namespace dsnet {
 namespace nopaxos {
 
 class NOPaxosReplica : public Replica
@@ -174,7 +174,7 @@ private:
     // Returns true if the request is processed/ignored.
     // false if the request should be processed later (pending)
     bool TryProcessClientRequest(const proto::RequestMessage &msg);
-    void ProcessNextOperation(const specpaxos::Request &request,
+    void ProcessNextOperation(const dsnet::Request &request,
                               viewstamp_t vs,
                               LogEntryState state);
     void ExecuteUptoOp(opnum_t opnum);
@@ -205,7 +205,7 @@ private:
     inline void RewindLogToOpnum(opnum_t opnum);
 };
 
-} // namespace specpaxos::nopaxos
-} // namespace specpaxos
+} // namespace dsnet::nopaxos
+} // namespace dsnet
 
 #endif /* _NOPAXOS_REPLICA_H_ */

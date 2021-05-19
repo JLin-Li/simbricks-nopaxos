@@ -2,10 +2,10 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package specpaxos.vr.proto;
+package dsnet.vr.proto;
 
 message RequestMessage {
-    required specpaxos.Request req = 1;
+    required dsnet.Request req = 1;
 }
 
 message ReplyMessage {
@@ -16,7 +16,7 @@ message ReplyMessage {
 }
 
 message UnloggedRequestMessage {
-    required specpaxos.UnloggedRequest req = 1;
+    required dsnet.UnloggedRequest req = 1;
 }
 
 message UnloggedReplyMessage {
@@ -49,7 +49,7 @@ message RequestStateTransferMessage {
 message StateTransferMessage {
     required uint64 view = 1;
     required uint64 opnum = 2;
-    repeated specpaxos.MsgLogEntry entries = 3;
+    repeated dsnet.MsgLogEntry entries = 3;
 }
 
 message StartViewChangeMessage {
@@ -63,7 +63,7 @@ message DoViewChangeMessage {
     required uint64 lastNormalView = 2;
     required uint64 lastOp = 3;
     required uint64 lastCommitted = 4;
-    repeated specpaxos.MsgLogEntry entries = 5;
+    repeated dsnet.MsgLogEntry entries = 5;
     required uint32 replicaIdx = 6;
 }
 
@@ -71,7 +71,7 @@ message StartViewMessage {
     required uint64 view = 1;
     required uint64 lastOp = 2;
     required uint64 lastCommitted = 3;
-    repeated specpaxos.MsgLogEntry entries = 4;
+    repeated dsnet.MsgLogEntry entries = 4;
 }
 
 message RecoveryMessage {
@@ -82,7 +82,7 @@ message RecoveryMessage {
 message RecoveryResponseMessage {
     required uint64 view = 1;
     required uint64 nonce = 2;
-    repeated specpaxos.MsgLogEntry entries = 3;
+    repeated dsnet.MsgLogEntry entries = 3;
     optional uint64 lastOp = 4;
     optional uint64 lastCommitted = 5;
     required uint32 replicaIdx = 6;

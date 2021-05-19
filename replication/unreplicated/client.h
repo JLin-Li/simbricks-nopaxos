@@ -36,7 +36,7 @@
 #include "lib/configuration.h"
 #include "replication/unreplicated/unreplicated-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace unreplicated {
 
 class UnreplicatedClient : public Client
@@ -79,7 +79,7 @@ protected:
     void ResendRequest();
 };
 
-} // namespace specpaxos::unreplicated
-} // namespace specpaxos
+} // namespace dsnet::unreplicated
+} // namespace dsnet
 
 #endif  /* _UNREPLICATED_CLIENT_H_ */

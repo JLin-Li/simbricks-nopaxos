@@ -34,7 +34,7 @@
 
 #include <random>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tapir {
 
@@ -161,4 +161,4 @@ TapirClient::Prepare(const map<shardnum_t, string> &requests,
 
 } // namespace tapir
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

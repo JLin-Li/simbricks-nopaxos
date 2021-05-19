@@ -35,7 +35,7 @@
 #include "replication/unreplicated/client.h"
 #include "replication/unreplicated/unreplicated-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace unreplicated {
 
 UnreplicatedClient::UnreplicatedClient(const Configuration &config,
@@ -185,5 +185,5 @@ UnreplicatedClient::HandleUnloggedReply(const TransportAddress &remote,
     delete req;
 }
 
-} // namespace specpaxos::unreplicated
-} // namespace specpaxos
+} // namespace dsnet::unreplicated
+} // namespace dsnet

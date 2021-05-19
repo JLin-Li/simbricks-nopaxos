@@ -26,9 +26,9 @@
 #include "transaction/benchmark/header.h"
 
 using namespace std;
-using namespace specpaxos;
-using namespace specpaxos::store;
-using namespace specpaxos::store::kvstore;
+using namespace dsnet;
+using namespace dsnet::store;
+using namespace dsnet::store::kvstore;
 
 DEFINE_LATENCY(op);
 

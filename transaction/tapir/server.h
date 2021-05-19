@@ -42,7 +42,7 @@
 #include "transaction/tapir/record.h"
 #include "transaction/tapir/tapir-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tapir {
 
@@ -76,8 +76,8 @@ public:
                                  const proto::FinalizeConsensusMessage &msg);
 };
 
-} // namespace specpaxos::store::tapir
-} // namespace specpaxos::store
-} // namespace specpaxos
+} // namespace dsnet::store::tapir
+} // namespace dsnet::store
+} // namespace dsnet
 
 #endif /* __TAPIR_SERVER_H__ */

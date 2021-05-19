@@ -41,7 +41,7 @@
 #include <string>
 #include <utility>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tapir {
 
@@ -90,8 +90,8 @@ private:
 
 };
 
-} // namespace specpaxos::store::tapir
-} // namespace specpaxos::store
-} // namespace specpaxos
+} // namespace dsnet::store::tapir
+} // namespace dsnet::store
+} // namespace dsnet
 
 #endif  /* __TAIR_RECORD_H__ */

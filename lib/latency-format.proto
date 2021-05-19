@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package specpaxos.latency.format;
+package dsnet.latency.format;
 
 message LatencyDist
 {

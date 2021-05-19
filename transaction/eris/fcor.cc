@@ -31,7 +31,7 @@
 
 #include "transaction/eris/fcor.h"
 
-using namespace specpaxos;
+using namespace dsnet;
 using namespace store;
 using namespace eris;
 using namespace proto;

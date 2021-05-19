@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 #include "transaction/apps/kvstore/txnserver.h"
 
-using namespace specpaxos::store;
-using namespace specpaxos::store::kvstore;
+using namespace dsnet::store;
+using namespace dsnet::store::kvstore;
 
 class KVTxnTest : public ::testing::Test
 {

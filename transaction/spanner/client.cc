@@ -30,7 +30,7 @@
 
 #include "transaction/spanner/client.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace spanner {
 
@@ -225,5 +225,5 @@ SpannerClient::SendRequest()
 
 } // namespace spanner
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 

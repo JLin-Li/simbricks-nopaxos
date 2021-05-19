@@ -35,7 +35,7 @@
 #include "lib/configuration.h"
 #include "replication/fastpaxos/fastpaxos-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace fastpaxos {
 
 class FastPaxosClient : public Client
@@ -86,7 +86,7 @@ protected:
     void UnloggedRequestTimeoutCallback();
 };
 
-} // namespace specpaxos::fastpaxos
-} // namespace specpaxos
+} // namespace dsnet::fastpaxos
+} // namespace dsnet
 
 #endif  /* _FASTPAXOS_CLIENT_H_ */

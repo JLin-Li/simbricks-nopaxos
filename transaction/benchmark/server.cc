@@ -40,8 +40,8 @@
 #include "transaction/benchmark/header.h"
 
 using namespace std;
-using namespace specpaxos;
-using namespace specpaxos::store;
+using namespace dsnet;
+using namespace dsnet::store;
 
 int
 main(int argc, char **argv)
@@ -347,4 +347,4 @@ main(int argc, char **argv)
     return 0;
 }
 
-// namespace specpaxos
+// namespace dsnet

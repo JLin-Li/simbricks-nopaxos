@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package specpaxos.spec.test;
+package dsnet.spec.test;
 
 message TestLogEntry
 {

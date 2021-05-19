@@ -88,15 +88,15 @@ protected:
 public:
     virtual ~Transport() {}
     virtual void RegisterReplica(TransportReceiver *receiver,
-                                 const specpaxos::Configuration &config,
+                                 const dsnet::Configuration &config,
                                  int groupIdx,
                                  int replicaIdx) = 0;
     /* Set addr to nullptr if receiver can be bound to any address */
     virtual void RegisterAddress(TransportReceiver *receiver,
-                                 const specpaxos::Configuration &config,
-                                 const specpaxos::ReplicaAddress *addr) = 0;
+                                 const dsnet::Configuration &config,
+                                 const dsnet::ReplicaAddress *addr) = 0;
     virtual void ListenOnMulticast(TransportReceiver *receiver,
-                                   const specpaxos::Configuration &config) = 0;
+                                   const dsnet::Configuration &config) = 0;
     virtual bool SendBuffer(TransportReceiver *src,
                             const TransportAddress &dst,
                             const void *buf,

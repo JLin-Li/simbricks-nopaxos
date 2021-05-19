@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package specpaxos.test;
+package dsnet.test;
 
 message TestMessage {
     required string test = 1;

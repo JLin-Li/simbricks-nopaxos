@@ -39,7 +39,7 @@
 
 #include <map>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace eris {
 
@@ -183,6 +183,6 @@ private:
 
 } // namespace eris
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __ERIS_FCOR_H__ */

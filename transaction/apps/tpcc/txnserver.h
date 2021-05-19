@@ -36,7 +36,7 @@
 
 #include <unordered_map>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tpcc {
 
@@ -72,6 +72,6 @@ private:
 
 } // namespace tpcc
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __TPCC_TXNSERVER_H__ */

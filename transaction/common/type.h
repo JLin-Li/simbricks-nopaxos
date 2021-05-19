@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include <string>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 
 typedef uint64_t txnid_t;       // Transaction id
@@ -50,6 +50,6 @@ typedef struct {
 } clientarg_t;
 
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* TRANSACTION_TYPE_H */

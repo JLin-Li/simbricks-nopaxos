@@ -36,7 +36,7 @@
 
 #include <stdlib.h>
 
-namespace specpaxos {
+namespace dsnet {
 
 Replica::Replica(const Configuration &configuration, int groupIdx, int replicaIdx,
                  bool initialize, Transport *transport, AppReplica *app)
@@ -92,4 +92,4 @@ Replica::UnloggedUpcall(const string &op, string &res)
     app->UnloggedUpcall(op, res);
 }
 
-} // namespace specpaxos
+} // namespace dsnet

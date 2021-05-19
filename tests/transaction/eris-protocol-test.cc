@@ -42,10 +42,10 @@
 #include <gtest/gtest.h>
 
 using google::protobuf::Message;
-using namespace specpaxos;
-using namespace specpaxos::store;
-using namespace specpaxos::store::eris;
-using namespace specpaxos::store::eris::proto;
+using namespace dsnet;
+using namespace dsnet::store;
+using namespace dsnet::store::eris;
+using namespace dsnet::store::eris::proto;
 using namespace std;
 
 class ErisTestApp : public AppReplica

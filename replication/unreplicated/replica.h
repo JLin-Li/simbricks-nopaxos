@@ -37,7 +37,7 @@
 
 #include "common/log.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace unreplicated {
 
 class UnreplicatedReplica : public Replica
@@ -69,7 +69,7 @@ private:
     std::map<uint64_t, ClientTableEntry> clientTable;
 };
 
-} // namespace specpaxos::unreplicated
-} // namespace specpaxos
+} // namespace dsnet::unreplicated
+} // namespace dsnet
 
 #endif  /* _UNREPLICATED_REPLICA_H_ */

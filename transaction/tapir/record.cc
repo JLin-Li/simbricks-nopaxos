@@ -30,7 +30,7 @@
 
 #include "transaction/tapir/record.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tapir {
 
@@ -124,6 +124,6 @@ Record::Empty() const
 }
 
 
-} // namespace specpaxos::store::tapir
-} // namespace specpaxos::store
-} // namespace specpaxos
+} // namespace dsnet::store::tapir
+} // namespace dsnet::store
+} // namespace dsnet

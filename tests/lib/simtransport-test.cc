@@ -31,11 +31,11 @@
 #include "lib/configuration.h"
 #include "lib/message.h"
 #include "lib/simtransport.h"
-#include "lib/tests/simtransport-testmessage.pb.h"
+#include "tests/lib/simtransport-testmessage.pb.h"
 
 #include <gtest/gtest.h>
 
-using namespace specpaxos::test;
+using namespace dsnet::test;
 using ::google::protobuf::Message;
 using std::vector;
 using std::map;
@@ -69,14 +69,14 @@ TestReceiver::ReceiveMessage(const TransportAddress &src,
 class SimTransportTest : public testing::Test
 {
 protected:
-    map<int, vector<specpaxos::ReplicaAddress> > replicaAddrs =
+    map<int, vector<dsnet::ReplicaAddress> > replicaAddrs =
     { {0, {
               { "localhost", "12345" },
               { "localhost", "12346" },
               { "localhost", "12347" }
           }
       } };
-    specpaxos::Configuration config{1, 3, 1, replicaAddrs};
+    dsnet::Configuration config{1, 3, 1, replicaAddrs};
 
     TestReceiver *receiver0;
     TestReceiver *receiver1;

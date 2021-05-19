@@ -31,7 +31,7 @@
 #include <iostream>
 #include "transaction/apps/kvstore/txnserver.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace kvstore {
 
@@ -255,4 +255,4 @@ KVTxnServer::ReleaseLocks(struct kvtxn_t *txn,
 
 } // namespace kvstore
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

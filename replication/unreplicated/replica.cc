@@ -35,7 +35,7 @@
 #include "lib/message.h"
 #include "lib/transport.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace unreplicated {
 
 using namespace proto;
@@ -153,5 +153,5 @@ UnreplicatedReplica::UpdateClientTable(const Request &req,
     entry.reply = reply;
 }
 
-} // namespace specpaxos::unreplicated
-} // namespace specpaxos
+} // namespace dsnet::unreplicated
+} // namespace dsnet

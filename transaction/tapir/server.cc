@@ -37,7 +37,7 @@
 #define RWarning(fmt, ...) Warning("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tapir {
 
@@ -262,6 +262,6 @@ TapirServer::HandleFinalizeConsensus(const TransportAddress &remote,
 }
 
 
-} // namespace specpaxos::store::tapir
-} // namespace specpaxos::store
-} // namespace specpaxos
+} // namespace dsnet::store::tapir
+} // namespace dsnet::store
+} // namespace dsnet

@@ -38,7 +38,7 @@
 #define RWarning(fmt, ...) Warning("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 
-namespace specpaxos {
+namespace dsnet {
 namespace nopaxos {
 
 using namespace proto;
@@ -1666,5 +1666,5 @@ NOPaxosReplica::RewindLogToOpnum(opnum_t opnum)
     this->nextMsgnum = this->log.LastViewstamp().msgnum + 1;
 }
 
-} // namespace specpaxos::nopaxos
-} // namespace specpaxos
+} // namespace dsnet::nopaxos
+} // namespace dsnet

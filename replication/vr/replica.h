@@ -42,7 +42,7 @@
 #include <memory>
 #include <list>
 
-namespace specpaxos {
+namespace dsnet {
 namespace vr {
 
 class VRReplica : public Replica
@@ -136,7 +136,7 @@ private:
                                 const proto::RecoveryResponseMessage &msg);
 };
 
-} // namespace specpaxos::vr
-} // namespace specpaxos
+} // namespace dsnet::vr
+} // namespace dsnet
 
 #endif  /* _VR_REPLICA_H_ */

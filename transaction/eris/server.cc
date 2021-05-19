@@ -35,7 +35,7 @@
 #define RWarning(fmt, ...) Warning("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace eris {
 
@@ -61,7 +61,7 @@ ErisServer::ErisServer(const Configuration &config, int myShard, int myIdx,
     this->lastCommittedOp = 0;
     this->lastExecutedOp = 0;
 
-    this->fcorClient = new specpaxos::vr::VRClient(fcorConfig, transport);
+    this->fcorClient = new dsnet::vr::VRClient(fcorConfig, transport);
     InitShardMsgNum();
 
     this->gapRequestTimeout = new Timeout(transport,
@@ -1915,5 +1915,5 @@ ErisServer::RewindLog(opnum_t opnum)
 
 } // namespace eris
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 

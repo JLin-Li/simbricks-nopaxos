@@ -4,7 +4,7 @@
 #include "lib/udptransport.h"
 #include "sequencer/sequencer.h"
 
-namespace specpaxos {
+namespace dsnet {
 
 const uint32_t NONFRAG_MAGIC = 0x20050318;
 
@@ -66,7 +66,7 @@ Sequencer::Increment(GroupId id) {
     return ++seq_nums_[id];
 }
 
-} // namespace specpaxos
+} // namespace dsnet
 
 int main(int argc, char *argv[]) {
     const char *config_path = nullptr;
@@ -93,9 +93,9 @@ int main(int argc, char *argv[]) {
         Panic("unable to read configuration file: %s\n", config_path);
     }
 
-    specpaxos::Configuration config(config_stream);
+    dsnet::Configuration config(config_stream);
     UDPTransport transport;
-    specpaxos::Sequencer sequencer(config, &transport, 0);
+    dsnet::Sequencer sequencer(config, &transport, 0);
     transport.Run();
 
     return 0;

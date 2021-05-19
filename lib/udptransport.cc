@@ -106,7 +106,7 @@ bool operator<(const UDPTransportAddress &a, const UDPTransportAddress &b)
 }
 
 UDPTransportAddress
-UDPTransport::LookupAddress(const specpaxos::ReplicaAddress &addr)
+UDPTransport::LookupAddress(const dsnet::ReplicaAddress &addr)
 {
     int res;
     struct addrinfo hints;
@@ -225,7 +225,7 @@ UDPTransport::~UDPTransport()
 
 void
 UDPTransport::RegisterInternal(TransportReceiver *receiver,
-                               const specpaxos::ReplicaAddress *addr,
+                               const dsnet::ReplicaAddress *addr,
                                int groupIdx, int replicaIdx)
 {
     struct sockaddr_in sin;
@@ -288,12 +288,12 @@ UDPTransport::RegisterInternal(TransportReceiver *receiver,
 
 void
 UDPTransport::ListenOnMulticast(TransportReceiver *src,
-                                const specpaxos::Configuration &config)
+                                const dsnet::Configuration &config)
 {
     if (configurations.find(src) == configurations.end()) {
         Panic("Register address first before listening on multicast");
     }
-    specpaxos::Configuration *canonical = configurations.at(src);
+    dsnet::Configuration *canonical = configurations.at(src);
 
     if (!canonical->multicast()) {
         // No multicast address specified
@@ -498,7 +498,7 @@ UDPTransport::OrderedMulticast(TransportReceiver *src,
     static size_t addr_len = src->GetAddress().Serialize().size();
 
     ASSERT(groups.size() > 0);
-    const specpaxos::Configuration *cfg = configurations[src];
+    const dsnet::Configuration *cfg = configurations[src];
     ASSERT(cfg != NULL);
 
     if (!replicaAddressesInitialized) {
@@ -757,7 +757,7 @@ deliver:
         // If so, deliver the message to all replicas for that
         // config, *except* if that replica was the sender of the
         // message.
-        const specpaxos::Configuration *cfg = it->second;
+        const dsnet::Configuration *cfg = it->second;
         for (auto &kv : replicaReceivers[cfg]) {
             shardnum_t groupIdx = kv.first;
             for (auto &kv2 : kv.second) {

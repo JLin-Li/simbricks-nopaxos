@@ -38,7 +38,7 @@
 #include <string>
 #include <string.h>
 
-namespace specpaxos {
+namespace dsnet {
 
 ReplicaAddress ParseReplicaAddress(const char *);
 
@@ -253,4 +253,4 @@ ParseReplicaAddress(const char *name)
             interface == nullptr ? string() : string(interface));
 }
 
-} // namespace specpaxos
+} // namespace dsnet

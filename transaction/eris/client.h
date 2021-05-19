@@ -39,7 +39,7 @@
 #include "transaction/common/type.h"
 #include "transaction/eris/eris-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace eris {
 
@@ -114,6 +114,6 @@ private:
 
 } // namespace eris
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __ERIS_CLIENT_H__ */

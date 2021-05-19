@@ -37,7 +37,7 @@
 #include "lib/configuration.h"
 #include "replication/nopaxos/nopaxos-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace nopaxos {
 
 class NOPaxosClient : public Client
@@ -90,7 +90,7 @@ private:
     bool IsLeader(view_t view, int replicaIdx);
 };
 
-} // namespace specpaxos::nopaxos
-} // namespace specpaxos
+} // namespace dsnet::nopaxos
+} // namespace dsnet
 
 #endif /* _NOPAXOS_CLIENT_H_ */

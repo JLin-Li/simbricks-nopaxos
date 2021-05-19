@@ -38,7 +38,7 @@
 #include <string>
 #include <list>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 
 class TxnServer : public AppReplica
@@ -54,6 +54,6 @@ public:
 };
 
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __TXNSERVER_H__ */

@@ -35,7 +35,7 @@
 #define RWarning(fmt, ...) Warning("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace spanner {
 
@@ -359,4 +359,4 @@ SpannerServer::AmLeader()
 
 } // namespace granola
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

@@ -38,7 +38,7 @@
 #include "lib/transport.h"
 #include "lib/viewstamp.h"
 
-namespace specpaxos {
+namespace dsnet {
 
 class Replica;
 
@@ -111,6 +111,6 @@ protected:
 
 #include "replica-inl.h"
 
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif  /* _COMMON_REPLICA_H */

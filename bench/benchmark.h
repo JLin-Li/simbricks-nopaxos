@@ -34,7 +34,7 @@
 #include "lib/latency.h"
 #include "lib/transport.h"
 
-namespace specpaxos {
+namespace dsnet {
 
 class BenchmarkClient
 {
@@ -65,4 +65,4 @@ private:
     int opLastInterval;
 };
 
-} // namespace specpaxos
+} // namespace dsnet

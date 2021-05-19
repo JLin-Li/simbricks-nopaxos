@@ -2,12 +2,12 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package specpaxos.nopaxos.proto;
+package dsnet.nopaxos.proto;
 
 message RequestMessage {
   required uint64 sessnum = 1;
   required uint64 msgnum = 2;
-  required specpaxos.Request req = 3;
+  required dsnet.Request req = 3;
 }
 
 message ReplyMessage {
@@ -20,7 +20,7 @@ message ReplyMessage {
 }
 
 message UnloggedRequestMessage {
-  required specpaxos.UnloggedRequest req = 1;
+  required dsnet.UnloggedRequest req = 1;
 }
 
 message UnloggedReplyMessage {
@@ -40,7 +40,7 @@ message GapReplyMessage {
   required bool isfound = 4;
   required bool isgap = 5;
   required uint32 replicaidx = 6;
-  optional specpaxos.Request req = 7;
+  optional dsnet.Request req = 7;
 }
 
 message StateTransferRequestMessage {
@@ -55,7 +55,7 @@ message StateTransferReplyMessage {
   required uint64 view = 2;
   required uint64 begin = 3;
   required uint64 end = 4;
-  repeated specpaxos.MsgLogEntry entries = 5;
+  repeated dsnet.MsgLogEntry entries = 5;
 }
 
 message GapCommitMessage {

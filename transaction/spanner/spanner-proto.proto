@@ -2,7 +2,7 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package specpaxos.store.spanner.proto;
+package dsnet.store.spanner.proto;
 
 enum RequestType {
     UNKNOWN = 0;

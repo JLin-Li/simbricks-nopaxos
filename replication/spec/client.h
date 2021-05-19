@@ -36,7 +36,7 @@
 #include "common/quorumset.h"
 #include "replication/spec/spec-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace spec {
 
 class SpecClient : public Client
@@ -89,7 +89,7 @@ protected:
     void UnloggedRequestTimeoutCallback();
 };
 
-} // namespace specpaxos::spec
-} // namespace specpaxos
+} // namespace dsnet::spec
+} // namespace dsnet
 
 #endif  /* _SPEC_CLIENT_H_ */

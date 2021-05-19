@@ -40,7 +40,7 @@
 
 using namespace std;
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace kvstore {
 

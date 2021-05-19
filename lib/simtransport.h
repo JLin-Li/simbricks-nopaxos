@@ -70,7 +70,7 @@ public:
     SimulatedTransport(bool continuous = false);
     ~SimulatedTransport();
     void RegisterInternal(TransportReceiver *receiver,
-                          const specpaxos::ReplicaAddress *addr,
+                          const dsnet::ReplicaAddress *addr,
                           int groupIdx, int replicaIdx) override;
     void Run() override;
     void Stop() override;
@@ -100,7 +100,7 @@ protected:
                     const void *buf, size_t len) override;
 
     SimulatedTransportAddress
-    LookupAddress(const specpaxos::ReplicaAddress &addr) override;
+    LookupAddress(const dsnet::ReplicaAddress &addr) override;
 
 private:
     struct QueuedMessage {
@@ -123,7 +123,7 @@ private:
     std::map<int, TransportReceiver *> endpoints;
     int lastAddr;
     std::map<int, std::pair<int, int> > replicaIdxs; // address to <groupIdx, replicaIdx>
-    std::unordered_map<specpaxos::ReplicaAddress, SimulatedTransportAddress> addrLookupMap;
+    std::unordered_map<dsnet::ReplicaAddress, SimulatedTransportAddress> addrLookupMap;
     std::vector<int> sequencerAddresses;
     int fcAddress;
     std::multimap<int, filter_t> filters;

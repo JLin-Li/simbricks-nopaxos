@@ -40,7 +40,7 @@
 #include <string>
 #include <map>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 
 class TxnClient
@@ -57,6 +57,6 @@ private:
 };
 
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __TXNCLIENT_H__ */

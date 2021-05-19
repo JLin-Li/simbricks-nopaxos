@@ -32,7 +32,7 @@
 
 #include <gtest/gtest.h>
 
-using namespace specpaxos;
+using namespace dsnet;
 using std::vector;
 using std::map;
 

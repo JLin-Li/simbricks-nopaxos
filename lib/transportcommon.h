@@ -59,7 +59,7 @@ public:
 
     virtual void
     RegisterReplica(TransportReceiver *receiver,
-                    const specpaxos::Configuration &config,
+                    const dsnet::Configuration &config,
                     int groupIdx, int replicaIdx) override
     {
         ASSERT(groupIdx < config.g);
@@ -71,8 +71,8 @@ public:
 
     virtual void
     RegisterAddress(TransportReceiver *receiver,
-                    const specpaxos::Configuration &config,
-                    const specpaxos::ReplicaAddress *addr) override
+                    const dsnet::Configuration &config,
+                    const dsnet::ReplicaAddress *addr) override
     {
         RegisterConfiguration(receiver, config, -1, -1);
         RegisterInternal(receiver, addr, -1, -1);
@@ -80,7 +80,7 @@ public:
 
     virtual void
     ListenOnMulticast(TransportReceiver *receiver,
-                      const specpaxos::Configuration &config) override
+                      const dsnet::Configuration &config) override
     {
         // Transport that requires multicast support needs to override
         // this function
@@ -90,7 +90,7 @@ public:
     virtual bool
     SendBufferToAll(TransportReceiver *src, const void *buf, size_t len) override
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
 
         if (!replicaAddressesInitialized) {
             LookupAddresses();
@@ -132,7 +132,7 @@ public:
                          int replicaIdx,
                          const Message &m) override
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
         ASSERT(cfg != NULL);
 
         if (!replicaAddressesInitialized) {
@@ -147,7 +147,7 @@ public:
 
     virtual bool SendMessageToFC(TransportReceiver *src, const Message &m) override
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
         ASSERT(cfg != NULL);
 
         if (!replicaAddressesInitialized) {
@@ -176,7 +176,7 @@ public:
     SendMessageToAllGroups(TransportReceiver *src,
                            const Message &m)
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
         ASSERT(cfg != NULL);
 
         if (!replicaAddressesInitialized) {
@@ -210,7 +210,7 @@ public:
                         const std::vector<int> &groups,
                         const Message &m) override
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
         ASSERT(cfg != NULL);
 
         if (!replicaAddressesInitialized) {
@@ -249,32 +249,32 @@ public:
 
 protected:
     virtual void RegisterInternal(TransportReceiver *receiver,
-                                  const specpaxos::ReplicaAddress *addr,
+                                  const dsnet::ReplicaAddress *addr,
                                   int groupIdx, int replicaIdx) = 0;
     virtual bool SendMessageInternal(TransportReceiver *src,
                                      const ADDR &dst,
                                      const Message &m) = 0;
-    virtual ADDR LookupAddress(const specpaxos::ReplicaAddress &addr) = 0;
+    virtual ADDR LookupAddress(const dsnet::ReplicaAddress &addr) = 0;
 
-    std::unordered_map<specpaxos::Configuration,
-        specpaxos::Configuration *> canonicalConfigs;
+    std::unordered_map<dsnet::Configuration,
+        dsnet::Configuration *> canonicalConfigs;
     std::map<TransportReceiver *,
-        specpaxos::Configuration *> configurations;
-    std::map<const specpaxos::Configuration *,
+        dsnet::Configuration *> configurations;
+    std::map<const dsnet::Configuration *,
         std::map<int, std::map<int, ADDR> > > replicaAddresses; // config->groupid->replicaid->ADDR
-    std::map<const specpaxos::Configuration *,
+    std::map<const dsnet::Configuration *,
         std::map<int, std::map<int, TransportReceiver *> > > replicaReceivers;
-    std::map<const specpaxos::Configuration *,
+    std::map<const dsnet::Configuration *,
         std::vector<ADDR>> sequencerAddresses;
-    std::map<const specpaxos::Configuration *, ADDR> multicastAddresses;
-    std::map<const specpaxos::Configuration *, ADDR> fcAddresses;
+    std::map<const dsnet::Configuration *, ADDR> multicastAddresses;
+    std::map<const dsnet::Configuration *, ADDR> fcAddresses;
     std::map<TransportReceiver *, int> replicaGroups;
     bool replicaAddressesInitialized;
 
     /* configs is a map of groupIdx to Configuration */
-    virtual specpaxos::Configuration *
+    virtual dsnet::Configuration *
     RegisterConfiguration(TransportReceiver *receiver,
-                          const specpaxos::Configuration &config,
+                          const dsnet::Configuration &config,
                           int groupIdx,
                           int replicaIdx) {
         ASSERT(receiver != NULL);
@@ -283,10 +283,10 @@ protected:
         // pointer to the canonical copy; if not, create one. This
         // allows us to use that pointer as a key in various
         // structures.
-        specpaxos::Configuration *canonical
+        dsnet::Configuration *canonical
             = canonicalConfigs[config];
         if (canonical == NULL) {
-            canonical = new specpaxos::Configuration(config);
+            canonical = new dsnet::Configuration(config);
             canonicalConfigs[config] = canonical;
         }
         // Record configuration
@@ -319,7 +319,7 @@ protected:
         // For every configuration, look up all addresses and cache
         // them.
         for (auto &kv : canonicalConfigs) {
-            specpaxos::Configuration *cfg = kv.second;
+            dsnet::Configuration *cfg = kv.second;
 
             for (int i = 0; i < cfg->g; i++) {
                 for (int j = 0; j < cfg->n; j++) {

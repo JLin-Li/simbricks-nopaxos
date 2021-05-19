@@ -50,10 +50,10 @@
 
 #define TESTDIR "spec/tests/merge-tests"
 
-using namespace specpaxos;
-using namespace specpaxos::spec;
-using namespace specpaxos::spec::proto;
-using namespace specpaxos::spec::test;
+using namespace dsnet;
+using namespace dsnet::spec;
+using namespace dsnet::spec::proto;
+using namespace dsnet::spec::test;
 using namespace google::protobuf;
 
 class LogMergeTest : public testing::Test

@@ -43,7 +43,7 @@
 #define RWarning(fmt, ...) Warning("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 
-namespace specpaxos {
+namespace dsnet {
 namespace fastpaxos {
 
 using namespace proto;
@@ -782,5 +782,5 @@ FastPaxosReplica::HandleStateTransfer(const TransportAddress &remote,
     }
 }
 
-} // namespace specpaxos::fastpaxos
-} // namespace specpaxos
+} // namespace dsnet::fastpaxos
+} // namespace dsnet

@@ -62,13 +62,13 @@ template <> struct hash<pair<uint64_t, uint64_t> >
 
 }
 
-namespace specpaxos {
+namespace dsnet {
 namespace spec {
 
 const opnum_t LOG_FUDGE = 20;
 const opnum_t DVC_FUDGE = 25;
 
-using namespace specpaxos::spec::proto;
+using namespace dsnet::spec::proto;
 
 SpecReplica::SpecReplica(Configuration config, int myIdx,
                          bool initialize,
@@ -1642,6 +1642,6 @@ SpecReplica::HandleFillDVCGap(const TransportAddress &remote,
 }
 
 
-} // namespace specpaxos::spec
+} // namespace dsnet::spec
 
-} // namespace specpaxos
+} // namespace dsnet

@@ -35,7 +35,7 @@
 #define RWarning(fmt, ...) Warning("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace unreplicated {
 
@@ -147,5 +147,5 @@ UnreplicatedServer::UpdateClientTable(const Request &req, const ReplyMessage &re
 
 } // namespace unreplicated
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 

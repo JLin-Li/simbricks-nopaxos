@@ -38,7 +38,7 @@
 #include "transaction/common/backend/lockserver.h"
 #include "transaction/apps/kvstore/kvstore-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace kvstore {
 
@@ -83,6 +83,6 @@ private:
 
 } // namespace kvstore
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __KVSTORE_TXNSERVER_H__ */

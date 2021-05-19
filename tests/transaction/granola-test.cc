@@ -46,10 +46,10 @@
 #include <random>
 
 using google::protobuf::Message;
-using namespace specpaxos;
-using namespace specpaxos::store;
-using namespace specpaxos::store::kvstore;
-using namespace specpaxos::store::granola;
+using namespace dsnet;
+using namespace dsnet::store;
+using namespace dsnet::store::kvstore;
+using namespace dsnet::store::granola;
 
 class GranolaTest : public ::testing::Test
 {

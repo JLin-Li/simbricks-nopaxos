@@ -147,7 +147,7 @@ main(int argc, char **argv)
         Panic("Requires at least 1 config file.");
     }
 
-    map<int, specpaxos::Configuration *> configs;
+    map<int, dsnet::Configuration *> configs;
     for (unsigned int i = 0; i < configPaths.size(); i++) {
         ifstream configStream(configPaths[i]);
         if (configStream.fail()) {
@@ -155,7 +155,7 @@ main(int argc, char **argv)
                   configPaths[i]);
         }
 
-        specpaxos::Configuration *config = new specpaxos::Configuration(configStream);
+        dsnet::Configuration *config = new dsnet::Configuration(configStream);
         configs.insert(make_pair(i, config));
     }
 

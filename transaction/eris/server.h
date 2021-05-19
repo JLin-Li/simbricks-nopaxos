@@ -46,7 +46,7 @@
 #include <set>
 #include <memory>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace eris {
 
@@ -159,7 +159,7 @@ private:
     std::set<struct PendingRequest, __pendreq_key_compare> pendingRequests;
 
     /* Failure coordinator */
-    specpaxos::vr::VRClient *fcorClient;
+    dsnet::vr::VRClient *fcorClient;
 
     /* Blocked operations due to locking */
     std::unordered_map<txnid_t, opnum_t> blockedTxns;
@@ -260,7 +260,7 @@ private:
     void ProcessNextOperation(const proto::RequestMessage &msg,
                               const viewstamp_t &vs,
                               const LogEntryState &state);
-    void UpdateClientTable(const specpaxos::Request &req);
+    void UpdateClientTable(const dsnet::Request &req);
     void AddPendingRequest(const proto::RequestMessage &msg,
                            sessnum_t sessnum, msgnum_t msgnum);
     void ProcessPendingRequests();
@@ -307,6 +307,6 @@ private:
 
 } // namespace eris
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __ERIS_SERVER_H__ */

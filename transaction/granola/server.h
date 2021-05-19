@@ -44,7 +44,7 @@
 #include <string>
 #include <map>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace granola {
 
@@ -191,6 +191,6 @@ private:
 
 } // namespace granola
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* _GRANOLA_SERVER_H_ */

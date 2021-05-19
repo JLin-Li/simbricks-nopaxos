@@ -40,9 +40,9 @@
 #include <gtest/gtest.h>
 
 using google::protobuf::Message;
-using namespace specpaxos;
-using namespace specpaxos::nopaxos;
-using namespace specpaxos::nopaxos::proto;
+using namespace dsnet;
+using namespace dsnet::nopaxos;
+using namespace dsnet::nopaxos::proto;
 
 class NOPaxosTestApp : public AppReplica
 {

@@ -41,7 +41,7 @@
 #include "transaction/tapir/irclient.h"
 #include "transaction/tapir/tapir-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace tapir {
 
@@ -74,7 +74,7 @@ private:
 
 } // namespace tapir
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* __TAPIR_CLIENT_H__ */
 

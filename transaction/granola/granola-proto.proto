@@ -2,7 +2,7 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package specpaxos.store.granola.proto;
+package dsnet.store.granola.proto;
 
 enum Status {
     COMMIT = 0;

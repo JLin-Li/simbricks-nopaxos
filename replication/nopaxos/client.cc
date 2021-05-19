@@ -33,7 +33,7 @@
 #include "lib/assert.h"
 #include "lib/message.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace nopaxos {
 
 NOPaxosClient::NOPaxosClient(const Configuration &config,
@@ -260,5 +260,5 @@ NOPaxosClient::IsLeader(view_t view, int replicaIdx)
     return (config.GetLeaderIndex(view) == replicaIdx);
 }
 
-} // namespace specpaxos::nopaxos
-} // namespace specpaxos
+} // namespace dsnet::nopaxos
+} // namespace dsnet

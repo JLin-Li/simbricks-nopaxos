@@ -30,7 +30,7 @@
 
 #include "transaction/common/backend/txnserver.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 
 TxnServer::TxnServer() { }
@@ -51,4 +51,4 @@ TxnServer::ReplicaUpcall(opnum_t opnum, const string &str1, string &str2, void *
 }
 
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet

@@ -41,7 +41,7 @@
 #include <memory>
 #include <list>
 
-namespace specpaxos {
+namespace dsnet {
 namespace fastpaxos {
 
 class FastPaxosReplica : public Replica
@@ -109,7 +109,7 @@ private:
                              const proto::StateTransferMessage &msg);
 };
 
-} // namespace specpaxos::vr
-} // namespace specpaxos
+} // namespace dsnet::vr
+} // namespace dsnet
 
 #endif  /* _FASTPAXOS_REPLICA_H_ */

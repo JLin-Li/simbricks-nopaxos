@@ -73,10 +73,10 @@ public:
                  int dscp = 0, event_base *evbase = nullptr);
     virtual ~UDPTransport();
     virtual void RegisterInternal(TransportReceiver *receiver,
-                                  const specpaxos::ReplicaAddress *addr,
+                                  const dsnet::ReplicaAddress *addr,
                                   int groupIdx, int replicaIdx) override;
     virtual void ListenOnMulticast(TransportReceiver *receiver,
-                                   const specpaxos::Configuration &config) override;
+                                   const dsnet::Configuration &config) override;
     virtual bool SendBuffer(TransportReceiver *src,
                             const TransportAddress &dst,
                             const void *buffer,
@@ -118,8 +118,8 @@ private:
     std::vector<event *> signalEvents;
     std::map<int, TransportReceiver*> receivers; // fd -> receiver
     std::map<TransportReceiver*, int> fds; // receiver -> fd
-    std::map<const specpaxos::Configuration *, int> multicastFds;
-    std::map<int, const specpaxos::Configuration *> multicastConfigs;
+    std::map<const dsnet::Configuration *, int> multicastFds;
+    std::map<int, const dsnet::Configuration *> multicastConfigs;
     int lastTimerId;
     std::map<int, UDPTransportTimerInfo *> timers;
     std::mutex timersLock;
@@ -141,7 +141,7 @@ private:
                              const Message &m) override;
 
     UDPTransportAddress
-    LookupAddress(const specpaxos::ReplicaAddress &addr) override;
+    LookupAddress(const dsnet::ReplicaAddress &addr) override;
     void OnReadable(int fd);
     void ProcessPacket(int fd, sockaddr_in sender, socklen_t senderSize,
                      char *buf, ssize_t sz);

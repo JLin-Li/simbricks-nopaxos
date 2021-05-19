@@ -42,7 +42,7 @@
 #include <string>
 #include <map>
 
-namespace specpaxos {
+namespace dsnet {
 namespace store {
 namespace unreplicated {
 
@@ -81,6 +81,6 @@ private:
 
 } // namespace unreplicated
 } // namespace store
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif /* _STORE_UNREPLICATED_SERVER_H_ */

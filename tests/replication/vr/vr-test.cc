@@ -49,9 +49,9 @@ static string clientLastOp;
 static string clientLastReply;
 
 using google::protobuf::Message;
-using namespace specpaxos;
-using namespace specpaxos::vr;
-using namespace specpaxos::vr::proto;
+using namespace dsnet;
+using namespace dsnet::vr;
+using namespace dsnet::vr::proto;
 using std::map;
 using std::vector;
 using std::pair;

@@ -40,7 +40,7 @@
 #include <sstream>
 #include <algorithm>
 
-namespace specpaxos {
+namespace dsnet {
 
 DEFINE_LATENCY(op);
 
@@ -139,4 +139,4 @@ BenchmarkClient::Finish()
            completedOps, VA_TIMEVAL_DIFF(diff));
 }
 
-} // namespace specpaxos
+} // namespace dsnet

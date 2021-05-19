@@ -85,7 +85,7 @@ SimulatedTransport::~SimulatedTransport()
 
 void
 SimulatedTransport::RegisterInternal(TransportReceiver *receiver,
-                                     const specpaxos::ReplicaAddress *addr,
+                                     const dsnet::ReplicaAddress *addr,
                                      int groupIdx, int replicaIdx)
 {
     // Allocate an endpoint
@@ -179,7 +179,7 @@ SimulatedTransport::OrderedMulticast(TransportReceiver *src,
         stamp.seqnums[groupIdx] = this->noCounters[groupIdx];
     }
 
-    const specpaxos::Configuration *cfg = this->configurations[src];
+    const dsnet::Configuration *cfg = this->configurations[src];
     ASSERT(cfg != NULL);
 
     if (!this->replicaAddressesInitialized) {
@@ -201,7 +201,7 @@ SimulatedTransport::OrderedMulticast(TransportReceiver *src,
 }
 
 SimulatedTransportAddress
-SimulatedTransport::LookupAddress(const specpaxos::ReplicaAddress &addr)
+SimulatedTransport::LookupAddress(const dsnet::ReplicaAddress &addr)
 {
     if (addrLookupMap.find(addr) != addrLookupMap.end()) {
         return addrLookupMap.at(addr);

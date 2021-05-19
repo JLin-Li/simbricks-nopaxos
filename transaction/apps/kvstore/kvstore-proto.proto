@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package specpaxos.store.kvstore.proto;
+package dsnet.store.kvstore.proto;
 
 message GetMessage {
   required string key = 1;

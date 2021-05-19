@@ -2,7 +2,7 @@ syntax = "proto2";
 
 import "common/request.proto";
 
-package specpaxos.store.tapir.proto;
+package dsnet.store.tapir.proto;
 
 message TimestampMessage {
     required uint64 id = 1;
