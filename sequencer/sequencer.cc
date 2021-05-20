@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
     }
 
     dsnet::Configuration config(config_stream);
-    UDPTransport transport;
+    dsnet::UDPTransport transport;
     dsnet::Sequencer sequencer(config, &transport, 0);
     transport.Run();
 

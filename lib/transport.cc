@@ -31,6 +31,8 @@
 #include "lib/assert.h"
 #include "lib/transport.h"
 
+namespace dsnet {
+
 TransportReceiver::~TransportReceiver()
 {
     delete this->myAddress;
@@ -123,3 +125,5 @@ Timeout::Active() const
 {
     return (timerId != 0);
 }
+
+} // namespace dsnet

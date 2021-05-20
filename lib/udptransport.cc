@@ -56,6 +56,8 @@
 #include <linux/ip.h>
 #include <linux/udp.h>
 
+namespace dsnet {
+
 const size_t MAX_UDP_MESSAGE_SIZE = 9000; // XXX
 const int SOCKET_BUF_SIZE = 10485760;
 
@@ -914,3 +916,5 @@ UDPTransport::SignalCallback(evutil_socket_t fd, short what, void *arg)
     transport->Stop();
     exit(1);
 }
+
+} // namespace dsnet

@@ -121,7 +121,7 @@ main(int argc, char **argv)
         Usage(argv[0]);
     }
 
-    UDPTransport *transport = new UDPTransport();
+    dsnet::UDPTransport *transport = new dsnet::UDPTransport();
     Fcor *fcor = new Fcor(erisConfig, transport);
     VRReplica *replica = new VRReplica(config, index, true, transport, 1, fcor);
 

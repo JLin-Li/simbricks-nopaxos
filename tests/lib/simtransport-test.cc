@@ -36,6 +36,7 @@
 #include <gtest/gtest.h>
 
 using namespace dsnet::test;
+using namespace dsnet;
 using ::google::protobuf::Message;
 using std::vector;
 using std::map;
@@ -82,12 +83,12 @@ protected:
     TestReceiver *receiver1;
     TestReceiver *receiver2;
 
-    SimulatedTransport *transport;
+    dsnet::SimulatedTransport *transport;
 
     virtual void SetUp() {
         receiver0 = new TestReceiver();
         receiver1 = new TestReceiver();
-        receiver2  = new TestReceiver();
+        receiver2 = new TestReceiver();
 
         transport = new SimulatedTransport();
         transport->RegisterReplica(receiver0, config, 0, 0);

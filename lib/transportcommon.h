@@ -29,8 +29,7 @@
  *
  **********************************************************************/
 
-#ifndef _LIB_TRANSPORTCOMMON_H_
-#define _LIB_TRANSPORTCOMMON_H_
+#pragma once
 
 #include "lib/assert.h"
 #include "lib/configuration.h"
@@ -38,6 +37,8 @@
 
 #include <map>
 #include <unordered_map>
+
+namespace dsnet {
 
 template <typename ADDR>
 class TransportCommon : public Transport
@@ -349,4 +350,4 @@ protected:
     }
 };
 
-#endif // _LIB_TRANSPORTCOMMON_H_
+} // namespace dsnet

@@ -209,7 +209,7 @@ main(int argc, char **argv)
         Usage(argv[0]);
     }
 
-    UDPTransport transport(dropRate, reorderRate, dscp, nullptr);
+    dsnet::UDPTransport transport(dropRate, reorderRate, dscp, nullptr);
 
     dsnet::Replica *replica;
     switch (proto) {

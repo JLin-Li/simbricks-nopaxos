@@ -28,8 +28,7 @@
  *
  **********************************************************************/
 
-#ifndef _LIB_TRANSPORT_H_
-#define _LIB_TRANSPORT_H_
+#pragma once
 
 #include "lib/configuration.h"
 
@@ -38,6 +37,8 @@
 #include <list>
 #include <map>
 #include <unordered_map>
+
+namespace dsnet {
 
 class TransportAddress
 {
@@ -168,4 +169,4 @@ private:
     int timerId;
 };
 
-#endif  // _LIB_TRANSPORT_H_
+} // namespace dsnet

@@ -29,8 +29,7 @@
  *
  **********************************************************************/
 
-#ifndef _LIB_SIMTRANSPORT_H_
-#define _LIB_SIMTRANSPORT_H_
+#pragma once
 
 #include "lib/transport.h"
 #include "lib/transportcommon.h"
@@ -40,6 +39,8 @@
 #include <unordered_map>
 #include <functional>
 #include <mutex>
+
+namespace dsnet {
 
 class SimulatedTransportAddress : public TransportAddress
 {
@@ -147,4 +148,4 @@ private:
     void RegisterFC();
 };
 
-#endif  // _LIB_SIMTRANSPORT_H_
+} // namespace dsnet

@@ -200,7 +200,7 @@ int main(int argc, char **argv)
     }
     dsnet::Configuration config(configStream);
 
-    UDPTransport transport(0, 0, dscp);
+    dsnet::UDPTransport transport(0, 0, dscp);
     std::vector<dsnet::Client *> clients;
     std::vector<dsnet::BenchmarkClient *> benchClients;
 
@@ -240,7 +240,7 @@ int main(int argc, char **argv)
         benchClients.push_back(bench);
     }
 
-    Timeout checkTimeout(&transport, 100, [&]() {
+    dsnet::Timeout checkTimeout(&transport, 100, [&]() {
             for (auto x : benchClients) {
                 if (!x->done) {
                     return;

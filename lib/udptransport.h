@@ -29,8 +29,7 @@
  *
  **********************************************************************/
 
-#ifndef _LIB_UDPTRANSPORT_H_
-#define _LIB_UDPTRANSPORT_H_
+#pragma once
 
 #include "lib/configuration.h"
 #include "lib/transport.h"
@@ -46,6 +45,8 @@
 #include <netinet/in.h>
 #include <map>
 #include <mutex>
+
+namespace dsnet {
 
 class UDPTransportAddress : public TransportAddress
 {
@@ -156,4 +157,4 @@ private:
                                short what, void *arg);
 };
 
-#endif  // _LIB_UDPTRANSPORT_H_
+} // namespace dsnet

@@ -34,6 +34,8 @@
 #include "lib/simtransport.h"
 #include <google/protobuf/message.h>
 
+namespace dsnet {
+
 SimulatedTransportAddress::SimulatedTransportAddress(int addr)
     : addr(addr)
 {
@@ -317,3 +319,5 @@ SimulatedTransport::SessionChange()
     ++this->sequencerID;
     noCounters.clear();
 }
+
+} // namespace dsnet
