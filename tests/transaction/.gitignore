@@ -4,3 +4,7 @@ granola-test
 unreplicated-test
 spanner-test
 tapir-test
+kvstore-test
+lockserver-test
+versionstore-test
+kvtxn-test
