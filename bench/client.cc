@@ -35,10 +35,10 @@
 #include "bench/benchmark.h"
 #include "common/client.h"
 #include "lib/configuration.h"
-#include "fastpaxos/client.h"
-#include "unreplicated/client.h"
-#include "vr/client.h"
-#include "nopaxos/client.h"
+#include "replication/vr/client.h"
+#include "replication/fastpaxos/client.h"
+#include "replication/unreplicated/client.h"
+#include "replication/nopaxos/client.h"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -198,40 +198,40 @@ int main(int argc, char **argv)
                 configPath);
         Usage(argv[0]);
     }
-    specpaxos::Configuration config(configStream);
+    dsnet::Configuration config(configStream);
 
-    UDPTransport transport(0, 0, dscp);
-    std::vector<specpaxos::Client *> clients;
-    std::vector<specpaxos::BenchmarkClient *> benchClients;
+    dsnet::UDPTransport transport(0, 0, dscp);
+    std::vector<dsnet::Client *> clients;
+    std::vector<dsnet::BenchmarkClient *> benchClients;
 
     for (int i = 0; i < numClients; i++) {
-        specpaxos::Client *client;
+        dsnet::Client *client;
         switch (proto) {
         case PROTO_UNREPLICATED:
             client =
-                new specpaxos::unreplicated::UnreplicatedClient(config,
+                new dsnet::unreplicated::UnreplicatedClient(config,
                                                                 &transport);
             break;
 
         case PROTO_VR:
-            client = new specpaxos::vr::VRClient(config, &transport);
+            client = new dsnet::vr::VRClient(config, &transport);
             break;
 
         case PROTO_FASTPAXOS:
-            client = new specpaxos::fastpaxos::FastPaxosClient(config,
+            client = new dsnet::fastpaxos::FastPaxosClient(config,
                                                                &transport);
             break;
 
 	case PROTO_NOPAXOS:
-	    client = new specpaxos::nopaxos::NOPaxosClient(config, &transport);
+	    client = new dsnet::nopaxos::NOPaxosClient(config, &transport);
 	    break;
 
         default:
             NOT_REACHABLE();
         }
 
-        specpaxos::BenchmarkClient *bench =
-            new specpaxos::BenchmarkClient(*client, transport,
+        dsnet::BenchmarkClient *bench =
+            new dsnet::BenchmarkClient(*client, transport,
                                            duration, delay,
                                            tputInterval);
 
@@ -240,7 +240,7 @@ int main(int argc, char **argv)
         benchClients.push_back(bench);
     }
 
-    Timeout checkTimeout(&transport, 100, [&]() {
+    dsnet::Timeout checkTimeout(&transport, 100, [&]() {
             for (auto x : benchClients) {
                 if (!x->done) {
                     return;

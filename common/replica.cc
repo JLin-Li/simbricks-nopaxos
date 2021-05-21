@@ -36,14 +36,14 @@
 
 #include <stdlib.h>
 
-namespace specpaxos {
+namespace dsnet {
 
 Replica::Replica(const Configuration &configuration, int groupIdx, int replicaIdx,
                  bool initialize, Transport *transport, AppReplica *app)
     : configuration(configuration), groupIdx(groupIdx), replicaIdx(replicaIdx),
     transport(transport), app(app)
 {
-    transport->Register(this, configuration, groupIdx, replicaIdx);
+    transport->RegisterReplica(this, configuration, groupIdx, replicaIdx);
 }
 
 Replica::~Replica()
@@ -66,6 +66,21 @@ Replica::ReplicaUpcall(opnum_t opnum, const string &op, string &res, void *arg, 
 }
 
 void
+Replica::Rollback(opnum_t current, opnum_t to, Log &log)
+{
+    Debug("Making rollback-upcall from " FMT_OPNUM " to " FMT_OPNUM,
+          current, to);
+
+    std::map<opnum_t, string> reqs;
+    for (opnum_t x = current; x > to; x--) {
+        reqs.insert(std::pair<opnum_t, string>(x,
+                                                log.Find(x)->request.op()));
+    }
+
+    app->RollbackUpcall(current, to, reqs);
+}
+
+void
 Replica::Commit(opnum_t op)
 {
     app->CommitUpcall(op);
@@ -77,4 +92,4 @@ Replica::UnloggedUpcall(const string &op, string &res)
     app->UnloggedUpcall(op, res);
 }
 
-} // namespace specpaxos
+} // namespace dsnet

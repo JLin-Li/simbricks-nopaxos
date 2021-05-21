@@ -35,7 +35,7 @@
 
 #include <random>
 
-namespace specpaxos {
+namespace dsnet {
 
 Client::Client(const Configuration &config, Transport *transport,
                uint64_t clientid)
@@ -53,7 +53,7 @@ Client::Client(const Configuration &config, Transport *transport,
         this->clientid = dis(gen);
     }
 
-    transport->Register(this, config, -1, -1);
+    transport->RegisterAddress(this, config, nullptr);
 }
 
 Client::~Client()
@@ -82,4 +82,4 @@ void
 Client::InvokeAsync(const string &request) {
     Panic("Protocol does not support InvokeAsync");
 }
-} // namespace specpaxos
+} // namespace dsnet

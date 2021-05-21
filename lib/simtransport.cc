@@ -34,6 +34,8 @@
 #include "lib/simtransport.h"
 #include <google/protobuf/message.h>
 
+namespace dsnet {
+
 SimulatedTransportAddress::SimulatedTransportAddress(int addr)
     : addr(addr)
 {
@@ -51,6 +53,12 @@ SimulatedTransportAddress::clone() const
 {
     SimulatedTransportAddress *c = new SimulatedTransportAddress(addr);
     return c;
+}
+
+std::string
+SimulatedTransportAddress::Serialize() const
+{
+    return "";
 }
 
 bool
@@ -78,41 +86,23 @@ SimulatedTransport::~SimulatedTransport()
 }
 
 void
-SimulatedTransport::RegisterEndpoint(TransportReceiver *receiver,
-                                     int groupIdx,
-                                     int replicaIdx) {
+SimulatedTransport::RegisterInternal(TransportReceiver *receiver,
+                                     const dsnet::ReplicaAddress *addr,
+                                     int groupIdx, int replicaIdx)
+{
     // Allocate an endpoint
     ++lastAddr;
-    int addr = lastAddr;
-    endpoints[addr] = receiver;
+    int saddr = lastAddr;
+    endpoints[saddr] = receiver;
 
-    // Tell the receiver its address
-    receiver->SetAddress(new SimulatedTransportAddress(addr));
-    // If this is registered as a replica, record the index
-    replicaIdxs[addr] = std::make_pair(groupIdx, replicaIdx);
-}
-
-void
-SimulatedTransport::RegisterFC()
-{
-    if (fcAddress > -1) {
-        // Already registered
-        return;
+    // Store address for future lookups
+    if (addr != nullptr) {
+        addrLookupMap.insert(std::make_pair(*addr, SimulatedTransportAddress(saddr)));
     }
-
-    ++lastAddr;
-    fcAddress = lastAddr;
-}
-
-void
-SimulatedTransport::Register(TransportReceiver *receiver,
-                             const specpaxos::Configuration &config,
-                             int groupIdx,
-                             int replicaIdx)
-{
-    RegisterFC();
-    RegisterEndpoint(receiver, groupIdx, replicaIdx);
-    RegisterConfiguration(receiver, config, groupIdx, replicaIdx);
+    // Tell the receiver its address
+    receiver->SetAddress(new SimulatedTransportAddress(saddr));
+    // If this is registered as a replica, record the index
+    replicaIdxs[saddr] = std::make_pair(groupIdx, replicaIdx);
 }
 
 bool
@@ -122,6 +112,13 @@ SimulatedTransport::SendMessageInternal(TransportReceiver *src,
 {
     multistamp_t stamp;
     return _SendMessageInternal(src, dstAddr, m, stamp);
+}
+
+bool
+SimulatedTransport::SendBuffer(TransportReceiver *src, const TransportAddress &dst,
+                               const void *buf, size_t len)
+{
+    Panic("SendBuffer not implemented for SimulatedTransport");
 }
 
 bool
@@ -184,7 +181,7 @@ SimulatedTransport::OrderedMulticast(TransportReceiver *src,
         stamp.seqnums[groupIdx] = this->noCounters[groupIdx];
     }
 
-    const specpaxos::Configuration *cfg = this->configurations[src];
+    const dsnet::Configuration *cfg = this->configurations[src];
     ASSERT(cfg != NULL);
 
     if (!this->replicaAddressesInitialized) {
@@ -206,46 +203,15 @@ SimulatedTransport::OrderedMulticast(TransportReceiver *src,
 }
 
 SimulatedTransportAddress
-SimulatedTransport::LookupAddress(const specpaxos::Configuration &cfg,
-                                  int groupIdx,
-                                  int replicaIdx)
+SimulatedTransport::LookupAddress(const dsnet::ReplicaAddress &addr)
 {
-    // Check every registered replica to see if its configuration and
-    // idx match. This is the least efficient possible way to do this,
-    // but that's why this is the simulated transport not the real
-    // one... (And we only have to do this once at runtime.)
-    for (auto & kv : configurations) {
-        if (*(kv.second) == cfg) {
-            // Configuration matches. Do the indices?
-            const SimulatedTransportAddress &addr =
-                dynamic_cast<const SimulatedTransportAddress&>(kv.first->GetAddress());
-            if (replicaIdxs[addr.addr].first == groupIdx &&
-                replicaIdxs[addr.addr].second == replicaIdx) {
-                // Matches.
-                return addr;
-            }
-        }
+    if (addrLookupMap.find(addr) != addrLookupMap.end()) {
+        return addrLookupMap.at(addr);
     }
 
-    Warning("No replica %d of group %d was registered", replicaIdx, groupIdx);
+    Warning("No address with host %s port %s was registered",
+            addr.host.c_str(), addr.port.c_str());
     return SimulatedTransportAddress(-1);
-}
-
-const SimulatedTransportAddress *
-SimulatedTransport::LookupMulticastAddress(const specpaxos::Configuration *cfg)
-{
-    return NULL;
-}
-
-const SimulatedTransportAddress *
-SimulatedTransport::LookupFCAddress(const specpaxos::Configuration *cfg)
-{
-    if (fcAddress == -1) {
-        return NULL;
-    }
-    SimulatedTransportAddress *addr =
-        new SimulatedTransportAddress(fcAddress);
-    return addr;
 }
 
 void
@@ -353,3 +319,5 @@ SimulatedTransport::SessionChange()
     ++this->sequencerID;
     noCounters.clear();
 }
+
+} // namespace dsnet

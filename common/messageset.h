@@ -35,7 +35,7 @@
 #include <map>
 #include <vector>
 
-namespace specpaxos {
+namespace dsnet {
 
 template <class IDTYPE, class MSGTYPE>
 class MessageSet
@@ -137,6 +137,6 @@ private:
     std::map<IDTYPE, std::pair<std::map<int, std::map<int, MSGTYPE> >, uint32_t> > messages;
 };
 
-}      // namespace specpaxos
+}      // namespace dsnet
 
 #endif  // _COMMON_MESSAGESET_H_

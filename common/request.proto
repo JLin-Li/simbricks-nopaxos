@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package specpaxos;
+package dsnet;
 
 message ShardOp {
     required uint32 shard = 1;

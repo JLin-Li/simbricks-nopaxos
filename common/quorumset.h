@@ -32,7 +32,7 @@
 #ifndef _COMMON_QUORUMSET_H_
 #define _COMMON_QUORUMSET_H_
 
-namespace specpaxos {
+namespace dsnet {
     
 template <class IDTYPE, class MSGTYPE>
 class QuorumSet
@@ -112,6 +112,6 @@ private:
     std::map<IDTYPE, std::map<int, MSGTYPE> > messages;
 };
 
-}      // namespace specpaxos
+}      // namespace dsnet
 
 #endif  // _COMMON_QUORUMSET_H_

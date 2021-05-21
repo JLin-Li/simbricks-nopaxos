@@ -40,7 +40,7 @@
 
 #include <functional>
 
-namespace specpaxos {
+namespace dsnet {
 
 class Client : public TransportReceiver
 {
@@ -80,6 +80,6 @@ protected:
     uint64_t clientid;
 };
 
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif  /* _COMMON_CLIENT_H_ */

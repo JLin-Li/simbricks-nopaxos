@@ -56,6 +56,8 @@
 #include <linux/ip.h>
 #include <linux/udp.h>
 
+namespace dsnet {
+
 const size_t MAX_UDP_MESSAGE_SIZE = 9000; // XXX
 const int SOCKET_BUF_SIZE = 10485760;
 
@@ -63,6 +65,11 @@ const uint64_t NONFRAG_MAGIC = 0x20050318;
 const uint64_t FRAG_MAGIC = 0x20101010;
 
 using std::pair;
+
+UDPTransportAddress::UDPTransportAddress(const std::string &s)
+{
+    memcpy(&addr, s.data(), sizeof(addr));
+}
 
 UDPTransportAddress::UDPTransportAddress(const sockaddr_in &addr)
     : addr(addr)
@@ -75,6 +82,14 @@ UDPTransportAddress::clone() const
 {
     UDPTransportAddress *c = new UDPTransportAddress(*this);
     return c;
+}
+
+std::string
+UDPTransportAddress::Serialize() const
+{
+    std::string s;
+    s.append((const char *)&addr, sizeof(addr));
+    return s;
 }
 
 bool operator==(const UDPTransportAddress &a, const UDPTransportAddress &b)
@@ -93,7 +108,7 @@ bool operator<(const UDPTransportAddress &a, const UDPTransportAddress &b)
 }
 
 UDPTransportAddress
-UDPTransport::LookupAddress(const specpaxos::ReplicaAddress &addr)
+UDPTransport::LookupAddress(const dsnet::ReplicaAddress &addr)
 {
     int res;
     struct addrinfo hints;
@@ -113,53 +128,6 @@ UDPTransport::LookupAddress(const specpaxos::ReplicaAddress &addr)
         UDPTransportAddress(*((sockaddr_in *)ai->ai_addr));
     freeaddrinfo(ai);
     return out;
-}
-
-UDPTransportAddress
-UDPTransport::LookupAddress(const specpaxos::Configuration &config,
-                            int groupIdx,
-                            int replicaIdx)
-{
-    const specpaxos::ReplicaAddress &addr = config.replica(groupIdx,
-                                                           replicaIdx);
-    return LookupAddress(addr);
-}
-
-const UDPTransportAddress *
-UDPTransport::LookupMulticastAddress(const specpaxos::Configuration
-                                     *config)
-{
-    if (!config->multicast()) {
-        // Configuration has no multicast address
-        return NULL;
-    }
-
-    /*
-    if (multicastFds.find(config) != multicastFds.end()) {
-        // We are listening on this multicast address. Some
-        // implementations of MOM aren't OK with us both sending to
-        // and receiving from the same address, so don't look up the
-        // address.
-        return NULL;
-    }
-    */
-
-    UDPTransportAddress *addr =
-        new UDPTransportAddress(LookupAddress(*(config->multicast())));
-    return addr;
-}
-
-const UDPTransportAddress *
-UDPTransport::LookupFCAddress(const specpaxos::Configuration
-                              *config)
-{
-    if (!config->fc()) {
-        // Configuration has no failure coorinator address
-        return NULL;
-    }
-    UDPTransportAddress *addr =
-        new UDPTransportAddress(LookupAddress(*(config->fc())));
-    return addr;
 }
 
 static void
@@ -258,146 +226,11 @@ UDPTransport::~UDPTransport()
 }
 
 void
-UDPTransport::ListenOnMulticastPort(const specpaxos::Configuration
-                                    *canonicalConfig,
-                                    int groupIdx,
-                                    int replicaIdx)
+UDPTransport::RegisterInternal(TransportReceiver *receiver,
+                               const dsnet::ReplicaAddress *addr,
+                               int groupIdx, int replicaIdx)
 {
-    if (!canonicalConfig->multicast()) {
-        // No multicast address specified
-        return;
-    }
-
-    if (multicastFds.find(canonicalConfig) != multicastFds.end()) {
-        // We're already listening
-        return;
-    }
-
-    int fd;
-    // If configuration has an interface for multicast,
-    // use raw socket with BPF
-    if (canonicalConfig->Interface(groupIdx, replicaIdx).size() > 0) {
-        char tcpdumpCommand [1024];
-        uint16_t groupMask = 1 << groupIdx;
-        sprintf(tcpdumpCommand, "tcpdump \"ip and udp and dst %s and (udp[0:2] & %u != 0)\" -ddd", canonicalConfig->multicast()->host.c_str(), groupMask);
-
-        FILE *tcpdumpOutput;
-        if ((tcpdumpOutput = popen(tcpdumpCommand, "r")) == NULL) {
-            PPanic("Failed to compile BPF filter using tcpdump");
-        }
-        int lineCount;
-        if (fscanf(tcpdumpOutput, "%d\n", &lineCount) < 1) {
-            PPanic("Failed to read filter line count");
-        }
-        struct ifreq ifopts;
-        struct sock_fprog filter;
-        filter.filter = (struct sock_filter *)calloc(sizeof(struct sock_filter)*lineCount, 1);
-        filter.len = lineCount;
-        for (int i = 0; i < lineCount; i++) {
-            if (fscanf(tcpdumpOutput, "%hu %hhu %hhu %u\n", &(filter.filter[i].code), &(filter.filter[i].jt), &(filter.filter[i].jf), &(filter.filter[i].k)) < 4) {
-                PPanic("Failed to read filter code line %d\n", i+1);
-            }
-        }
-        pclose(tcpdumpOutput);
-
-        if ((fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL))) < 0) {
-            PPanic("Failed to create raw socket to listen for multicast");
-        }
-
-        memset(&ifopts, 0, sizeof(ifopts));
-        strncpy(ifopts.ifr_name, canonicalConfig->Interface(groupIdx, replicaIdx).c_str(), IFNAMSIZ-1);
-        if (ioctl(fd, SIOCGIFINDEX, &ifopts) < 0) {
-            PPanic("Failed to set SIOCGIFINDEX");
-        }
-
-        if (setsockopt(fd, SOL_SOCKET, SO_ATTACH_FILTER, &filter, sizeof(filter)) < 0) {
-            PPanic("Failed to attach BPF filter");
-        }
-
-        // Put it in non-blocking mode
-        if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
-            PWarning("Failed to set O_NONBLOCK on multicast socket");
-        }
-
-        int n = 1;
-        if (setsockopt(fd, SOL_SOCKET,
-                       SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
-            PWarning("Failed to set SO_REUSEADDR on multicast socket");
-        }
-
-        // Increase buffer size
-        n = SOCKET_BUF_SIZE;
-        if (setsockopt(fd, SOL_SOCKET,
-                       SO_RCVBUF, (char *)&n, sizeof(n)) < 0) {
-            PWarning("Failed to set SO_RCVBUF on socket");
-        }
-        if (setsockopt(fd, SOL_SOCKET,
-                       SO_SNDBUF, (char *)&n, sizeof(n)) < 0) {
-            PWarning("Failed to set SO_SNDBUF on socket");
-        }
-        this->rawFds.insert(fd);
-    } else {
-        // Create socket
-        if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-            PPanic("Failed to create socket to listen for multicast");
-        }
-
-        // Put it in non-blocking mode
-        if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
-            PWarning("Failed to set O_NONBLOCK on multicast socket");
-        }
-
-        int n = 1;
-        if (setsockopt(fd, SOL_SOCKET,
-                       SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
-            PWarning("Failed to set SO_REUSEADDR on multicast socket");
-        }
-
-        // Increase buffer size
-        n = SOCKET_BUF_SIZE;
-        if (setsockopt(fd, SOL_SOCKET,
-                       SO_RCVBUF, (char *)&n, sizeof(n)) < 0) {
-            PWarning("Failed to set SO_RCVBUF on socket");
-        }
-        if (setsockopt(fd, SOL_SOCKET,
-                       SO_SNDBUF, (char *)&n, sizeof(n)) < 0) {
-            PWarning("Failed to set SO_SNDBUF on socket");
-        }
-        // Bind to the specified address
-        BindToPort(fd,
-                   canonicalConfig->multicast()->host,
-                   canonicalConfig->multicast()->port);
-    }
-
-
-    // Set up a libevent callback
-    event *ev = event_new(libeventBase, fd,
-                          EV_READ | EV_PERSIST,
-                          SocketCallback, (void *)this);
-    event_add(ev, NULL);
-    listenerEvents.push_back(ev);
-
-    // Record the fd
-    multicastFds[canonicalConfig] = fd;
-    multicastConfigs[fd] = canonicalConfig;
-
-    Notice("Listening for multicast requests on %s:%s (interface %s)",
-           canonicalConfig->multicast()->host.c_str(),
-           canonicalConfig->multicast()->port.c_str(),
-           canonicalConfig->Interface(groupIdx, replicaIdx).c_str());
-}
-
-void
-UDPTransport::Register(TransportReceiver *receiver,
-                       const specpaxos::Configuration &config,
-                       int groupIdx,
-                       int replicaIdx)
-{
-    ASSERT(replicaIdx < config.n);
     struct sockaddr_in sin;
-
-    const specpaxos::Configuration *canonicalConfig =
-        RegisterConfiguration(receiver, config, groupIdx, replicaIdx);
 
     // Create socket
     int fd;
@@ -417,14 +250,6 @@ UDPTransport::Register(TransportReceiver *receiver,
         PWarning("Failed to set SO_BROADCAST on socket");
     }
 
-    if (dscp != 0) {
-        n = dscp << 2;
-        if (setsockopt(fd, IPPROTO_IP,
-                       IP_TOS, (char *)&n, sizeof(n)) < 0) {
-            PWarning("Failed to set DSCP on socket");
-        }
-    }
-
     // Increase buffer size
     n = SOCKET_BUF_SIZE;
     if (setsockopt(fd, SOL_SOCKET,
@@ -436,14 +261,9 @@ UDPTransport::Register(TransportReceiver *receiver,
         PWarning("Failed to set SO_SNDBUF on socket");
     }
 
-    if (replicaIdx != -1) {
-        // Registering a replica. Bind socket to the designated
-        // host/port
-        const string &host = config.replica(groupIdx, replicaIdx).host;
-        const string &port = config.replica(groupIdx, replicaIdx).port;
-        BindToPort(fd, host, port);
+    if (addr != nullptr) {
+        BindToPort(fd, addr->host, addr->port);
     } else {
-        // Registering a client. Bind to any available host/port
         BindToPort(fd, "", "any");
     }
 
@@ -458,23 +278,83 @@ UDPTransport::Register(TransportReceiver *receiver,
     if (getsockname(fd, (sockaddr *) &sin, &sinsize) < 0) {
         PPanic("Failed to get socket name");
     }
-    UDPTransportAddress *addr = new UDPTransportAddress(sin);
-    receiver->SetAddress(addr);
+    UDPTransportAddress *uaddr = new UDPTransportAddress(sin);
+    receiver->SetAddress(uaddr);
 
     // Update mappings
     receivers[fd] = receiver;
     fds[receiver] = fd;
 
     Notice("Listening on UDP port %hu", ntohs(sin.sin_port));
+}
 
-    // If we are registering a replica, check whether we need to set
-    // up a socket to listen on the multicast port.
-    //
-    // Don't do this if we're registering a client.
-
-    if (replicaIdx != -1) {
-        ListenOnMulticastPort(canonicalConfig, groupIdx, replicaIdx);
+void
+UDPTransport::ListenOnMulticast(TransportReceiver *src,
+                                const dsnet::Configuration &config)
+{
+    if (configurations.find(src) == configurations.end()) {
+        Panic("Register address first before listening on multicast");
     }
+    dsnet::Configuration *canonical = configurations.at(src);
+
+    if (!canonical->multicast()) {
+        // No multicast address specified
+        return;
+    }
+
+    if (multicastFds.find(canonical) != multicastFds.end()) {
+        // We're already listening
+        return;
+    }
+
+    int fd;
+
+    // Create socket
+    if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        PPanic("Failed to create socket to listen for multicast");
+    }
+
+    // Put it in non-blocking mode
+    if (fcntl(fd, F_SETFL, O_NONBLOCK, 1)) {
+        PWarning("Failed to set O_NONBLOCK on multicast socket");
+    }
+
+    int n = 1;
+    if (setsockopt(fd, SOL_SOCKET,
+                SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
+        PWarning("Failed to set SO_REUSEADDR on multicast socket");
+    }
+
+    // Increase buffer size
+    n = SOCKET_BUF_SIZE;
+    if (setsockopt(fd, SOL_SOCKET,
+                SO_RCVBUF, (char *)&n, sizeof(n)) < 0) {
+        PWarning("Failed to set SO_RCVBUF on socket");
+    }
+    if (setsockopt(fd, SOL_SOCKET,
+                SO_SNDBUF, (char *)&n, sizeof(n)) < 0) {
+        PWarning("Failed to set SO_SNDBUF on socket");
+    }
+    // Bind to the specified address
+    BindToPort(fd,
+            canonical->multicast()->host,
+            canonical->multicast()->port);
+
+    // Set up a libevent callback
+    event *ev = event_new(libeventBase, fd,
+                          EV_READ | EV_PERSIST,
+                          SocketCallback, (void *)this);
+    event_add(ev, NULL);
+    listenerEvents.push_back(ev);
+
+    // Record the fd
+    multicastFds[canonical] = fd;
+    multicastConfigs[fd] = canonical;
+
+    Notice("Listening for multicast requests on %s:%s (interface %s)",
+           canonical->multicast()->host.c_str(),
+           canonical->multicast()->port.c_str(),
+           canonical->multicast()->interface.c_str());
 }
 
 static size_t
@@ -519,6 +399,17 @@ SerializeMessage(const string &data, const string &type,
 
     *out = buf;
     return totalLen;
+}
+
+bool
+UDPTransport::SendBuffer(TransportReceiver *src,
+                         const TransportAddress &dst,
+                         const void *buffer,
+                         size_t len)
+{
+    sockaddr_in sin = dynamic_cast<const UDPTransportAddress &>(dst).addr;
+    int fd = fds[src];
+    return sendto(fd, buffer, len, 0, (sockaddr *)&sin, sizeof(sin)) >= 0;
 }
 
 bool
@@ -606,41 +497,51 @@ UDPTransport::OrderedMulticast(TransportReceiver *src,
                                const std::vector<int> &groups,
                                const Message &m)
 {
+    static size_t addr_len = src->GetAddress().Serialize().size();
+
     ASSERT(groups.size() > 0);
-    const specpaxos::Configuration *cfg = configurations[src];
+    const dsnet::Configuration *cfg = configurations[src];
     ASSERT(cfg != NULL);
 
     if (!replicaAddressesInitialized) {
         LookupAddresses();
     }
 
-    auto kv = multicastAddresses.find(cfg);
-    if (kv == multicastAddresses.end()) {
-        Panic("Configuration has no multicast address...");
+    // Send Ordered Multicast to either:
+    // a. sequencer address if configured, or
+    // b. multicast address
+    UDPTransportAddress *addr;
+    if (sequencerAddresses.find(cfg) != sequencerAddresses.end()) {
+        addr = &sequencerAddresses.at(cfg).at(0);
+    } else if (multicastAddresses.find(cfg) != multicastAddresses.end()) {
+        addr = &multicastAddresses.at(cfg);
+    } else {
+        Panic("Configuration has no sequencer or multicast address...");
     }
 
     // ordered multicast meta data wire format:
-    // udp src port + sess_num + number of groups + each (groupId + sequence number)
-    size_t meta_len = sizeof(uint16_t) + sizeof(sessnum_t) + sizeof(uint32_t) +
+    // src addr + sess_num + number of groups + each (groupId + sequence number)
+    size_t meta_len = addr_len +
+        sizeof(sessnum_t) + sizeof(uint32_t) +
         groups.size() * (sizeof(shardnum_t) + sizeof(msgnum_t));
 
     void *meta_data = malloc(meta_len);
     char *ptr = (char *)meta_data;
-    // udp src port (filled by sequencer)
-    ptr += sizeof(uint16_t);
+    // src addr
+    ptr += addr_len;
     // sess_num (filled by sequencer)
     ptr += sizeof(sessnum_t);
     // number of groups
-    *(uint32_t *)ptr = groups.size();
+    *(uint32_t *)ptr = htonl(groups.size());
     ptr += sizeof(uint32_t);
-    // for each group: groupId + sequence number(filled by sequencer)
+    // for each group: groupId + sequence number (filled by sequencer)
     for (shardnum_t groupIdx : groups) {
-        *(shardnum_t *)ptr = groupIdx;
+        *(shardnum_t *)ptr = htonl(groupIdx);
         ptr += sizeof(shardnum_t);
         ptr += sizeof(msgnum_t);
     }
 
-    bool ret = _SendMessageInternal(src, kv->second, m, meta_len, meta_data);
+    bool ret = _SendMessageInternal(src, *addr, m, meta_len, meta_data);
     free(meta_data);
     return ret;
 }
@@ -697,13 +598,9 @@ void
 UDPTransport::OnReadable(int fd)
 {
     const int BUFSIZE = 65536;
-    struct iphdr *iph;
-    size_t headerLen = sizeof(struct ether_header) + sizeof(struct iphdr) + sizeof(struct udphdr);
-
     do {
         ssize_t sz;
         char buf[BUFSIZE];
-        char *msgbuf;
         sockaddr_in sender;
         socklen_t senderSize = sizeof(sender);
 
@@ -716,23 +613,21 @@ UDPTransport::OnReadable(int fd)
                 PWarning("Failed to receive message from socket");
             }
         }
-        msgbuf = buf;
 
-        // If received on multicast fd and it is raw socket,
-        // parse packet header first.
-        if (rawFds.find(fd) != rawFds.end()) {
-            if ((size_t)sz < headerLen) {
-                continue;
+        // If received from multicast address, assume mode is kReceiveMessage
+        if (multicastConfigs.find(fd) != multicastConfigs.end()) {
+            ProcessPacket(fd, sender, senderSize, buf, sz);
+        } else {
+            TransportReceiver *receiver = receivers.at(fd);
+            switch (receiver->GetReceiveMode()) {
+                case TransportReceiver::ReceiveMode::kReceiveMessage :
+                    ProcessPacket(fd, sender, senderSize, buf, sz);
+                    break;
+                case TransportReceiver::ReceiveMode::kReceiveBuffer :
+                    receiver->ReceiveBuffer(UDPTransportAddress(sender), buf, sz);
+                    break;
             }
-            iph = (struct iphdr *)(buf + sizeof(struct ether_header));
-            sender.sin_family = AF_INET;
-            sender.sin_addr.s_addr = iph->saddr;
-            senderSize = sizeof(sender);
-            sz -= headerLen;
-            msgbuf += headerLen;
         }
-
-        ProcessPacket(fd, sender, senderSize, msgbuf, sz);
     } while (0);
 }
 
@@ -835,26 +730,22 @@ UDPTransport::ProcessPacket(int fd, sockaddr_in sender, socklen_t senderSize,
     // into packets.
     if (meta_data != NULL) {
         char *ptr = (char *)meta_data;
-        // Current sequencer implementation modifies the
-        // udp source field and puts the orginal source into
-        // meta data. Restore the original udp source field here.
-        uint16_t udp_src = *(uint16_t *)ptr;
-        if (udp_src != 0) {
-            sender.sin_port = udp_src;
-            senderAddr = UDPTransportAddress(sender);
-        }
-        ptr += sizeof(uint16_t);
+        // Restore the original client address
+        std::string s(ptr, senderAddr.Serialize().size());
+        senderAddr = UDPTransportAddress(s);
+        ptr += s.size();
 
-        stamp.sessnum = *(sessnum_t *)ptr;
+        // Session number and multi-stamp
+        stamp.sessnum = be64toh(*(sessnum_t *)ptr);
         ptr += sizeof(sessnum_t);
-        size_t ngroups = *(uint32_t *)ptr;
+        size_t ngroups = ntohl(*(uint32_t *)ptr);
         ptr += sizeof(uint32_t);
         for (unsigned int i = 0; i < ngroups; i++) {
             shardnum_t groupIdx;
             msgnum_t seqnum;
-            groupIdx = *(shardnum_t *)ptr;
+            groupIdx = ntohl(*(shardnum_t *)ptr);
             ptr += sizeof(shardnum_t);
-            seqnum = *(msgnum_t *)ptr;
+            seqnum = be64toh(*(msgnum_t *)ptr);
             ptr += sizeof(msgnum_t);
             stamp.seqnums.insert(std::make_pair(groupIdx, seqnum));
         }
@@ -868,7 +759,7 @@ deliver:
         // If so, deliver the message to all replicas for that
         // config, *except* if that replica was the sender of the
         // message.
-        const specpaxos::Configuration *cfg = it->second;
+        const dsnet::Configuration *cfg = it->second;
         for (auto &kv : replicaReceivers[cfg]) {
             shardnum_t groupIdx = kv.first;
             for (auto &kv2 : kv.second) {
@@ -1025,3 +916,5 @@ UDPTransport::SignalCallback(evutil_socket_t fd, short what, void *arg)
     transport->Stop();
     exit(1);
 }
+
+} // namespace dsnet

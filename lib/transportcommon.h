@@ -29,8 +29,7 @@
  *
  **********************************************************************/
 
-#ifndef _LIB_TRANSPORTCOMMON_H_
-#define _LIB_TRANSPORTCOMMON_H_
+#pragma once
 
 #include "lib/assert.h"
 #include "lib/configuration.h"
@@ -38,6 +37,8 @@
 
 #include <map>
 #include <unordered_map>
+
+namespace dsnet {
 
 template <typename ADDR>
 class TransportCommon : public Transport
@@ -55,6 +56,57 @@ public:
         for (auto &kv : canonicalConfigs) {
             delete kv.second;
         }
+    }
+
+    virtual void
+    RegisterReplica(TransportReceiver *receiver,
+                    const dsnet::Configuration &config,
+                    int groupIdx, int replicaIdx) override
+    {
+        ASSERT(groupIdx < config.g);
+        ASSERT(replicaIdx < config.n);
+        RegisterConfiguration(receiver, config, groupIdx, replicaIdx);
+        RegisterInternal(receiver, &config.replica(groupIdx, replicaIdx),
+                groupIdx, replicaIdx);
+    }
+
+    virtual void
+    RegisterAddress(TransportReceiver *receiver,
+                    const dsnet::Configuration &config,
+                    const dsnet::ReplicaAddress *addr) override
+    {
+        RegisterConfiguration(receiver, config, -1, -1);
+        RegisterInternal(receiver, addr, -1, -1);
+    }
+
+    virtual void
+    ListenOnMulticast(TransportReceiver *receiver,
+                      const dsnet::Configuration &config) override
+    {
+        // Transport that requires multicast support needs to override
+        // this function
+        return;
+    }
+
+    virtual bool
+    SendBufferToAll(TransportReceiver *src, const void *buf, size_t len) override
+    {
+        const dsnet::Configuration *cfg = configurations[src];
+
+        if (!replicaAddressesInitialized) {
+            LookupAddresses();
+        }
+
+        const ADDR &srcAddr = dynamic_cast<const ADDR &>(src->GetAddress());
+        for (const auto &kv : replicaAddresses[cfg][0]) {
+            if (srcAddr == kv.second) {
+                continue;
+            }
+            if (!SendBuffer(src, kv.second, buf, len)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     virtual bool
@@ -81,7 +133,7 @@ public:
                          int replicaIdx,
                          const Message &m) override
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
         ASSERT(cfg != NULL);
 
         if (!replicaAddressesInitialized) {
@@ -96,7 +148,7 @@ public:
 
     virtual bool SendMessageToFC(TransportReceiver *src, const Message &m) override
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
         ASSERT(cfg != NULL);
 
         if (!replicaAddressesInitialized) {
@@ -117,12 +169,6 @@ public:
     {
         ASSERT(this->replicaGroups.find(src) != this->replicaGroups.end());
         int groupIdx = this->replicaGroups[src] == -1 ? 0 : this->replicaGroups[src];
-        const specpaxos::Configuration *cfg = configurations[src];
-        ASSERT(cfg != NULL);
-
-        if (!replicaAddressesInitialized) {
-            LookupAddresses();
-        }
 
         return SendMessageToGroup(src, groupIdx, m);
     }
@@ -131,7 +177,7 @@ public:
     SendMessageToAllGroups(TransportReceiver *src,
                            const Message &m)
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
         ASSERT(cfg != NULL);
 
         if (!replicaAddressesInitialized) {
@@ -165,7 +211,7 @@ public:
                         const std::vector<int> &groups,
                         const Message &m) override
     {
-        const specpaxos::Configuration *cfg = configurations[src];
+        const dsnet::Configuration *cfg = configurations[src];
         ASSERT(cfg != NULL);
 
         if (!replicaAddressesInitialized) {
@@ -203,34 +249,33 @@ public:
     }
 
 protected:
+    virtual void RegisterInternal(TransportReceiver *receiver,
+                                  const dsnet::ReplicaAddress *addr,
+                                  int groupIdx, int replicaIdx) = 0;
     virtual bool SendMessageInternal(TransportReceiver *src,
                                      const ADDR &dst,
                                      const Message &m) = 0;
-    virtual ADDR LookupAddress(const specpaxos::Configuration &cfg,
-                               int groupIdx,
-                               int replicaIdx) = 0;
-    virtual const ADDR *
-    LookupMulticastAddress(const specpaxos::Configuration *cfg) = 0;
-    virtual const ADDR *
-    LookupFCAddress(const specpaxos::Configuration *cfg) = 0;
+    virtual ADDR LookupAddress(const dsnet::ReplicaAddress &addr) = 0;
 
-    std::unordered_map<specpaxos::Configuration,
-        specpaxos::Configuration *> canonicalConfigs;
+    std::unordered_map<dsnet::Configuration,
+        dsnet::Configuration *> canonicalConfigs;
     std::map<TransportReceiver *,
-        specpaxos::Configuration *> configurations;
-    std::map<const specpaxos::Configuration *,
+        dsnet::Configuration *> configurations;
+    std::map<const dsnet::Configuration *,
         std::map<int, std::map<int, ADDR> > > replicaAddresses; // config->groupid->replicaid->ADDR
-    std::map<const specpaxos::Configuration *,
+    std::map<const dsnet::Configuration *,
         std::map<int, std::map<int, TransportReceiver *> > > replicaReceivers;
-    std::map<const specpaxos::Configuration *, ADDR> multicastAddresses;
-    std::map<const specpaxos::Configuration *, ADDR> fcAddresses;
+    std::map<const dsnet::Configuration *,
+        std::vector<ADDR>> sequencerAddresses;
+    std::map<const dsnet::Configuration *, ADDR> multicastAddresses;
+    std::map<const dsnet::Configuration *, ADDR> fcAddresses;
     std::map<TransportReceiver *, int> replicaGroups;
     bool replicaAddressesInitialized;
 
     /* configs is a map of groupIdx to Configuration */
-    virtual specpaxos::Configuration *
+    virtual dsnet::Configuration *
     RegisterConfiguration(TransportReceiver *receiver,
-                          const specpaxos::Configuration &config,
+                          const dsnet::Configuration &config,
                           int groupIdx,
                           int replicaIdx) {
         ASSERT(receiver != NULL);
@@ -239,10 +284,10 @@ protected:
         // pointer to the canonical copy; if not, create one. This
         // allows us to use that pointer as a key in various
         // structures.
-        specpaxos::Configuration *canonical
+        dsnet::Configuration *canonical
             = canonicalConfigs[config];
         if (canonical == NULL) {
-            canonical = new specpaxos::Configuration(config);
+            canonical = new dsnet::Configuration(config);
             canonicalConfigs[config] = canonical;
         }
         // Record configuration
@@ -268,36 +313,36 @@ protected:
     {
         // Clear any existing list of addresses
         replicaAddresses.clear();
+        sequencerAddresses.clear();
         multicastAddresses.clear();
         fcAddresses.clear();
 
         // For every configuration, look up all addresses and cache
         // them.
         for (auto &kv : canonicalConfigs) {
-            specpaxos::Configuration *cfg = kv.second;
+            dsnet::Configuration *cfg = kv.second;
 
             for (int i = 0; i < cfg->g; i++) {
                 for (int j = 0; j < cfg->n; j++) {
-                    const ADDR addr = LookupAddress(*cfg, i, j);
+                    const ADDR addr = LookupAddress(cfg->replica(i, j));
                     replicaAddresses[cfg][i].insert(std::make_pair(j, addr));
                 }
             }
 
+            // Add sequencer addresses
+            for (int i = 0; i < cfg->NumSequencers(); i++) {
+                sequencerAddresses[cfg].push_back(LookupAddress(cfg->sequencer(i)));
+            }
+
             // And check if there's a multicast address
             if (cfg->multicast()) {
-                const ADDR *addr = LookupMulticastAddress(cfg);
-                if (addr) {
-                    multicastAddresses.insert(std::make_pair(cfg, *addr));
-                    delete addr;
-                }
+                multicastAddresses.insert(std::make_pair(cfg,
+                            LookupAddress(*cfg->multicast())));
             }
+
             // Failure coordinator address
             if (cfg->fc()) {
-                const ADDR *addr = LookupFCAddress(cfg);
-                if (addr) {
-                    fcAddresses.insert(std::make_pair(cfg, *addr));
-                    delete addr;
-                }
+                fcAddresses.insert(std::make_pair(cfg, LookupAddress(*cfg->fc())));
             }
         }
 
@@ -305,4 +350,4 @@ protected:
     }
 };
 
-#endif // _LIB_TRANSPORTCOMMON_H_
+} // namespace dsnet

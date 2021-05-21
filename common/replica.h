@@ -37,10 +37,8 @@
 #include "common/request.pb.h"
 #include "lib/transport.h"
 #include "lib/viewstamp.h"
-#include "store/common/type.h"
-#include "lib/workertasks.h"
 
-namespace specpaxos {
+namespace dsnet {
 
 class Replica;
 
@@ -96,6 +94,7 @@ protected:
                                      MSG &reply,
                                      void *arg = nullptr,
                                      void *ret = nullptr);
+    void Rollback(opnum_t current, opnum_t to, Log &log);
     void Commit(opnum_t op);
     void UnloggedUpcall(const string &op, string &res);
     template<class MSG> void ExecuteUnlogged(const UnloggedRequest & msg,
@@ -112,6 +111,6 @@ protected:
 
 #include "replica-inl.h"
 
-} // namespace specpaxos
+} // namespace dsnet
 
 #endif  /* _COMMON_REPLICA_H */

@@ -31,10 +31,10 @@
 #include "lib/configuration.h"
 #include "common/replica.h"
 #include "lib/udptransport.h"
-#include "fastpaxos/replica.h"
-#include "unreplicated/replica.h"
-#include "vr/replica.h"
-#include "nopaxos/replica.h"
+#include "replication/vr/replica.h"
+#include "replication/fastpaxos/replica.h"
+#include "replication/unreplicated/replica.h"
+#include "replication/nopaxos/replica.h"
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -65,7 +65,7 @@ main(int argc, char **argv)
     int batchSize = 1;
     bool recover = false;
 
-    specpaxos::AppReplica *nullApp = new specpaxos::AppReplica();
+    dsnet::AppReplica *nullApp = new dsnet::AppReplica();
 
     enum
     {
@@ -201,7 +201,7 @@ main(int argc, char **argv)
                 configPath);
         Usage(argv[0]);
     }
-    specpaxos::Configuration config(configStream);
+    dsnet::Configuration config(configStream);
 
     if (index >= config.n) {
         fprintf(stderr, "replica index %d is out of bounds; "
@@ -209,13 +209,13 @@ main(int argc, char **argv)
         Usage(argv[0]);
     }
 
-    UDPTransport transport(dropRate, reorderRate, dscp, nullptr);
+    dsnet::UDPTransport transport(dropRate, reorderRate, dscp, nullptr);
 
-    specpaxos::Replica *replica;
+    dsnet::Replica *replica;
     switch (proto) {
     case PROTO_UNREPLICATED:
         replica =
-            new specpaxos::unreplicated::UnreplicatedReplica(config,
+            new dsnet::unreplicated::UnreplicatedReplica(config,
                                                              index,
                                                              !recover,
                                                              &transport,
@@ -223,7 +223,7 @@ main(int argc, char **argv)
         break;
 
     case PROTO_VR:
-        replica = new specpaxos::vr::VRReplica(config, index,
+        replica = new dsnet::vr::VRReplica(config, index,
                                                !recover,
                                                &transport,
                                                batchSize,
@@ -231,14 +231,14 @@ main(int argc, char **argv)
         break;
 
     case PROTO_FASTPAXOS:
-        replica = new specpaxos::fastpaxos::FastPaxosReplica(config, index,
+        replica = new dsnet::fastpaxos::FastPaxosReplica(config, index,
 							     !recover,
                                                              &transport,
                                                              nullApp);
         break;
 
     case PROTO_NOPAXOS:
-        replica = new specpaxos::nopaxos::NOPaxosReplica(config, index,
+        replica = new dsnet::nopaxos::NOPaxosReplica(config, index,
                                                          !recover,
                                                          &transport,
                                                          nullApp);

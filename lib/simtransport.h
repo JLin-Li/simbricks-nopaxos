@@ -29,21 +29,24 @@
  *
  **********************************************************************/
 
-#ifndef _LIB_SIMTRANSPORT_H_
-#define _LIB_SIMTRANSPORT_H_
+#pragma once
 
 #include "lib/transport.h"
 #include "lib/transportcommon.h"
 
 #include <deque>
 #include <map>
+#include <unordered_map>
 #include <functional>
 #include <mutex>
+
+namespace dsnet {
 
 class SimulatedTransportAddress : public TransportAddress
 {
 public:
-    SimulatedTransportAddress * clone() const;
+    virtual SimulatedTransportAddress * clone() const override;
+    virtual std::string Serialize() const override;
     int GetAddr() const;
     bool operator==(const SimulatedTransportAddress &other) const;
     inline bool operator!=(const SimulatedTransportAddress &other) const
@@ -67,10 +70,9 @@ class SimulatedTransport :
 public:
     SimulatedTransport(bool continuous = false);
     ~SimulatedTransport();
-    void Register(TransportReceiver *receiver,
-                  const specpaxos::Configuration &config,
-                  int groupIdx,
-                  int replicaIdx) override;
+    void RegisterInternal(TransportReceiver *receiver,
+                          const dsnet::ReplicaAddress *addr,
+                          int groupIdx, int replicaIdx) override;
     void Run() override;
     void Stop() override;
     void AddFilter(int id, filter_t filter);
@@ -94,14 +96,12 @@ protected:
     bool SendMessageInternal(TransportReceiver *src,
                              const SimulatedTransportAddress &dstAddr,
                              const Message &m) override;
+    bool SendBuffer(TransportReceiver *src,
+                    const TransportAddress &dst,
+                    const void *buf, size_t len) override;
+
     SimulatedTransportAddress
-    LookupAddress(const specpaxos::Configuration &cfg,
-                  int groupdIdx,
-                  int replicaIdx) override;
-    const SimulatedTransportAddress *
-    LookupMulticastAddress(const specpaxos::Configuration *cfg) override;
-    const SimulatedTransportAddress *
-    LookupFCAddress(const specpaxos::Configuration *cfg) override;
+    LookupAddress(const dsnet::ReplicaAddress &addr) override;
 
 private:
     struct QueuedMessage {
@@ -124,6 +124,8 @@ private:
     std::map<int, TransportReceiver *> endpoints;
     int lastAddr;
     std::map<int, std::pair<int, int> > replicaIdxs; // address to <groupIdx, replicaIdx>
+    std::unordered_map<dsnet::ReplicaAddress, SimulatedTransportAddress> addrLookupMap;
+    std::vector<int> sequencerAddresses;
     int fcAddress;
     std::multimap<int, filter_t> filters;
     std::multimap<uint64_t, PendingTimer> timers;
@@ -146,4 +148,4 @@ private:
     void RegisterFC();
 };
 
-#endif  // _LIB_SIMTRANSPORT_H_
+} // namespace dsnet
