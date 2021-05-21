@@ -1,11 +1,11 @@
-#include "pbft/replica.h"
+#include "replication/pbft/replica.h"
 
 #include "common/replica.h"
 #include "lib/message.h"
 #include "lib/transport.h"
-#include "pbft/pbft-proto.pb.h"
+#include "replication/pbft/pbft-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace pbft {
 
 using namespace proto;
@@ -45,7 +45,8 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   v.opnum = last_op_;
   v.sessnum = 0;
   v.msgnum = 0;
-  log.Append(v, msg.req(), LOG_STATE_RECEIVED);
+  LogEntry entry(v, LOG_STATE_RECEIVED, msg.req());
+  log.Append(entry);
   Debug("Received request %s", msg.req().op().c_str());
 
   ReplyMessage reply;
@@ -54,7 +55,7 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   // meaningful.
   reply.set_view(0);
   reply.set_opnum(0);
-  
+
   reply.set_replicaid(replicaIdx);
   *(reply.mutable_req()) = msg.req();
   if (!(transport->SendMessage(this, remote, reply)))
@@ -102,4 +103,4 @@ void PbftReplica::UpdateClientTable(const Request &req,
 }
 
 }  // namespace pbft
-}  // namespace specpaxos
+}  // namespace dsnet

@@ -38,12 +38,12 @@
 #include "lib/message.h"
 #include "lib/simtransport.h"
 #include "lib/transport.h"
-#include "pbft/client.h"
-#include "pbft/replica.h"
+#include "replication/pbft/client.h"
+#include "replication/pbft/replica.h"
 
-using namespace specpaxos;
-using namespace specpaxos::pbft;
-using namespace specpaxos::pbft::proto;
+using namespace dsnet;
+using namespace dsnet::pbft;
+using namespace dsnet::pbft::proto;
 using namespace google::protobuf;
 using std::map;
 using std::vector;

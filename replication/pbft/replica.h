@@ -34,9 +34,9 @@
 
 #include "common/log.h"
 #include "common/replica.h"
-#include "pbft/pbft-proto.pb.h"
+#include "replication/pbft/pbft-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace pbft {
 
 class PbftReplica : public Replica {
@@ -55,7 +55,7 @@ class PbftReplica : public Replica {
   void UpdateClientTable(const Request &req, const proto::ReplyMessage &reply);
 
   opnum_t last_op_;
-  Log<int> log;
+  Log log;
   struct ClientTableEntry {
     uint64_t lastReqId;
     proto::ReplyMessage reply;
@@ -63,8 +63,7 @@ class PbftReplica : public Replica {
   std::map<uint64_t, ClientTableEntry> clientTable;
 };
 
-typedef Log<int>::LogEntry LogEntry;
 }  // namespace pbft
-}  // namespace specpaxos
+}  // namespace dsnet
 
 #endif /* _PBFT_REPLICA_H_ */

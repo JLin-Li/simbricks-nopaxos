@@ -1,12 +1,12 @@
-#include "common/client.h"
+#include "replication/pbft/client.h"
 
+#include "common/client.h"
 #include "common/request.pb.h"
 #include "lib/message.h"
 #include "lib/transport.h"
-#include "pbft/client.h"
-#include "pbft/pbft-proto.pb.h"
+#include "replication/pbft/pbft-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace pbft {
 
 PbftClient::PbftClient(const Configuration &config, Transport *transport,
@@ -152,4 +152,4 @@ void PbftClient::HandleUnloggedReply(const TransportAddress &remote,
 }
 
 }  // namespace pbft
-}  // namespace specpaxos
+}  // namespace dsnet

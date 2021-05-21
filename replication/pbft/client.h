@@ -6,9 +6,9 @@
 
 #include "common/client.h"
 #include "lib/configuration.h"
-#include "pbft/pbft-proto.pb.h"
+#include "replication/pbft/pbft-proto.pb.h"
 
-namespace specpaxos {
+namespace dsnet {
 namespace pbft {
 
 class PbftClient : public Client {

@@ -13,6 +13,3 @@ OBJS-pbft-client := $(o)client.o $(o)pbft-proto.o \
 OBJS-pbft-replica := $(o)replica.o $(o)pbft-proto.o \
                $(OBJS-replica) $(LIB-message) \
                $(LIB-configuration) $(LIB-signature)
-
-include $(d)tests/Rules.mk
-
