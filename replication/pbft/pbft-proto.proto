@@ -1,0 +1,25 @@
+syntax = "proto2";
+
+import "common/request.proto";
+
+package dsnet.pbft.proto;
+
+message RequestMessage {
+    required dsnet.Request req = 1;
+}
+
+message ReplyMessage {
+    optional uint64 view = 1;
+    optional uint64 opnum = 2;
+    required uint64 replicaid = 3;
+    required dsnet.Request req = 4;
+    required bytes reply = 5;
+}
+
+message UnloggedRequestMessage {
+    required dsnet.UnloggedRequest req = 1;
+}
+
+message UnloggedReplyMessage {
+    required bytes reply = 1;
+}

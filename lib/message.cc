@@ -214,7 +214,7 @@ Backtrace()
             //filename = dlinfo.dli_fname;
         }
 
-        Warning(" %u: %s%s+0x%x [%p]\n", i++, procname,
+        Warning(" %u: %s%s+0x%x [%p]", i++, procname,
                 ret == -UNW_ENOMEM ? "..." : "", (int)offset,
                 (void *)(pi.start_ip + offset));
     }

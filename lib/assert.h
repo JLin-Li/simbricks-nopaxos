@@ -46,11 +46,15 @@
 
 // XXX These should output the expected and actual values in addition
 // to failing.
+// sgdxbc: prevent overwrite gtest version of the following macros, which
+// is more likely to be the version user would like if she includes gtest
+#ifndef ASSERT_EQ // one should be enough
 #define ASSERT_EQ(x, y) Assert(x == y)
 #define ASSERT_LT(x, y) Assert(x < y)
 #define ASSERT_GT(x, y) Assert(x > y)
 #define ASSERT_LE(x, y) Assert(x <= y)
 #define ASSERT_GE(x, y) Assert(x >= y)
+#endif
 
 #define NOT_REACHABLE() do {                                            \
         fprintf(stderr, "NOT_REACHABLE point reached: %s, line %d\n",   \
