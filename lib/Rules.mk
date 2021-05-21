@@ -3,7 +3,7 @@ d := $(dir $(lastword $(MAKEFILE_LIST)))
 SRCS += $(addprefix $(d), \
 	lookup3.cc message.cc memory.cc \
 	latency.cc configuration.cc transport.cc udptransport.cc simtransport.cc \
-	workertasks.cc)
+	workertasks.cc signature.cc)
 
 PROTOS += $(addprefix $(d), \
           latency-format.proto)
@@ -26,5 +26,6 @@ LIB-simtransport := $(o)simtransport.o $(LIB-transport) $(LIB-request) $(LIB-no-
 
 LIB-udptransport := $(o)udptransport.o $(LIB-transport)
 
+LIB-signature := $(o)signature.o
 
 include $(d)tests/Rules.mk

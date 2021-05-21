@@ -1,0 +1,48 @@
+// rsakeys.h - pre-generated RSA key pairs for benchmark
+#ifndef DSNET_COMMON_RSAKEYS_H_
+#define DSNET_COMMON_RSAKEYS_H_
+
+#include <string>
+
+namespace dsnet {
+// every client/replica can share one pair of keys, it is fine
+const static std::string PUBLIC_KEY = R"(-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0hb6riGkvnUvSuHXuLHB
+vJ9r7t3Chi765HchkYTb6FT2h0nGYgf10sn+J5Somrlq6ypCQ+i4/tThi3ya9Zs4
+gvnx96Q5a51mJ5kU6EN5mFvCx1Ud2RHxLkaa9gMuNNMWO3RFDceUwNATUGMIizsQ
+nu0iObAm6qa5NivBZ1gf1kJaPsIV2N5Xjj52DetXMlWah1fiGaz8lFFQNebLlAfq
+UpYXUCkPjW1GM/FLbwy/Xm+S3Raw5krFOKY5q+rEyKsyIF63KA9qU4OK2bSHgkcH
+7cljwMqzkOBeVL8Jxr9vbnzl+j6LOrg/FD9OJu0h5BtUsYPbM0IDM2TrLPVjppfk
+ZQIDAQAB
+-----END PUBLIC KEY-----)";
+const static std::string PRIVATE_KEY = R"(-----BEGIN RSA PRIVATE KEY-----
+MIIEogIBAAKCAQEA0hb6riGkvnUvSuHXuLHBvJ9r7t3Chi765HchkYTb6FT2h0nG
+Ygf10sn+J5Somrlq6ypCQ+i4/tThi3ya9Zs4gvnx96Q5a51mJ5kU6EN5mFvCx1Ud
+2RHxLkaa9gMuNNMWO3RFDceUwNATUGMIizsQnu0iObAm6qa5NivBZ1gf1kJaPsIV
+2N5Xjj52DetXMlWah1fiGaz8lFFQNebLlAfqUpYXUCkPjW1GM/FLbwy/Xm+S3Raw
+5krFOKY5q+rEyKsyIF63KA9qU4OK2bSHgkcH7cljwMqzkOBeVL8Jxr9vbnzl+j6L
+Org/FD9OJu0h5BtUsYPbM0IDM2TrLPVjppfkZQIDAQABAoIBAGTDgr5MAqEawXEP
++xBpqXtXl0P89tS26bz0apRJ/dNkFM30k4LnQH82RIElauyy69YY8alykHAhGIB3
+ZjdQmH0xdl2JVcUIvDtXz9BKtKJfuH80ktlPIrdIRACkq9/IMoyXips+U1lbMzhG
+F4336VPgdp7mnvPCvWh++gcgHDz9vUNlrWRhAsfBFQzGxUU5W42VOlX1b3E7gkQp
+izHa0dBgndNhFODz54KFiX30Nw+HqpD2auQt59iJQsmohyarOYcfZKdCRD4TOrzI
+I2tsnKalNgcDp4KvFo8K2oD2oflaiMiWXu055ueyNFvvncqICCv2kISkUWpM2GXK
+wWPhYs0CgYEA9f9HLG7HTFM0VmnZjL2hIhTVD/N9SVb3GA4M6YfFlItpgtZmQ8t0
+69NSY+nSYj+/ynRioew0KUWZOFBy2fl6F6Bi182Po0sQEM/tpMXFn+o3sWt+toRF
+4KXgKlzk+XK83gU6F+gOoNUimta1AW68ecbB7SbO9tyZmpvCPuy5/CMCgYEA2qHr
+vJAxpmfwstvJQdwPKtUh2OhMsuJOv4RISt65ZCjFomDETO8sPJUDPfwKHeO5Xi+S
+OFhaKGkiXXyB3wGzIkh2+9ADlLLLJtX66O35SCB7h81BxW/pCF0AK5rfchlCzZgQ
+rdW69NDOAnunLTgq4W64zejV75e+MEUS3bgDAdcCgYADpveajEZ/NpkHU2j8cvBK
+fj6vjvDkPttKSyMb8H0ZeHxnieFYzlN9ENUfUKBj/whM7C9usgAQQM1GjcM2w0Jx
+yVrOU2n3hazGYx/nG1yUxDhxdOQbt5kF/dB3MIvhvDdboH49Tp+w+Zka7Wcgj1FT
+CYVljPbzqVDKf9eBcahNOwKBgFBVqPo7fZLopGAENHpXstcJQ4uhJ/WfBFKI98tS
+9YohFSWqKtceFwIXuv4+qzT6ZTV/g1ni1RX+M5toUYww4rKZL+ctMvOjktQtUine
+r3daQCnROPakPVtOWO6s1KfnMk27L33AiBbG1rvA1dfeyJrXBV7bzChieIbiCqGf
+qLM3AoGANgWDiooOTi/7fBmxarJ8KdE55XSHXUXVLxlQZEFt6rvqQJ2EPzLpDzkh
+qVAsBiKjvHGuq15v4PtZ6eDyDdqou4/KCDzmwLm0eSbixTdolB1VlKoG9BGkVmFQ
+3OKlhPyz0ukZQ35gh2EEgY6O+F8K8f/GFSimMQ255UpyadZhiJg=
+-----END RSA PRIVATE KEY-----)";
+
+}  // namespace dsnet
+
+#endif
