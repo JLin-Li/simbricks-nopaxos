@@ -11,7 +11,10 @@ using namespace dsnet;
 
 TEST(Signature, CanVerifyValid) {
   std::string message = "Hello!";
-  std::string signature = SignMessage(PRIVATE_KEY, message);
+  Signer signer(PRIVATE_KEY);
+  ASSERT_TRUE(signer.Initialize());
+  std::string signature;
+  ASSERT_TRUE(signer.Sign(message, signature));
   ASSERT_TRUE(VerifySignature(PUBLIC_KEY, message, signature));
 }
 
