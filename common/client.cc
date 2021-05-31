@@ -63,11 +63,9 @@ Client::~Client()
 
 void
 Client::ReceiveMessage(const TransportAddress &remote,
-                       const string &type, const string &data,
-                       void *meta_data)
+                       void *buf, size_t size)
 {
-    Panic("Received unexpected message type: %s",
-          type.c_str());
+    Panic("Received unexpected message");
 }
 
 void
@@ -82,4 +80,5 @@ void
 Client::InvokeAsync(const string &request) {
     Panic("Protocol does not support InvokeAsync");
 }
+
 } // namespace dsnet

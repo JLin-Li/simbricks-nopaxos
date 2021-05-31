@@ -54,34 +54,32 @@ public:
     void Invoke(const string &request,
                 continuation_t continuation) override;
     void InvokeUnlogged(int replicaIdx,
-			const string &request,
-			continuation_t continuation,
-			timeout_continuation_t timeoutContinuation = nullptr,
-			uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
-    void ReceiveMessage(const TransportAddress &remote,
-			const string &type,
-			const string &data,
-                        void *meta_data) override;
-
+                        const string &request,
+                        continuation_t continuation,
+                        timeout_continuation_t timeoutContinuation = nullptr,
+                        uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
     void Invoke(const std::map<shardnum_t, std::string> &requests,
-		g_continuation_t continuation,
+                g_continuation_t continuation,
                 void *arg = nullptr) override;
+    void ReceiveMessage(const TransportAddress &remote,
+                        void *buf, size_t size) override;
+
 
 private:
     struct PendingRequest
     {
-	opnum_t client_req_id;
+        opnum_t client_req_id;
         txnid_t txnid;
         std::map<shardnum_t, std::string> requests;
-	std::map<shardnum_t, std::string> replies;
+        std::map<shardnum_t, std::string> replies;
         proto::RequestMessage::RequestType type;
-	g_continuation_t continuation;
-	inline PendingRequest(opnum_t client_req_id,
+        g_continuation_t continuation;
+        inline PendingRequest(opnum_t client_req_id,
                               txnid_t txnid,
                               std::map<shardnum_t, std::string> requests,
-			      std::map<shardnum_t, std::string> replies,
+                              std::map<shardnum_t, std::string> replies,
                               proto::RequestMessage::RequestType type,
-			      g_continuation_t continuation)
+                              g_continuation_t continuation)
             : client_req_id(client_req_id), txnid(txnid), requests(requests),
             replies(replies), type(type), continuation(continuation) { }
     };
@@ -97,7 +95,7 @@ private:
                    proto::RequestMessage::RequestType type);
     void SendRequest();
     void HandleReply(const TransportAddress &remote,
-		     const proto::ReplyMessage &msg);
+                     const proto::ReplyMessage &msg);
     void CompleteOperation(bool commit);
 };
 

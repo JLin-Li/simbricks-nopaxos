@@ -54,18 +54,15 @@ public:
     void Invoke(const string &request,
                 continuation_t continuation) override;
     void InvokeUnlogged(int replicaIdx,
-			const string &request,
-			continuation_t continuation,
-			timeout_continuation_t timeoutContinuation = nullptr,
-			uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
-    void ReceiveMessage(const TransportAddress &remote,
-			const string &type,
-			const string &data,
-                        void *meta_data) override;
-
+                        const string &request,
+                        continuation_t continuation,
+                        timeout_continuation_t timeoutContinuation = nullptr,
+                        uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
     void Invoke(const std::map<shardnum_t, std::string> &requests,
-		g_continuation_t continuation,
+                g_continuation_t continuation,
                 void *arg = nullptr) override;
+    void ReceiveMessage(const TransportAddress &remote,
+                        void *buf, size_t size) override;
 
 private:
     static const int MAX_RETRIES = 5;

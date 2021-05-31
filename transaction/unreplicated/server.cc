@@ -28,6 +28,7 @@
  *
  **********************************************************************/
 
+#include "common/pbmessage.h"
 #include "transaction/unreplicated/server.h"
 
 #define RDebug(fmt, ...) Debug("[%d, %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
@@ -56,18 +57,14 @@ UnreplicatedServer::~UnreplicatedServer()
 
 void
 UnreplicatedServer::ReceiveMessage(const TransportAddress &remote,
-                                   const string &type, const string &data,
-                                   void *meta_data)
+                                   void *buf, size_t size)
 {
-    static RequestMessage requestMessage;
+    static RequestMessage request;
+    static PBMessage m(request);
 
-    if (type == requestMessage.GetTypeName()) {
-        requestMessage.ParseFromString(data);
-        HandleClientRequest(remote, requestMessage);
-    } else {
-        Panic("Received unexpected message type in UnreplicatedServer proto: %s",
-              type.c_str());
-    }
+    m.Parse(buf, size);
+
+    HandleClientRequest(remote, request);
 }
 
 void
@@ -83,7 +80,7 @@ UnreplicatedServer::HandleClientRequest(const TransportAddress &remote,
     // Check the client table to see if this is a duplicate request
     auto kv = this->clientTable.find(msg.request().clientid());
     if (kv != this->clientTable.end()) {
-        const ClientTableEntry &entry = kv->second;
+        ClientTableEntry &entry = kv->second;
         if (msg.request().clientreqid() < entry.lastReqId) {
             RDebug("Ignoring stale request");
             return;
@@ -91,7 +88,7 @@ UnreplicatedServer::HandleClientRequest(const TransportAddress &remote,
         if (msg.request().clientreqid() == entry.lastReqId) {
             // This is a duplicate request. Resend the reply
             if (!(this->transport->SendMessage(this, remote,
-                                               entry.reply))) {
+                                               PBMessage(entry.reply)))) {
                 RWarning("Failed to resend reply to client");
             }
             return;
@@ -125,7 +122,7 @@ UnreplicatedServer::HandleClientRequest(const TransportAddress &remote,
 
     UpdateClientTable(msg.request(), reply);
 
-    if (!this->transport->SendMessage(this, remote, reply)) {
+    if (!this->transport->SendMessage(this, remote, PBMessage(reply))) {
         RWarning("Failed to send ReplyMessage to client");
     }
 }

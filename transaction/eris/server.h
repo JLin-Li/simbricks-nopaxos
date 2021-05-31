@@ -41,6 +41,7 @@
 #include "replication/vr/client.h"
 #include "transaction/common/type.h"
 #include "transaction/eris/eris-proto.pb.h"
+#include "transaction/eris/message.h"
 
 #include <map>
 #include <set>
@@ -65,13 +66,13 @@ class ErisLogEntry : public LogEntry
 {
 public:
     ErisLogEntry(viewstamp_t viewstamp,
-            LogEntryState state,
-            const Request &request)
+                 LogEntryState state,
+                 const Request &request)
         : LogEntry(viewstamp, state, request) { }
     ErisLogEntry(viewstamp_t viewstamp,
-            LogEntryState state,
-            const Request &request,
-            const TxnData &txnData)
+                 LogEntryState state,
+                 const Request &request,
+                 const TxnData &txnData)
         : LogEntry(viewstamp, state, request),
         txnData(txnData) { }
     TxnData txnData;
@@ -86,8 +87,7 @@ public:
     ~ErisServer();
 
     void ReceiveMessage(const TransportAddress &remote,
-			const string &type, const string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
 public:
     Log log;
@@ -133,9 +133,9 @@ private:
     std::map<uint64_t, std::unique_ptr<TransportAddress> > clientAddresses;
     struct ClientTableEntry
     {
-	uint64_t lastReqId;
+        uint64_t lastReqId;
         bool replied;
-	proto::ReplyMessage reply;
+        proto::ReplyMessage reply;
     };
     std::map<uint64_t, ClientTableEntry> clientTable;
 
@@ -227,8 +227,8 @@ private:
 
     /* Message handlers */
     void HandleClientRequest(const TransportAddress &remote,
-			     proto::RequestMessage &msg,
-                             const multistamp_t &stamp);
+                             const proto::RequestMessage &msg,
+                             const Multistamp &stamp);
     void HandleGapRequest(const TransportAddress &remote,
                           const proto::GapRequestMessage &msg);
     void HandleGapReply(const TransportAddress &remote,

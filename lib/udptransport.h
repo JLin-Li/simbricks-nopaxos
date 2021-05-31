@@ -71,20 +71,13 @@ class UDPTransport : public TransportCommon<UDPTransportAddress>
 {
 public:
     UDPTransport(double dropRate = 0.0, double reorderRate = 0.0,
-                 int dscp = 0, event_base *evbase = nullptr);
+                 event_base *evbase = nullptr);
     virtual ~UDPTransport();
     virtual void RegisterInternal(TransportReceiver *receiver,
                                   const dsnet::ReplicaAddress *addr,
                                   int groupIdx, int replicaIdx) override;
     virtual void ListenOnMulticast(TransportReceiver *receiver,
                                    const dsnet::Configuration &config) override;
-    virtual bool SendBuffer(TransportReceiver *src,
-                            const TransportAddress &dst,
-                            const void *buffer,
-                            size_t len) override;
-    virtual bool OrderedMulticast(TransportReceiver *src,
-                                  const std::vector<int> &groups,
-                                  const Message &m) override;
     void Run() override;
     void Stop() override;
     int Timer(uint64_t ms, timer_callback_t cb) override;
@@ -108,12 +101,9 @@ private:
     {
         bool valid;
         UDPTransportAddress *addr;
-        string msgType;
-        string message;
+        std::string message;
         int fd;
     } reorderBuffer;
-    int dscp;
-
     event_base *libeventBase;
     std::vector<event *> listenerEvents;
     std::vector<event *> signalEvents;
@@ -132,15 +122,9 @@ private:
     };
     std::map<UDPTransportAddress, UDPTransportFragInfo> fragInfo;
 
-    bool _SendMessageInternal(TransportReceiver *src,
-                              const UDPTransportAddress &dst,
-                              const Message &m,
-                              size_t meta_len,
-                              void *meta_data);
     bool SendMessageInternal(TransportReceiver *src,
                              const UDPTransportAddress &dst,
                              const Message &m) override;
-
     UDPTransportAddress
     LookupAddress(const dsnet::ReplicaAddress &addr) override;
     void OnReadable(int fd);

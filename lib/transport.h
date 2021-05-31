@@ -32,13 +32,24 @@
 
 #include "lib/configuration.h"
 
-#include <google/protobuf/message.h>
 #include <functional>
 #include <list>
 #include <map>
 #include <unordered_map>
 
 namespace dsnet {
+
+class Message
+{
+public:
+    virtual ~Message() { }
+    virtual std::string Type() const = 0;
+    virtual size_t SerializedSize() const = 0;
+    virtual void Parse(const void *buf, size_t size) = 0;
+    // Serialize message and write to buf. Caller needs to make sure buf
+    // is large enough to store the serialized message.
+    virtual void Serialize(void *buf) const = 0;
+};
 
 class TransportAddress
 {
@@ -50,25 +61,12 @@ public:
 
 class TransportReceiver
 {
-protected:
-    typedef ::google::protobuf::Message Message;
-
 public:
-    enum class ReceiveMode {
-        kReceiveMessage,
-        kReceiveBuffer
-    };
-
     virtual ~TransportReceiver();
     virtual void SetAddress(const TransportAddress *addr);
     virtual const TransportAddress& GetAddress();
-    virtual ReceiveMode GetReceiveMode();
     virtual void ReceiveMessage(const TransportAddress &remote,
-                                const string &type,
-                                const string &data,
-                                void * meta_data);
-    virtual void ReceiveBuffer(const TransportAddress &remote,
-                               void *buf, size_t len);
+                                void *buf, size_t size) = 0;
 
 protected:
     const TransportAddress *myAddress;
@@ -76,35 +74,20 @@ protected:
 
 typedef std::function<void (void)> timer_callback_t;
 
-// ordered multicast meta data
-typedef struct {
-    sessnum_t sessnum;
-    std::unordered_map<shardnum_t, msgnum_t> seqnums;
-} multistamp_t;
-
 class Transport
 {
-protected:
-    typedef ::google::protobuf::Message Message;
 public:
     virtual ~Transport() {}
     virtual void RegisterReplica(TransportReceiver *receiver,
-                                 const dsnet::Configuration &config,
+                                 const Configuration &config,
                                  int groupIdx,
                                  int replicaIdx) = 0;
     /* Set addr to nullptr if receiver can be bound to any address */
     virtual void RegisterAddress(TransportReceiver *receiver,
-                                 const dsnet::Configuration &config,
-                                 const dsnet::ReplicaAddress *addr) = 0;
+                                 const Configuration &config,
+                                 const ReplicaAddress *addr) = 0;
     virtual void ListenOnMulticast(TransportReceiver *receiver,
-                                   const dsnet::Configuration &config) = 0;
-    virtual bool SendBuffer(TransportReceiver *src,
-                            const TransportAddress &dst,
-                            const void *buf,
-                            size_t len) = 0;
-    virtual bool SendBufferToAll(TransportReceiver *src,
-                                 const void *buf,
-                                 size_t len) = 0;
+                                   const Configuration &config) = 0;
     virtual bool SendMessage(TransportReceiver *src,
                              const TransportAddress &dst,
                              const Message &m) = 0;
@@ -131,19 +114,12 @@ public:
     virtual bool SendMessageToGroup(TransportReceiver *src,
                                     int groupIdx,
                                     const Message &m) = 0;
-    /* Send multi-group message using ordered multicast.
-     * An implementation may decide not to implement this.
-     */
-    virtual bool OrderedMulticast(TransportReceiver *src,
-                                  const std::vector<int> &groups,
-                                  const Message &m) = 0;
-    /* Send ordered multicast to the default group */
-    virtual bool OrderedMulticast(TransportReceiver *src,
-                                  const Message &m) = 0;
-    /* Send message to failure coordinator
-     */
+    /* Send message to failure coordinator */
     virtual bool SendMessageToFC(TransportReceiver *src,
                                  const Message &m) = 0;
+    /* Send message to multicast address */
+    virtual bool SendMessageToMulticast(TransportReceiver *src,
+                                        const Message &m) = 0;
     virtual int Timer(uint64_t ms, timer_callback_t cb) = 0;
     virtual bool CancelTimer(int id) = 0;
     virtual void CancelAllTimers() = 0;

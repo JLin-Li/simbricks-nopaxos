@@ -55,8 +55,7 @@ public:
                                 uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
     virtual void InvokeAsync(const string &request) override;
     virtual void ReceiveMessage(const TransportAddress &remote,
-                                const string &type, const string &data,
-                                void *meta_data) override;
+                                void *buf, size_t size) override;
 
 protected:
     int view;

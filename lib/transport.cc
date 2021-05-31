@@ -50,28 +50,6 @@ TransportReceiver::GetAddress()
     return *(this->myAddress);
 }
 
-TransportReceiver::ReceiveMode
-TransportReceiver::GetReceiveMode()
-{
-    return TransportReceiver::ReceiveMode::kReceiveMessage;
-}
-
-void
-TransportReceiver::ReceiveMessage(const TransportAddress &remote,
-                                  const string &type,
-                                  const string &data,
-                                  void *meta_data)
-{
-    Panic("ReceiveMessage not implemented");
-}
-
-void
-TransportReceiver::ReceiveBuffer(const TransportAddress &remote,
-                                 void *buf, size_t len)
-{
-    Panic("ReceiveBuffer not implemented");
-}
-
 Timeout::Timeout(Transport *transport, uint64_t ms, timer_callback_t cb)
     : transport(transport), ms(ms), cb(cb)
 {

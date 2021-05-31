@@ -28,6 +28,7 @@
  *
  **********************************************************************/
 
+#include "common/pbmessage.h"
 #include "transaction/spanner/server.h"
 
 #define RDebug(fmt, ...) Debug("[%d, %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
@@ -65,29 +66,29 @@ SpannerServer::~SpannerServer()
 
 void
 SpannerServer::ReceiveMessage(const TransportAddress &remote,
-                              const string &type, const string &data,
-                              void *meta_data)
+                              void *buf, size_t size)
 {
-    static RequestMessage requestMessage;
-    static PrepareMessage prepareMessage;
-    static PrepareOKMessage prepareOKMessage;
-    static CommitMessage commitMessage;
+    static ToServerMessage server_msg;
+    static PBMessage m(server_msg);
 
-    if (type == requestMessage.GetTypeName()) {
-        requestMessage.ParseFromString(data);
-        HandleClientRequest(remote, requestMessage);
-    } else if (type == prepareMessage.GetTypeName()) {
-        prepareMessage.ParseFromString(data);
-        HandlePrepare(remote, prepareMessage);
-    } else if (type == prepareOKMessage.GetTypeName()) {
-        prepareOKMessage.ParseFromString(data);
-        HandlePrepareOK(remote, prepareOKMessage);
-    } else if (type == commitMessage.GetTypeName()) {
-        commitMessage.ParseFromString(data);
-        HandleCommit(remote, commitMessage);
-    } else {
-        Panic("Received unexpected message type in SpannerServer proto: %s",
-              type.c_str());
+    m.Parse(buf, size);
+
+    switch (server_msg.msg_case()) {
+        case ToServerMessage::MsgCase::kRequest:
+            HandleClientRequest(remote, server_msg.request());
+            break;
+        case ToServerMessage::MsgCase::kPrepare:
+            HandlePrepare(remote, server_msg.prepare());
+            break;
+        case ToServerMessage::MsgCase::kPrepareOk:
+            HandlePrepareOK(remote, server_msg.prepare_ok());
+            break;
+        case ToServerMessage::MsgCase::kCommit:
+            HandleCommit(remote, server_msg.commit());
+            break;
+        default:
+            Panic("Received unexpected message type %u",
+                    server_msg.msg_case());
     }
 }
 
@@ -109,7 +110,7 @@ SpannerServer::HandleClientRequest(const TransportAddress &remote,
     // Check the client table to see if this is a duplicate request
     auto kv = this->clientTable.find(msg.request().clientid());
     if (kv != this->clientTable.end()) {
-        const ClientTableEntry &entry = kv->second;
+        ClientTableEntry &entry = kv->second;
         if (msg.request().clientreqid() < entry.lastReqId) {
             RDebug("Ignoring stale request");
             return;
@@ -121,7 +122,7 @@ SpannerServer::HandleClientRequest(const TransportAddress &remote,
             // discard the request.
             if (entry.replied) {
                 if (!(this->transport->SendMessage(this, remote,
-                                                   entry.reply))) {
+                                                   PBMessage(entry.reply)))) {
                     RWarning("Failed to resend reply to client");
                 }
                 return;
@@ -157,13 +158,14 @@ SpannerServer::HandlePrepare(const TransportAddress &remote,
 
     if (msg.opnum() <= this->lastOp) {
         // Resend the prepareOK message
-        PrepareOKMessage prepareOKMessage;
-        prepareOKMessage.set_view(msg.view());
-        prepareOKMessage.set_opnum(msg.opnum());
-        prepareOKMessage.set_replica_num(this->replicaIdx);
+        ToServerMessage m;
+        PrepareOKMessage *prepareOKMessage = m.mutable_prepare_ok();
+        prepareOKMessage->set_view(msg.view());
+        prepareOKMessage->set_opnum(msg.opnum());
+        prepareOKMessage->set_replica_num(this->replicaIdx);
         if (!(transport->SendMessageToReplica(this,
                                               configuration.GetLeaderIndex(view),
-                                              prepareOKMessage))) {
+                                              PBMessage(m)))) {
             RWarning("Failed to send PrepareOK message to leader");
         }
         return;
@@ -189,13 +191,14 @@ SpannerServer::HandlePrepare(const TransportAddress &remote,
                 LOG_STATE_PREPARED, msg.request(), TxnData(msg.txnid(), msg.type())));
     UpdateClientTable(msg.request());
 
-    PrepareOKMessage prepareOKMessage;
-    prepareOKMessage.set_view(msg.view());
-    prepareOKMessage.set_opnum(msg.opnum());
-    prepareOKMessage.set_replica_num(this->replicaIdx);
+    ToServerMessage m;
+    PrepareOKMessage *prepareOKMessage = m.mutable_prepare_ok();
+    prepareOKMessage->set_view(msg.view());
+    prepareOKMessage->set_opnum(msg.opnum());
+    prepareOKMessage->set_replica_num(this->replicaIdx);
     if (!this->transport->SendMessageToReplica(this,
                                                this->configuration.GetLeaderIndex(view),
-                                               prepareOKMessage)) {
+                                               PBMessage(m))) {
         RWarning("Failed to send PrepareOK message to leader");
     }
 }
@@ -239,12 +242,13 @@ SpannerServer::CommitUpTo(opnum_t opnum)
 {
     if (this->lastCommitted < opnum && AmLeader()) {
         /* Leader send Commit message */
-        CommitMessage commitMessage;
-        commitMessage.set_view(this->view);
-        commitMessage.set_opnum(opnum);
+        ToServerMessage m;
+        CommitMessage *commitMessage = m.mutable_commit();
+        commitMessage->set_view(this->view);
+        commitMessage->set_opnum(opnum);
 
         if (!this->transport->SendMessageToAll(this,
-                                               commitMessage)) {
+                                               PBMessage(m))) {
             RWarning("Failed to send COMMIT message to all replicas");
         }
     }
@@ -308,7 +312,9 @@ SpannerServer::ExecuteTxn(SpannerLogEntry *entry)
     if (this->configuration.GetLeaderIndex(entry->viewstamp.view) == this->replicaIdx) {
         auto iter = this->clientAddresses.find(entry->request.clientid());
         if (iter != this->clientAddresses.end()) {
-            if (!this->transport->SendMessage(this, *iter->second, reply)) {
+            if (!this->transport->SendMessage(this,
+                        *iter->second,
+                        PBMessage(reply))) {
                 RWarning("Failed to send ReplyMessage to client");
             }
         }
@@ -336,15 +342,16 @@ SpannerServer::SendPrepare()
 {
     SpannerLogEntry *entry = (SpannerLogEntry *)this->log.Find(this->lastOp);
     ASSERT(entry != nullptr);
-    PrepareMessage prepareMessage;
-    prepareMessage.set_view(entry->viewstamp.view);
-    prepareMessage.set_opnum(entry->viewstamp.opnum);
-    prepareMessage.set_txnid(entry->txnData.txnid);
-    prepareMessage.set_type(entry->txnData.type);
-    *(prepareMessage.mutable_request()) = entry->request;
+    ToServerMessage m;
+    PrepareMessage *prepareMessage= m.mutable_prepare();
+    prepareMessage->set_view(entry->viewstamp.view);
+    prepareMessage->set_opnum(entry->viewstamp.opnum);
+    prepareMessage->set_txnid(entry->txnData.txnid);
+    prepareMessage->set_type(entry->txnData.type);
+    *(prepareMessage->mutable_request()) = entry->request;
 
     if (!this->transport->SendMessageToAll(this,
-                                           prepareMessage)) {
+                                           PBMessage(m))) {
         RWarning("Failed to send Prepare message");
     }
 

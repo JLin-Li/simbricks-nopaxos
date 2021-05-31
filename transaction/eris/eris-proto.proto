@@ -15,11 +15,6 @@ message Stamp {
     optional uint32 sess_num = 3;
 }
 
-message MultiStamp {
-    required uint32 sess_num = 1;
-    repeated Stamp stamps = 2;
-}
-
 enum RequestType {
     UNKNOWN = 0;
     INDEPENDENT = 1;
@@ -28,12 +23,9 @@ enum RequestType {
     ABORT = 4;
 }
 
-message RequestMessage {
-    required uint64 txnid = 1;
-    required RequestType type = 2;
-    required Request request = 3;
-}
-
+/*
+ * Messages received by Eris clients
+ */
 message ReplyMessage {
   required uint64 clientid = 1;
   required uint64 clientreqid = 2;
@@ -43,6 +35,15 @@ message ReplyMessage {
   required uint64 op_num = 6;
   optional uint32 commit = 7;
   optional bytes reply = 8;
+}
+
+/*
+ * Messages received by Eris servers
+ */
+message RequestMessage {
+    required uint64 txnid = 1;
+    required RequestType type = 2;
+    required Request request = 3;
 }
 
 message GapRequestMessage {
@@ -125,6 +126,23 @@ message EpochChangeStateTransferReply {
     required uint64 state_transfer_sess_num = 2;
     required uint32 shard_num = 3;
     repeated MsgEntry entries = 4;
+}
+
+message ToServerMessage {
+    oneof msg {
+        RequestMessage request = 1;
+        GapRequestMessage gap_request = 2;
+        GapReplyMessage gap_reply = 3;
+        FCToErisMessage fc = 4;
+        SyncPrepareMessage sync_prepare = 5;
+        ViewChangeRequestMessage view_change_request = 6;
+        ViewChangeMessage view_change = 7;
+        StartViewMessage start_view = 8;
+        StateTransferRequestMessage state_transfer_request = 9;
+        StateTransferReplyMessage state_transfer_reply = 10;
+        EpochChangeStateTransferRequest epoch_change_state_transfer_request = 11;
+        EpochChangeStateTransferReply epoch_change_state_transfer_reply = 12;
+    }
 }
 
 /*******************************************************************************

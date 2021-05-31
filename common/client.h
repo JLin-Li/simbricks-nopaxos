@@ -69,9 +69,7 @@ public:
                                 uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) = 0;
     virtual void InvokeAsync(const string &request); // Asynchronous invoke (do not wait for reply)
     virtual void ReceiveMessage(const TransportAddress &remote,
-                                const string &type,
-                                const string &data,
-                                void *meta_data) override;
+                                void *buf, size_t size) override;
 
 protected:
     Configuration config;

@@ -85,8 +85,7 @@ public:
     ~SpannerServer();
 
     void ReceiveMessage(const TransportAddress &remote,
-                        const std::string &type, const std::string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
 public:
     Log log;

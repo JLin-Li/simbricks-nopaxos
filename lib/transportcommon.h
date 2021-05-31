@@ -89,27 +89,6 @@ public:
     }
 
     virtual bool
-    SendBufferToAll(TransportReceiver *src, const void *buf, size_t len) override
-    {
-        const dsnet::Configuration *cfg = configurations[src];
-
-        if (!replicaAddressesInitialized) {
-            LookupAddresses();
-        }
-
-        const ADDR &srcAddr = dynamic_cast<const ADDR &>(src->GetAddress());
-        for (const auto &kv : replicaAddresses[cfg][0]) {
-            if (srcAddr == kv.second) {
-                continue;
-            }
-            if (!SendBuffer(src, kv.second, buf, len)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    virtual bool
     SendMessage(TransportReceiver *src, const TransportAddress &dst,
                 const Message &m) override
     {
@@ -142,23 +121,6 @@ public:
 
         auto kv = replicaAddresses[cfg][groupIdx].find(replicaIdx);
         ASSERT(kv != replicaAddresses[cfg][groupIdx].end());
-
-        return SendMessageInternal(src, kv->second, m);
-    }
-
-    virtual bool SendMessageToFC(TransportReceiver *src, const Message &m) override
-    {
-        const dsnet::Configuration *cfg = configurations[src];
-        ASSERT(cfg != NULL);
-
-        if (!replicaAddressesInitialized) {
-            LookupAddresses();
-        }
-
-        auto kv = fcAddresses.find(cfg);
-        if (kv == fcAddresses.end()) {
-            Panic("Configuration has no failure coordinator address");
-        }
 
         return SendMessageInternal(src, kv->second, m);
     }
@@ -232,21 +194,41 @@ public:
         return true;
     }
 
-    virtual bool
-    OrderedMulticast(TransportReceiver *src,
-                     const std::vector<int> &groups,
-                     const Message &m) override
+    virtual bool SendMessageToFC(TransportReceiver *src, const Message &m) override
     {
-        Panic("Transport implementation does not support OrderedMulticast");
+        const dsnet::Configuration *cfg = configurations[src];
+        ASSERT(cfg != NULL);
+
+        if (!replicaAddressesInitialized) {
+            LookupAddresses();
+        }
+
+        auto kv = fcAddresses.find(cfg);
+        if (kv == fcAddresses.end()) {
+            Panic("Configuration has no failure coordinator address");
+        }
+
+        return SendMessageInternal(src, kv->second, m);
     }
 
-    virtual bool
-    OrderedMulticast(TransportReceiver *src,
-                     const Message &m) override
+    virtual bool SendMessageToMulticast(TransportReceiver *src,
+                                        const Message &m) override
     {
-        std::vector<int> groups = {0};
-        return OrderedMulticast(src, groups, m);
+        const dsnet::Configuration *cfg = configurations[src];
+        ASSERT(cfg != NULL);
+
+        if (!replicaAddressesInitialized) {
+            LookupAddresses();
+        }
+
+        auto kv = multicastAddresses.find(cfg);
+        if (kv == multicastAddresses.end()) {
+            Panic("Configuration has no multicast address");
+        }
+
+        return SendMessageInternal(src, kv->second, m);
     }
+
 
 protected:
     virtual void RegisterInternal(TransportReceiver *receiver,

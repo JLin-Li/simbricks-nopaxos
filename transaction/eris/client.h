@@ -59,9 +59,7 @@ public:
 			timeout_continuation_t timeoutContinuation = nullptr,
 			uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
     void ReceiveMessage(const TransportAddress &remote,
-			const string &type,
-			const string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
     void Invoke(const std::map<shardnum_t, std::string> &requests,
 		g_continuation_t continuation,
@@ -70,7 +68,7 @@ public:
 private:
     struct PendingRequest
     {
-        proto::RequestMessage request_msg;
+        proto::ToServerMessage msg;
         opnum_t client_req_id;
         proto::RequestType txn_type;
         bool commit;
@@ -79,14 +77,14 @@ private:
         std::map<shardnum_t, bool> has_replies;
         std::vector<int> shards;
         g_continuation_t continuation;
-        inline PendingRequest(const proto::RequestMessage &request_msg,
+        inline PendingRequest(const proto::ToServerMessage &msg,
                 opnum_t client_req_id,
                 proto::RequestType txn_type,
                 const std::map<shardnum_t, std::string> &requests,
                 const std::map<shardnum_t, std::string> &replies,
                 const std::vector<int> &shards,
                 g_continuation_t continuation)
-            : request_msg(request_msg), client_req_id(client_req_id),
+            : msg(msg), client_req_id(client_req_id),
             txn_type(txn_type), commit(true), requests(requests),
             replies(replies), shards(shards), continuation(continuation) {
                 for (const auto &kv : replies) {

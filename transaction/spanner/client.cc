@@ -28,6 +28,7 @@
  *
  **********************************************************************/
 
+#include "common/pbmessage.h"
 #include "transaction/spanner/client.h"
 
 namespace dsnet {
@@ -95,18 +96,13 @@ SpannerClient::InvokeUnlogged(int replicaIdx, const string &request,
 
 void
 SpannerClient::ReceiveMessage(const TransportAddress &remote,
-                              const string &type,
-                              const string &data,
-                              void *meta_data)
+                              void *buf, size_t size)
 {
     static proto::ReplyMessage reply;
+    static PBMessage m(reply);
 
-    if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, meta_data);
-    }
+    m.Parse(buf, size);
+    HandleReply(remote, reply);
 }
 
 void
@@ -198,24 +194,24 @@ SpannerClient::CompleteOperation(Fate fate)
 void
 SpannerClient::SendRequest()
 {
-    RequestMessage msg;
-    msg.set_txnid(this->pendingRequest->txnid);
-    msg.set_type(this->pendingRequest->type);
-    Request request;
-    request.set_clientid(this->clientid);
-    request.set_clientreqid(this->pendingRequest->client_req_id);
+    ToServerMessage m;
+    RequestMessage *request = m.mutable_request();
+    request->set_txnid(this->pendingRequest->txnid);
+    request->set_type(this->pendingRequest->type);
+    Request *r = request->mutable_request();
+    r->set_clientid(this->clientid);
+    r->set_clientreqid(this->pendingRequest->client_req_id);
 
     for (auto &kv : this->pendingRequest->requests) {
         // Only PREPARE contains actual requests
         if (this->pendingRequest->type == proto::PREPARE) {
-            request.set_op(kv.second);
+            r->set_op(kv.second);
         } else {
-            request.set_op("");
+            r->set_op("");
         }
-        *(msg.mutable_request()) = request;
         if (!this->transport->SendMessageToGroup(this,
                                                  kv.first,
-                                                 msg)) {
+                                                 PBMessage(m))) {
             Warning("Failed to send request to group %u", kv.first);
         }
     }
