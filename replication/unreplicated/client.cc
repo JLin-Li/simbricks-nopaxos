@@ -30,6 +30,7 @@
 
 #include "common/client.h"
 #include "common/request.pb.h"
+#include "common/pbmessage.h"
 #include "lib/message.h"
 #include "lib/transport.h"
 #include "replication/unreplicated/client.h"
@@ -37,6 +38,8 @@
 
 namespace dsnet {
 namespace unreplicated {
+
+using namespace proto;
 
 UnreplicatedClient::UnreplicatedClient(const Configuration &config,
                                        Transport *transport,
@@ -79,13 +82,14 @@ UnreplicatedClient::Invoke(const string &request,
 void
 UnreplicatedClient::SendRequest()
 {
-    proto::RequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(lastReqId);
+    ToReplicaMessage m;
+    RequestMessage *reqMsg = m.mutable_request();
+    reqMsg->mutable_req()->set_op(pendingRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(lastReqId);
 
     // Unreplicated: just send to replica 0
-    transport->SendMessageToReplica(this, 0, reqMsg);
+    transport->SendMessageToReplica(this, 0, PBMessage(m));
 
     requestTimeout->Reset();
 }
@@ -111,36 +115,39 @@ UnreplicatedClient::InvokeUnlogged(int replicaIdx,
 
     pendingUnloggedRequest = new PendingRequest(request, 0, continuation);
 
-    proto::UnloggedRequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingUnloggedRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(0);
+    ToReplicaMessage m;
+    UnloggedRequestMessage *reqMsg = m.mutable_unlogged_request();
+    reqMsg->mutable_req()->set_op(pendingUnloggedRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(0);
 
     // Unreplicated: just send to replica 0
     if (replicaIdx != 0) {
         Panic("Attempt to invoke unlogged operation on replica that doesn't exist");
     }
-    transport->SendMessageToReplica(this, 0, reqMsg);
+    transport->SendMessageToReplica(this, 0, PBMessage(m));
 
 }
 
 void
 UnreplicatedClient::ReceiveMessage(const TransportAddress &remote,
-                                   const string &type,
-                                   const string &data,
-                                   void *meta_data)
+                                   void *buf, size_t size)
 {
-    static proto::ReplyMessage reply;
-    static proto::UnloggedReplyMessage unloggedReply;
+    static ToClientMessage client_msg;
+    static PBMessage m(client_msg);
 
-    if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else if (type == unloggedReply.GetTypeName()) {
-        unloggedReply.ParseFromString(data);
-        HandleUnloggedReply(remote, unloggedReply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, NULL);
+    m.Parse(buf, size);
+
+    switch (client_msg.msg_case()) {
+        case ToClientMessage::MsgCase::kReply:
+            HandleReply(remote, client_msg.reply());
+            break;
+        case ToClientMessage::MsgCase::kUnloggedReply:
+            HandleUnloggedReply(remote, client_msg.unlogged_reply());
+            break;
+        default:
+            Panic("Received unexpected message type: %u",
+                    client_msg.msg_case());
     }
 }
 

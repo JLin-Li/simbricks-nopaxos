@@ -55,9 +55,7 @@ public:
                         timeout_continuation_t timeoutContinuation = nullptr,
                         uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
     void ReceiveMessage(const TransportAddress &remote,
-                        const string &type,
-                        const string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
 private:
     opnum_t lastReqID;

@@ -30,6 +30,7 @@
 
 
 #include "transaction/eris/fcor.h"
+#include "transaction/eris/message.h"
 
 using namespace dsnet;
 using namespace transaction;
@@ -109,11 +110,11 @@ Fcor::HandleTxnInfoReq(const TxnInfoRequest &m) {
     }
 
     // Otherwise, blast out the lookup message to everyone
-    TxnCheck mp = TxnCheck();
-    *mp.mutable_txn_num() = txnNum;
-    FCToErisMessage response = FCToErisMessage();
-    *response.mutable_txn_check() = mp;
-    this->transport->SendMessageToAllGroups(this->sender, response);
+    ToServerMessage s;
+    FCToErisMessage *response = s.mutable_fc();
+    TxnCheck *mp = response->mutable_txn_check();
+    *mp->mutable_txn_num() = txnNum;
+    this->transport->SendMessageToAllGroups(this->sender, ErisMessage(s));
 }
 
 void
@@ -279,48 +280,45 @@ Fcor::SendResult(TxnID &id) {
     TxnResult result = this->txnResults.at(id);
 
     // TODO: is this right??
-    FCToErisMessage response = FCToErisMessage();
+    ToServerMessage s;
+    FCToErisMessage *response = s.mutable_fc();
 
     if (result.fate == DROPPED) {
         // Is it okay to just send the result to the shard that asked?
         // Others could preemptively use the information
         // Depends on what Jialin is doing in his code...
-        DropTxn m = DropTxn();
-        Stamp txnNum = Stamp();
-        txnNum.set_shard_num(id.shardNum);
-        txnNum.set_sess_num(id.epochNum);
-        txnNum.set_msg_num(id.msgNum);
-        *m.mutable_txn_num() = txnNum;
-
-        *response.mutable_drop_txn() = m;
+        DropTxn *dt = response->mutable_drop_txn();
+        Stamp *txnNum = dt->mutable_txn_num();
+        txnNum->set_shard_num(id.shardNum);
+        txnNum->set_sess_num(id.epochNum);
+        txnNum->set_msg_num(id.msgNum);
     } else {
-        TxnFound m = TxnFound();
-        *m.mutable_txn() = result.txn;
-
-        *response.mutable_txn_found() = m;
+        TxnFound *tf = response->mutable_txn_found();
+        *tf->mutable_txn() = result.txn;
     }
 
     // Send the message
-    this->transport->SendMessageToGroup(this->sender, id.shardNum, response);
+    this->transport->SendMessageToGroup(this->sender, id.shardNum, ErisMessage(s));
 }
 
 
 void
 Fcor::HandleEpochChangeReq(const ErisToFCMessage &m) {
-    EpochChangeReq req = m.epoch_change_req();
+    const EpochChangeReq &req = m.epoch_change_req();
     if (this->epochNum >= req.new_epoch_num()) {
         // epoch change already underway or completed
         if (this->lastNormalEpoch >= req.new_epoch_num()) {
             // Already completed the epoch change,
             // re-send the start epoch message.
-            FCToErisMessage response = FCToErisMessage();
+            ToServerMessage s;
+            FCToErisMessage *response = s.mutable_fc();
             ASSERT(this->lastStartEpochs.find(m.shard_num()) != this->lastStartEpochs.end());
-            *response.mutable_start_epoch() = this->lastStartEpochs[m.shard_num()];
+            *response->mutable_start_epoch() = this->lastStartEpochs[m.shard_num()];
 
             this->transport->SendMessageToReplica(this->sender,
                                                   m.shard_num(),
                                                   m.replica_num(),
-                                                  response);
+                                                  ErisMessage(s));
         }
         return;
     }
@@ -333,12 +331,12 @@ Fcor::HandleEpochChangeReq(const ErisToFCMessage &m) {
     this->latestViewNums.clear();
     this->pendingStateTransfers.clear();
 
-    FCToErisMessage response = FCToErisMessage();
-    EpochChange epochChange = EpochChange();
-    epochChange.set_new_epoch_num(this->epochNum);
-    *response.mutable_epoch_change() = epochChange;
+    ToServerMessage s;
+    FCToErisMessage *response = s.mutable_fc();
+    EpochChange *epochChange = response->mutable_epoch_change();
+    epochChange->set_new_epoch_num(this->epochNum);
 
-    this->transport->SendMessageToAllGroups(this->sender, response);
+    this->transport->SendMessageToAllGroups(this->sender, ErisMessage(s));
 }
 
 void
@@ -350,11 +348,14 @@ Fcor::HandleEpochChangeAck(const ErisToFCMessage &m) {
         ASSERT(this->epochNum >= m.local_view_num().sess_num());
         ASSERT(this->lastStartEpochs.find(m.shard_num()) != this->lastStartEpochs.end());
 
-        FCToErisMessage response = FCToErisMessage();
-        *response.mutable_start_epoch() = this->lastStartEpochs[m.shard_num()];
+        ToServerMessage s;
+        FCToErisMessage *response = s.mutable_fc();
+        *response->mutable_start_epoch() = this->lastStartEpochs[m.shard_num()];
 
         this->transport->SendMessageToReplica(this->sender,
-                                              m.shard_num(), m.replica_num(), response);
+                                              m.shard_num(),
+                                              m.replica_num(),
+                                              ErisMessage(s));
 
         return;
     }
@@ -366,7 +367,7 @@ Fcor::HandleEpochChangeAck(const ErisToFCMessage &m) {
             this->transport->SendMessageToReplica(this->sender,
                                                   m.shard_num(),
                                                   m.replica_num(),
-                                                  this->pendingStateTransfers[std::make_pair(m.shard_num(), m.replica_num())]);
+                                                  ErisMessage(this->pendingStateTransfers[std::make_pair(m.shard_num(), m.replica_num())]));
         }
         return;
     }
@@ -419,16 +420,17 @@ Fcor::HandleEpochChangeAck(const ErisToFCMessage &m) {
     }
 
     for (int i = 0; i < this->config.g; i++) {
-        FCToErisMessage msg;
-        EpochChangeStateTransfer stateTransfer;
-        stateTransfer.set_epoch_num(this->epochNum);
-        stateTransfer.set_state_transfer_epoch_num(this->lastNormalEpoch);
+        ToServerMessage s;
+        FCToErisMessage *msg = s.mutable_fc();
+        EpochChangeStateTransfer *stateTransfer = msg->mutable_epoch_change_state_transfer();
+        stateTransfer->set_epoch_num(this->epochNum);
+        stateTransfer->set_state_transfer_epoch_num(this->lastNormalEpoch);
 
         // Add all perm drops for this shard
         if (this->droppedTxns.find(i) != this->droppedTxns.end() &&
             !this->droppedTxns[i].empty()) {
             for (auto txnid : this->droppedTxns[i]) {
-                auto *stamp = stateTransfer.add_perm_drops();
+                auto *stamp = stateTransfer->add_perm_drops();
                 stamp->set_shard_num(txnid.shardNum);
                 stamp->set_msg_num(txnid.msgNum);
                 stamp->set_sess_num(txnid.epochNum);
@@ -440,7 +442,7 @@ Fcor::HandleEpochChangeAck(const ErisToFCMessage &m) {
         const LatestMsgRecord &entry = this->latestMsgNums.at(i);
         for (int j = 0; j < this->config.g; j++) {
             if (this->latestMsgNums[j].msg_nums[i] > entry.msg_nums.at(i)) {
-                EpochChangeStateTransfer::MsgEntry *msgEntry = stateTransfer.add_latest_msgs();
+                EpochChangeStateTransfer::MsgEntry *msgEntry = stateTransfer->add_latest_msgs();
                 msgEntry->set_shard_num(j);
                 msgEntry->set_replica_num(this->latestMsgNums[j].replica_num);
                 msgEntry->set_msg_num(this->latestMsgNums[j].msg_nums[i]);
@@ -450,13 +452,12 @@ Fcor::HandleEpochChangeAck(const ErisToFCMessage &m) {
         // Only send StateTransfer to the replica with the
         // longest log.
         // XXX Assume these replicas will not fail during epoch change
-        if (stateTransfer.perm_drops_size() > 0 || stateTransfer.latest_msgs_size() > 0) {
-            *(msg.mutable_epoch_change_state_transfer()) = stateTransfer;
-            this->pendingStateTransfers[std::make_pair(i, this->latestMsgNums[i].replica_num)] = msg;
+        if (stateTransfer->perm_drops_size() > 0 || stateTransfer->latest_msgs_size() > 0) {
+            this->pendingStateTransfers[std::make_pair(i, this->latestMsgNums[i].replica_num)] = s;
             this->transport->SendMessageToReplica(this->sender,
                                                   i,
                                                   this->latestMsgNums[i].replica_num,
-                                                  msg);
+                                                  ErisMessage(s));
             this->status = STATUS_PENDING_STATE_TRANSFER;
         }
     }
@@ -504,26 +505,26 @@ Fcor::StartEpoch()
 {
     Notice("FCOR entering epoch %d", this->epochNum);
     for (int i = 0; i < this->config.g; i++) {
-        FCToErisMessage response = FCToErisMessage();
-        proto::StartEpoch startEpoch = proto::StartEpoch();
-        startEpoch.mutable_new_view()->set_sess_num(this->epochNum);
-        startEpoch.mutable_new_view()->set_view_num(this->latestViewNums[i]);
-        startEpoch.set_last_normal_epoch_num(this->lastNormalEpoch);
+        ToServerMessage s;
+        FCToErisMessage *response = s.mutable_fc();
+        proto::StartEpoch *startEpoch = response->mutable_start_epoch();
+        startEpoch->mutable_new_view()->set_sess_num(this->epochNum);
+        startEpoch->mutable_new_view()->set_view_num(this->latestViewNums[i]);
+        startEpoch->set_last_normal_epoch_num(this->lastNormalEpoch);
         if (this->droppedTxns.find(i) != this->droppedTxns.end() &&
             !this->droppedTxns[i].empty()) {
             for (auto txnid : this->droppedTxns[i]) {
-                auto *stamp = startEpoch.add_perm_drops();
+                auto *stamp = startEpoch->add_perm_drops();
                 stamp->set_shard_num(txnid.shardNum);
                 stamp->set_msg_num(txnid.msgNum);
                 stamp->set_sess_num(txnid.epochNum);
             }
         }
-        startEpoch.set_latest_replica_num(this->latestMsgNums[i].replica_num);
-        startEpoch.set_latest_op_num(this->latestMsgNums[i].op_num);
-        *response.mutable_start_epoch() = startEpoch;
+        startEpoch->set_latest_replica_num(this->latestMsgNums[i].replica_num);
+        startEpoch->set_latest_op_num(this->latestMsgNums[i].op_num);
 
-        this->transport->SendMessageToGroup(this->sender, i, response);
-        this->lastStartEpochs[i] = startEpoch;
+        this->transport->SendMessageToGroup(this->sender, i, ErisMessage(s));
+        this->lastStartEpochs[i] = *startEpoch;
     }
 
     this->txnResults.clear();

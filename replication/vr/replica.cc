@@ -36,6 +36,7 @@
 #include "lib/latency.h"
 #include "lib/message.h"
 #include "lib/transport.h"
+#include "common/pbmessage.h"
 
 #include <algorithm>
 #include <random>
@@ -162,14 +163,15 @@ VRReplica::CommitUpTo(opnum_t upto)
 
         /* Execute it */
         RDebug("Executing request " FMT_OPNUM, lastCommitted);
-        ReplyMessage reply;
+        ToClientMessage m;
+        ReplyMessage *reply = m.mutable_reply();
         UpcallArg arg;
         arg.isLeader = AmLeader();
-        Execute(lastCommitted, entry->request, reply, &arg);
+        Execute(lastCommitted, entry->request, *reply, &arg);
 
-        reply.set_view(entry->viewstamp.view);
-        reply.set_opnum(entry->viewstamp.opnum);
-        reply.set_clientreqid(entry->request.clientreqid());
+        reply->set_view(entry->viewstamp.view);
+        reply->set_opnum(entry->viewstamp.opnum);
+        reply->set_clientreqid(entry->request.clientreqid());
 
         /* Mark it as committed */
         log.SetStatus(lastCommitted, LOG_STATE_COMMITTED);
@@ -180,7 +182,7 @@ VRReplica::CommitUpTo(opnum_t upto)
         if (cte.lastReqId <= entry->request.clientreqid()) {
             cte.lastReqId = entry->request.clientreqid();
             cte.replied = true;
-            cte.reply = reply;
+            cte.reply = m;
         } else {
             // We've subsequently prepared another operation from the
             // same client. So this request must have been completed
@@ -191,7 +193,7 @@ VRReplica::CommitUpTo(opnum_t upto)
         /* Send reply */
         auto iter = clientAddresses.find(entry->request.clientid());
         if (iter != clientAddresses.end()) {
-            transport->SendMessage(this, *iter->second, reply);
+            transport->SendMessage(this, *iter->second, PBMessage(m));
         }
 
         Latency_End(&executeAndReplyLatency);
@@ -215,17 +217,18 @@ VRReplica::SendPrepareOKs(opnum_t oldLastOp)
         ASSERT(entry->state == LOG_STATE_PREPARED);
         UpdateClientTable(entry->request);
 
-        PrepareOKMessage reply;
-        reply.set_view(view);
-        reply.set_opnum(i);
-        reply.set_replicaidx(this->replicaIdx);
+        ToReplicaMessage m;
+        PrepareOKMessage *reply = m.mutable_prepare_ok();
+        reply->set_view(view);
+        reply->set_opnum(i);
+        reply->set_replicaidx(this->replicaIdx);
 
         RDebug("Sending PREPAREOK " FMT_VIEWSTAMP " for new uncommitted operation",
-               reply.view(), reply.opnum());
+               reply->view(), reply->opnum());
 
         if (!(transport->SendMessageToReplica(this,
                                               configuration.GetLeaderIndex(view),
-                                              reply))) {
+                                              PBMessage(m)))) {
             RWarning("Failed to send PrepareOK message to leader");
         }
     }
@@ -234,12 +237,13 @@ VRReplica::SendPrepareOKs(opnum_t oldLastOp)
 void
 VRReplica::SendRecoveryMessages()
 {
-    RecoveryMessage m;
-    m.set_replicaidx(this->replicaIdx);
-    m.set_nonce(recoveryNonce);
+    ToReplicaMessage m;
+    RecoveryMessage *recovery = m.mutable_recovery();
+    recovery->set_replicaidx(this->replicaIdx);
+    recovery->set_nonce(recoveryNonce);
 
     RNotice("Requesting recovery");
-    if (!transport->SendMessageToAll(this, m)) {
+    if (!transport->SendMessageToAll(this, PBMessage(m))) {
         RWarning("Failed to send Recovery message to all replicas");
     }
 }
@@ -247,9 +251,10 @@ VRReplica::SendRecoveryMessages()
 void
 VRReplica::RequestStateTransfer()
 {
-    RequestStateTransferMessage m;
-    m.set_view(view);
-    m.set_opnum(lastCommitted);
+    ToReplicaMessage m;
+    RequestStateTransferMessage *r = m.mutable_request_state_transfer();
+    r->set_view(view);
+    r->set_opnum(lastCommitted);
 
     if ((lastRequestStateTransferOpnum != 0) &&
         (lastRequestStateTransferView == view) &&
@@ -264,7 +269,7 @@ VRReplica::RequestStateTransfer()
     this->lastRequestStateTransferView = view;
     this->lastRequestStateTransferOpnum = lastCommitted;
 
-    if (!transport->SendMessageToAll(this, m)) {
+    if (!transport->SendMessageToAll(this, PBMessage(m))) {
         RWarning("Failed to send RequestStateTransfer message to all replicas");
     }
 }
@@ -310,12 +315,13 @@ VRReplica::StartViewChange(view_t newview)
     resendPrepareTimeout->Stop();
     closeBatchTimeout->Stop();
 
-    StartViewChangeMessage m;
-    m.set_view(newview);
-    m.set_replicaidx(this->replicaIdx);
-    m.set_lastcommitted(lastCommitted);
+    ToReplicaMessage m;
+    StartViewChangeMessage *svc = m.mutable_start_view_change();
+    svc->set_view(newview);
+    svc->set_replicaidx(this->replicaIdx);
+    svc->set_lastcommitted(lastCommitted);
 
-    if (!transport->SendMessageToAll(this, m)) {
+    if (!transport->SendMessageToAll(this, PBMessage(m))) {
         RWarning("Failed to send StartViewChange message to all replicas");
     }
 }
@@ -323,13 +329,14 @@ VRReplica::StartViewChange(view_t newview)
 void
 VRReplica::SendNullCommit()
 {
-    CommitMessage cm;
-    cm.set_view(this->view);
-    cm.set_opnum(this->lastCommitted);
+    ToReplicaMessage m;
+    CommitMessage *c = m.mutable_commit();
+    c->set_view(this->view);
+    c->set_opnum(this->lastCommitted);
 
     ASSERT(AmLeader());
 
-    if (!(transport->SendMessageToAll(this, cm))) {
+    if (!(transport->SendMessageToAll(this, PBMessage(m)))) {
         RWarning("Failed to send null COMMIT message to all replicas");
     }
 }
@@ -358,7 +365,7 @@ VRReplica::ResendPrepare()
         return;
     }
     RNotice("Resending prepare");
-    if (!(transport->SendMessageToAll(this, lastPrepare))) {
+    if (!(transport->SendMessageToAll(this, PBMessage(lastPrepare)))) {
         RWarning("Failed to ressend prepare message to all replicas");
     }
 }
@@ -375,22 +382,22 @@ VRReplica::CloseBatch()
            " to " FMT_OPNUM,
            batchStart, lastOp);
     /* Send prepare messages */
-    PrepareMessage p;
-    p.set_view(view);
-    p.set_opnum(lastOp);
-    p.set_batchstart(batchStart);
+    PrepareMessage *p = lastPrepare.mutable_prepare();
+    p->set_view(view);
+    p->set_opnum(lastOp);
+    p->set_batchstart(batchStart);
+    p->clear_request();
 
     for (opnum_t i = batchStart; i <= lastOp; i++) {
-        Request *r = p.add_request();
+        Request *r = p->add_request();
         const LogEntry *entry = log.Find(i);
         ASSERT(entry != NULL);
         ASSERT(entry->viewstamp.view == view);
         ASSERT(entry->viewstamp.opnum == i);
         *r = entry->request;
     }
-    lastPrepare = p;
 
-    if (!(transport->SendMessageToAll(this, p))) {
+    if (!(transport->SendMessageToAll(this, PBMessage(lastPrepare)))) {
         RWarning("Failed to send prepare message to all replicas");
     }
     lastBatchEnd = lastOp;
@@ -402,61 +409,54 @@ VRReplica::CloseBatch()
 
 void
 VRReplica::ReceiveMessage(const TransportAddress &remote,
-                          const string &type, const string &data,
-                          void *meta_data)
+                          void *buf, size_t size)
 {
-    static RequestMessage request;
-    static UnloggedRequestMessage unloggedRequest;
-    static PrepareMessage prepare;
-    static PrepareOKMessage prepareOK;
-    static CommitMessage commit;
-    static RequestStateTransferMessage requestStateTransfer;
-    static StateTransferMessage stateTransfer;
-    static StartViewChangeMessage startViewChange;
-    static DoViewChangeMessage doViewChange;
-    static StartViewMessage startView;
-    static RecoveryMessage recovery;
-    static RecoveryResponseMessage recoveryResponse;
+    static ToReplicaMessage replica_msg;
+    static PBMessage m(replica_msg);
 
-    if (type == request.GetTypeName()) {
-        request.ParseFromString(data);
-        HandleRequest(remote, request);
-    } else if (type == unloggedRequest.GetTypeName()) {
-        unloggedRequest.ParseFromString(data);
-        HandleUnloggedRequest(remote, unloggedRequest);
-    } else if (type == prepare.GetTypeName()) {
-        prepare.ParseFromString(data);
-        HandlePrepare(remote, prepare);
-    } else if (type == prepareOK.GetTypeName()) {
-        prepareOK.ParseFromString(data);
-        HandlePrepareOK(remote, prepareOK);
-    } else if (type == commit.GetTypeName()) {
-        commit.ParseFromString(data);
-        HandleCommit(remote, commit);
-    } else if (type == requestStateTransfer.GetTypeName()) {
-        requestStateTransfer.ParseFromString(data);
-        HandleRequestStateTransfer(remote, requestStateTransfer);
-    } else if (type == stateTransfer.GetTypeName()) {
-        stateTransfer.ParseFromString(data);
-        HandleStateTransfer(remote, stateTransfer);
-    } else if (type == startViewChange.GetTypeName()) {
-        startViewChange.ParseFromString(data);
-        HandleStartViewChange(remote, startViewChange);
-    } else if (type == doViewChange.GetTypeName()) {
-        doViewChange.ParseFromString(data);
-        HandleDoViewChange(remote, doViewChange);
-    } else if (type == startView.GetTypeName()) {
-        startView.ParseFromString(data);
-        HandleStartView(remote, startView);
-    } else if (type == recovery.GetTypeName()) {
-        recovery.ParseFromString(data);
-        HandleRecovery(remote, recovery);
-    } else if (type == recoveryResponse.GetTypeName()) {
-        recoveryResponse.ParseFromString(data);
-        HandleRecoveryResponse(remote, recoveryResponse);
-    } else {
-        RPanic("Received unexpected message type in VR proto: %s",
-              type.c_str());
+    m.Parse(buf, size);
+
+    switch (replica_msg.msg_case()) {
+        case ToReplicaMessage::MsgCase::kRequest:
+            HandleRequest(remote, replica_msg.request());
+            break;
+        case ToReplicaMessage::MsgCase::kUnloggedRequest:
+            HandleUnloggedRequest(remote, replica_msg.unlogged_request());
+            break;
+        case ToReplicaMessage::MsgCase::kPrepare:
+            HandlePrepare(remote, replica_msg.prepare());
+            break;
+        case ToReplicaMessage::MsgCase::kPrepareOk:
+            HandlePrepareOK(remote, replica_msg.prepare_ok());
+            break;
+        case ToReplicaMessage::MsgCase::kCommit:
+            HandleCommit(remote, replica_msg.commit());
+            break;
+        case ToReplicaMessage::MsgCase::kRequestStateTransfer:
+            HandleRequestStateTransfer(remote,
+                    replica_msg.request_state_transfer());
+            break;
+        case ToReplicaMessage::MsgCase::kStateTransfer:
+            HandleStateTransfer(remote, replica_msg.state_transfer());
+            break;
+        case ToReplicaMessage::MsgCase::kStartViewChange:
+            HandleStartViewChange(remote, replica_msg.start_view_change());
+            break;
+        case ToReplicaMessage::MsgCase::kDoViewChange:
+            HandleDoViewChange(remote, replica_msg.do_view_change());
+            break;
+        case ToReplicaMessage::MsgCase::kStartView:
+            HandleStartView(remote, replica_msg.start_view());
+            break;
+        case ToReplicaMessage::MsgCase::kRecovery:
+            HandleRecovery(remote, replica_msg.recovery());
+            break;
+        case ToReplicaMessage::MsgCase::kRecoveryResponse:
+            HandleRecoveryResponse(remote, replica_msg.recovery_response());
+            break;
+        default:
+            RPanic("Received unexpected message type %u",
+                    replica_msg.msg_case());
     }
 }
 
@@ -489,7 +489,7 @@ VRReplica::HandleRequest(const TransportAddress &remote,
     // Check the client table to see if this is a duplicate request
     auto kv = clientTable.find(msg.req().clientid());
     if (kv != clientTable.end()) {
-        const ClientTableEntry &entry = kv->second;
+        ClientTableEntry &entry = kv->second;
         if (msg.req().clientreqid() < entry.lastReqId) {
             RNotice("Ignoring stale request");
             Latency_EndType(&requestLatency, 's');
@@ -503,7 +503,7 @@ VRReplica::HandleRequest(const TransportAddress &remote,
             if (entry.replied) {
                 RNotice("Received duplicate request; resending reply");
                 if (!(transport->SendMessage(this, remote,
-                                             entry.reply))) {
+                                             PBMessage(entry.reply)))) {
                     RWarning("Failed to resend reply to client");
                 }
                 Latency_EndType(&requestLatency, 'r');
@@ -529,15 +529,16 @@ VRReplica::HandleRequest(const TransportAddress &remote,
     // Check whether this request should be committed to replicas
     if (!replicate) {
         RDebug("Executing request failed. Not committing to replicas");
-        ReplyMessage reply;
+        ToClientMessage m;
+        ReplyMessage *reply = m.mutable_reply();
 
-        reply.set_reply(res);
-        reply.set_view(0);
-        reply.set_opnum(0);
-        reply.set_clientreqid(msg.req().clientreqid());
+        reply->set_reply(res);
+        reply->set_view(0);
+        reply->set_opnum(0);
+        reply->set_clientreqid(msg.req().clientreqid());
         cte.replied = true;
-        cte.reply = reply;
-        transport->SendMessage(this, remote, reply);
+        cte.reply = m;
+        transport->SendMessage(this, remote, PBMessage(m));
         Latency_EndType(&requestLatency, 'f');
     } else {
         Request request;
@@ -581,13 +582,14 @@ VRReplica::HandleUnloggedRequest(const TransportAddress &remote,
         return;
     }
 
-    UnloggedReplyMessage reply;
+    ToClientMessage m;
+    UnloggedReplyMessage *reply = m.mutable_unlogged_reply();
 
     Debug("Received unlogged request %s", (char *)msg.req().op().c_str());
 
-    ExecuteUnlogged(msg.req(), reply);
+    ExecuteUnlogged(msg.req(), *reply);
 
-    if (!(transport->SendMessage(this, remote, reply)))
+    if (!(transport->SendMessage(this, remote, PBMessage(m))))
         Warning("Failed to send reply message");
 }
 
@@ -626,13 +628,14 @@ VRReplica::HandlePrepare(const TransportAddress &remote,
     if (msg.opnum() <= this->lastOp) {
         RDebug("Ignoring PREPARE; already prepared that operation");
         // Resend the prepareOK message
-        PrepareOKMessage reply;
-        reply.set_view(msg.view());
-        reply.set_opnum(msg.opnum());
-        reply.set_replicaidx(this->replicaIdx);
+        ToReplicaMessage m;
+        PrepareOKMessage *reply = m.mutable_prepare_ok();
+        reply->set_view(msg.view());
+        reply->set_opnum(msg.opnum());
+        reply->set_replicaidx(this->replicaIdx);
         if (!(transport->SendMessageToReplica(this,
                                               configuration.GetLeaderIndex(view),
-                                              reply))) {
+                                              PBMessage(m)))) {
             RWarning("Failed to send PrepareOK message to leader");
         }
         return;
@@ -658,14 +661,15 @@ VRReplica::HandlePrepare(const TransportAddress &remote,
     ASSERT(op == msg.opnum());
 
     /* Build reply and send it to the leader */
-    PrepareOKMessage reply;
-    reply.set_view(msg.view());
-    reply.set_opnum(msg.opnum());
-    reply.set_replicaidx(this->replicaIdx);
+    ToReplicaMessage m;
+    PrepareOKMessage *reply = m.mutable_prepare_ok();
+    reply->set_view(msg.view());
+    reply->set_opnum(msg.opnum());
+    reply->set_replicaidx(this->replicaIdx);
 
     if (!(transport->SendMessageToReplica(this,
                                           configuration.GetLeaderIndex(view),
-                                          reply))) {
+                                          PBMessage(m)))) {
         RWarning("Failed to send PrepareOK message to leader");
     }
 }
@@ -723,11 +727,12 @@ VRReplica::HandlePrepareOK(const TransportAddress &remote,
          * This can be done asynchronously, so it really ought to be
          * piggybacked on the next PREPARE or something.
          */
-        CommitMessage cm;
-        cm.set_view(this->view);
-        cm.set_opnum(this->lastCommitted);
+        ToReplicaMessage m;
+        CommitMessage *c = m.mutable_commit();
+        c->set_view(this->view);
+        c->set_opnum(this->lastCommitted);
 
-        if (!(transport->SendMessageToAll(this, cm))) {
+        if (!(transport->SendMessageToAll(this, PBMessage(m)))) {
             RWarning("Failed to send COMMIT message to all replicas");
         }
 
@@ -805,13 +810,14 @@ VRReplica::HandleRequestStateTransfer(const TransportAddress &remote,
             FMT_VIEWSTAMP,
             msg.view(), msg.opnum(), view, lastCommitted);
 
-    StateTransferMessage reply;
-    reply.set_view(view);
-    reply.set_opnum(lastCommitted);
+    ToReplicaMessage m;
+    StateTransferMessage *reply = m.mutable_state_transfer();
+    reply->set_view(view);
+    reply->set_opnum(lastCommitted);
 
-    log.Dump(msg.opnum()+1, reply.mutable_entries());
+    log.Dump(msg.opnum()+1, reply->mutable_entries());
 
-    transport->SendMessage(this, remote, reply);
+    transport->SendMessage(this, remote, PBMessage(m));
 }
 
 void
@@ -924,12 +930,13 @@ VRReplica::HandleStartViewChange(const TransportAddress &remote,
         int leader = configuration.GetLeaderIndex(view);
         // Don't try to send a DoViewChange message to ourselves
         if (leader != this->replicaIdx) {
-            DoViewChangeMessage dvc;
-            dvc.set_view(view);
-            dvc.set_lastnormalview(log.LastViewstamp().view);
-            dvc.set_lastop(lastOp);
-            dvc.set_lastcommitted(lastCommitted);
-            dvc.set_replicaidx(this->replicaIdx);
+            ToReplicaMessage m;
+            DoViewChangeMessage *dvc = m.mutable_do_view_change();
+            dvc->set_view(view);
+            dvc->set_lastnormalview(log.LastViewstamp().view);
+            dvc->set_lastop(lastOp);
+            dvc->set_lastcommitted(lastCommitted);
+            dvc->set_replicaidx(this->replicaIdx);
 
             // Figure out how much of the log to include
             opnum_t minCommitted = std::min_element(
@@ -941,9 +948,9 @@ VRReplica::HandleStartViewChange(const TransportAddress &remote,
             minCommitted = std::min(minCommitted, lastCommitted);
 
             log.Dump(minCommitted,
-                     dvc.mutable_entries());
+                     dvc->mutable_entries());
 
-            if (!(transport->SendMessageToReplica(this, leader, dvc))) {
+            if (!(transport->SendMessageToReplica(this, leader, PBMessage(m)))) {
                 RWarning("Failed to send DoViewChange message to leader of new view");
             }
         }
@@ -1059,14 +1066,15 @@ VRReplica::HandleDoViewChange(const TransportAddress &remote,
         }
 
         // Send a STARTVIEW message with the new log
-        StartViewMessage sv;
-        sv.set_view(view);
-        sv.set_lastop(lastOp);
-        sv.set_lastcommitted(lastCommitted);
+        ToReplicaMessage m;
+        StartViewMessage *sv = m.mutable_start_view();
+        sv->set_view(view);
+        sv->set_lastop(lastOp);
+        sv->set_lastcommitted(lastCommitted);
 
-        log.Dump(minCommitted, sv.mutable_entries());
+        log.Dump(minCommitted, sv->mutable_entries());
 
-        if (!(transport->SendMessageToAll(this, sv))) {
+        if (!(transport->SendMessageToAll(this, PBMessage(m)))) {
             RWarning("Failed to send StartView message to all replicas");
         }
     }
@@ -1130,17 +1138,18 @@ VRReplica::HandleRecovery(const TransportAddress &remote,
         return;
     }
 
-    RecoveryResponseMessage reply;
-    reply.set_replicaidx(this->replicaIdx);
-    reply.set_view(view);
-    reply.set_nonce(msg.nonce());
+    ToReplicaMessage m;
+    RecoveryResponseMessage *reply = m.mutable_recovery_response();
+    reply->set_replicaidx(this->replicaIdx);
+    reply->set_view(view);
+    reply->set_nonce(msg.nonce());
     if (AmLeader()) {
-        reply.set_lastcommitted(lastCommitted);
-        reply.set_lastop(lastOp);
-        log.Dump(0, reply.mutable_entries());
+        reply->set_lastcommitted(lastCommitted);
+        reply->set_lastop(lastOp);
+        log.Dump(0, reply->mutable_entries());
     }
 
-    if (!(transport->SendMessage(this, remote, reply))) {
+    if (!(transport->SendMessage(this, remote, PBMessage(m)))) {
         RWarning("Failed to send recovery response");
     }
     return;

@@ -5,9 +5,8 @@ SRCS += $(addprefix $(d), \
 
 PROTOS += $(addprefix $(d), spanner-proto.proto)
 
-OBJS-spanner-client := $(o)client.o $(o)spanner-proto.o \
-    $(OBJS-client) $(LIB-message) $(LIB-configuration)
+OBJS-common := $(o)spanner-proto.o $(LIB-message) $(LIB-configuration) $(LIB-pbmessage)
 
-OBJS-spanner-server := $(o)server.o $(o)spanner-proto.o \
-    $(OBJS-replica) $(LIB-message) \
-    $(LIB-configuration) $(LIB-latency)
+OBJS-spanner-client := $(o)client.o $(OBJS-client) $(OBJS-common)
+
+OBJS-spanner-server := $(o)server.o $(OBJS-replica) $(LIB-latency) $(OBJS-common)

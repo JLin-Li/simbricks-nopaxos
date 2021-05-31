@@ -80,7 +80,7 @@ ErisMessage::Serialize(void *buf) const
     *(MultistampSize *)p = sequencing_ ? stamp_.SerializedSize() : 0;
     p += sizeof(MultistampSize);
     if (sequencing_) {
-        *(SessNum *)p = stamp_.sess_num;
+        // sess num filled by sequencer
         p += sizeof(SessNum);
         *(NumGroups *)p = stamp_.msg_nums.size();
         p += sizeof(NumGroups);
