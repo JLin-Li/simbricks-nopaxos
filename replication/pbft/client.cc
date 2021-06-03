@@ -3,6 +3,7 @@
 #include "common/client.h"
 #include "common/request.pb.h"
 #include "lib/message.h"
+#include "lib/rsakeys.h"
 #include "lib/transport.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
@@ -28,6 +29,8 @@ PbftClient::PbftClient(const Configuration &config, Transport *transport,
       });
 
   f = config.f;
+  signer.Initialize(PRIVATE_KEY);
+  verifier.Initialize(PUBLIC_KEY);
 }
 
 PbftClient::~PbftClient() {
@@ -55,6 +58,11 @@ void PbftClient::SendRequest() {
   reqMsg.mutable_req()->set_op(pendingRequest->request);
   reqMsg.mutable_req()->set_clientid(clientid);
   reqMsg.mutable_req()->set_clientreqid(lastReqId);
+
+  reqMsg.set_sig(std::string());
+  const std::string message = reqMsg.SerializeAsString();
+  signer.Sign(message, *reqMsg.mutable_sig());
+
   // todo
   // transport->SendMessageToReplica(this, 0, reqMsg);
   transport->SendMessageToAll(this, reqMsg);

@@ -6,6 +6,7 @@
 
 #include "common/client.h"
 #include "lib/configuration.h"
+#include "lib/signature.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
 namespace dsnet {
@@ -28,6 +29,8 @@ class PbftClient : public Client {
 
  private:
   int f;  // the number of faulty servers that could be toleranced
+  Signer signer;
+  Verifier verifier;
 
   struct PendingRequest {
     string request;
@@ -61,6 +64,6 @@ class PbftClient : public Client {
 };
 
 }  // namespace pbft
-}  // namespace specpaxos
+}  // namespace dsnet
 
 #endif /* _PBFT_CLIENT_H_ */

@@ -5,15 +5,18 @@ import "common/request.proto";
 package dsnet.pbft.proto;
 
 message RequestMessage {
+    // op, timpstamp, client inside
     required dsnet.Request req = 1;
+    required bytes sig = 2;
 }
 
 message ReplyMessage {
-    optional uint64 view = 1;
-    optional uint64 opnum = 2;
+    required uint64 view = 1;
+    // timestamp, client inside
+    required dsnet.Request req = 2;
     required uint64 replicaid = 3;
-    required dsnet.Request req = 4;
-    required bytes reply = 5;
+    required bytes reply = 4;
+    required bytes sig = 5;
 }
 
 message UnloggedRequestMessage {
@@ -22,4 +25,29 @@ message UnloggedRequestMessage {
 
 message UnloggedReplyMessage {
     required bytes reply = 1;
+}
+
+message PrePrepareMessage {
+    required uint64 view = 1;
+    required uint64 seqnum = 2;
+    required bytes digest = 3;
+    required bytes sig = 4;
+    // non-sig fields
+    required RequestMessage message = 5;
+}
+
+message PrepareMessage {
+    required uint64 view = 1;
+    required uint64 seqnum = 2;
+    required bytes digest = 3;
+    required uint64 replicaid = 4;
+    required bytes sig = 5;
+}
+
+message CommitMessage {
+    required uint64 view = 1;
+    required uint64 seqnum = 2;
+    required bytes digest = 3;
+    required uint64 replicaid = 4;
+    required bytes sig = 5;
 }
