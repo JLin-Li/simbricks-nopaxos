@@ -153,88 +153,66 @@ NOPaxosReplica::~NOPaxosReplica()
 
 void
 NOPaxosReplica::ReceiveMessage(const TransportAddress &remote,
-                               const string &type, const string &data,
-                               void *meta_data)
+                               void *buf, size_t size)
 {
-    static RequestMessage clientRequest;
-    static UnloggedRequestMessage unloggedRequest;
-    static GapRequestMessage gapRequest;
-    static GapReplyMessage gapReply;
-    static GapCommitMessage gapCommit;
-    static GapCommitReplyMessage gapCommitReply;
-    static StateTransferRequestMessage stateTransferRequest;
-    static StateTransferReplyMessage stateTransferReply;
-    static ViewChangeRequestMessage viewChangeRequest;
-    static ViewChangeMessage viewChange;
-    static StartViewMessage startView;
-    static StartViewReplyMessage startViewReply;
-    static SyncPrepareMessage syncPrepare;
-    static SyncPrepareReplyMessage syncPrepareReply;
-    static SyncCommitMessage syncCommit;
+    static ToReplicaMessage replica_msg;
+    static NOPaxosMessage m(replica_msg);
 
-    if (type == clientRequest.GetTypeName()) {
-        clientRequest.ParseFromString(data);
-        HandleClientRequest(remote, clientRequest, meta_data);
-    }
-    else if (type == unloggedRequest.GetTypeName()) {
-        unloggedRequest.ParseFromString(data);
-        HandleUnloggedRequest(remote, unloggedRequest);
-    }
-    else if (type == gapRequest.GetTypeName()) {
-        gapRequest.ParseFromString(data);
-        HandleGapRequest(remote, gapRequest);
-    }
-    else if (type == gapReply.GetTypeName()) {
-        gapReply.ParseFromString(data);
-        HandleGapReply(remote, gapReply);
-    }
-    else if (type == gapCommit.GetTypeName()) {
-        gapCommit.ParseFromString(data);
-        HandleGapCommit(remote, gapCommit);
-    }
-    else if (type == gapCommitReply.GetTypeName()) {
-        gapCommitReply.ParseFromString(data);
-        HandleGapCommitReply(remote, gapCommitReply);
-    }
-    else if (type == stateTransferRequest.GetTypeName()) {
-        stateTransferRequest.ParseFromString(data);
-        HandleStateTransferRequest(remote, stateTransferRequest);
-    }
-    else if (type == stateTransferReply.GetTypeName()) {
-        stateTransferReply.ParseFromString(data);
-        HandleStateTransferReply(remote, stateTransferReply);
-    }
-    else if (type == viewChangeRequest.GetTypeName()) {
-        viewChangeRequest.ParseFromString(data);
-        HandleViewChangeRequest(remote, viewChangeRequest);
-    }
-    else if (type == viewChange.GetTypeName()) {
-        viewChange.ParseFromString(data);
-        HandleViewChange(remote, viewChange);
-    }
-    else if (type == startView.GetTypeName()) {
-        startView.ParseFromString(data);
-        HandleStartView(remote, startView);
-    }
-    else if (type == startViewReply.GetTypeName()) {
-        startViewReply.ParseFromString(data);
-        HandleStartViewReply(remote, startViewReply);
-    }
-    else if (type == syncPrepare.GetTypeName()) {
-        syncPrepare.ParseFromString(data);
-        HandleSyncPrepare(remote, syncPrepare);
-    }
-    else if (type == syncPrepareReply.GetTypeName()) {
-        syncPrepareReply.ParseFromString(data);
-        HandleSyncPrepareReply(remote, syncPrepareReply);
-    }
-    else if (type == syncCommit.GetTypeName()) {
-        syncCommit.ParseFromString(data);
-        HandleSyncCommit(remote, syncCommit);
-    }
-    else {
-        Panic("Received unexpected message type in NOPaxos proto: %s",
-              type.c_str());
+    m.Parse(buf, size);
+
+    switch (replica_msg.msg_case()) {
+        case ToReplicaMessage::MsgCase::kRequest:
+            HandleClientRequest(remote, replica_msg.request());
+            break;
+        case ToReplicaMessage::MsgCase::kUnloggedRequest:
+            HandleUnloggedRequest(remote, replica_msg.unlogged_request());
+            break;
+        case ToReplicaMessage::MsgCase::kGapRequest:
+            HandleGapRequest(remote, replica_msg.gap_request());
+            break;
+        case ToReplicaMessage::MsgCase::kGapReply:
+            HandleGapReply(remote, replica_msg.gap_reply());
+            break;
+        case ToReplicaMessage::MsgCase::kStateTransferRequest:
+            HandleStateTransferRequest(remote,
+                    replica_msg.state_transfer_request());
+            break;
+        case ToReplicaMessage::MsgCase::kStateTransferReply:
+            HandleStateTransferReply(remote,
+                    replica_msg.state_transfer_reply());
+            break;
+        case ToReplicaMessage::MsgCase::kGapCommit:
+            HandleGapCommit(remote, replica_msg.gap_commit());
+            break;
+        case ToReplicaMessage::MsgCase::kGapCommitReply:
+            HandleGapCommitReply(remote, replica_msg.gap_commit_reply());
+            break;
+        case ToReplicaMessage::MsgCase::kViewChangeRequest:
+            HandleViewChangeRequest(remote, replica_msg.view_change_request());
+            break;
+        case ToReplicaMessage::MsgCase::kViewChange:
+            HandleViewChange(remote, replica_msg.view_change());
+            break;
+        case ToReplicaMessage::MsgCase::kStartView:
+            HandleStartView(remote, replica_msg.start_view());
+            break;
+        case ToReplicaMessage::MsgCase::kStateTransferReply:
+            HandleStartViewReply(remote, replica_msg.start_view_reply());
+            break;
+        case ToReplicaMessage::MsgCase::kSyncPrepareRequest:
+            HandleSyncPrepareRequest(remote, replica_msg.sync_prepare_request());
+            break;
+        case ToReplicaMessage::MsgCase::kSyncPrepare:
+            HandleSyncPrepare(remote, replica_msg.sync_prepare());
+            break;
+        case ToReplicaMessage::MsgCase::kSyncPrepareReply:
+            HandleSyncPrepareReply(remote, replica_msg.sync_prepare_reply());
+            break;
+        case ToReplicaMessage::MsgCase::kCommit:
+            HandleSyncCommit(remote, replica_msg.sync_commit());
+            break;
+        default:
+            Panic("Received unexpected message type: %u", replica_msg.msg_case());
     }
 
     ProcessPendingRequests();
@@ -242,8 +220,7 @@ NOPaxosReplica::ReceiveMessage(const TransportAddress &remote,
 
 void
 NOPaxosReplica::HandleClientRequest(const TransportAddress &remote,
-                                    RequestMessage &msg,
-                                    void *meta_data)
+                                    const RequestMessage &msg)
 {
     // Save client's address if not exist. Assume client addresses
     // never change.
@@ -251,17 +228,8 @@ NOPaxosReplica::HandleClientRequest(const TransportAddress &remote,
         this->clientAddresses.insert(std::pair<uint64_t, std::unique_ptr<TransportAddress> >(msg.req().clientid(), std::unique_ptr<TransportAddress>(remote.clone())));
     }
 
-    if (meta_data != NULL) {
-        // meta_data contains ordered multicast timestamp
-        multistamp_t *ordered = (multistamp_t*)meta_data;
-        msg.set_sessnum(ordered->sessnum);
-        msg.set_msgnum(ordered->seqnums[0]);
-    } else {
-        // Simulated transport directly write sessnum and
-        // msgnum into RequestMessage
-        if (msg.sessnum() == 0 && msg.msgnum() == 0) {
-            Panic("Client request has no ordering timestamp");
-        }
+    if (msg.sessnum() == 0 && msg.msgnum() == 0) {
+        Panic("Client request has no ordering timestamp");
     }
 
     if (!TryProcessClientRequest(msg)) {
@@ -273,11 +241,12 @@ void
 NOPaxosReplica::HandleUnloggedRequest(const TransportAddress &remote,
                                       const UnloggedRequestMessage &msg)
 {
-    UnloggedReplyMessage reply;
+    ToClientMessage m;
+    UnloggedReplyMessage *reply = m.mutable_unlogged_reply();
 
-    ExecuteUnlogged(msg.req(), reply);
+    ExecuteUnlogged(msg.req(), *reply);
 
-    if (!(transport->SendMessage(this, remote, reply))) {
+    if (!(transport->SendMessage(this, remote, NOPaxosMessage(m)))) {
         RWarning("Failed to send unlogged reply message");
     }
 }
@@ -290,23 +259,24 @@ NOPaxosReplica::HandleGapRequest(const TransportAddress &remote,
         return;
     }
 
-    GapReplyMessage reply;
-    reply.set_view(this->view);
-    reply.set_sessnum(this->sessnum);
-    reply.set_opnum(msg.opnum());
-    reply.set_replicaidx(this->replicaIdx);
+    ToReplicaMessage m;
+    GapReplyMessage *reply = m.mutable_gap_reply();
+    reply->set_view(this->view);
+    reply->set_sessnum(this->sessnum);
+    reply->set_opnum(msg.opnum());
+    reply->set_replicaidx(this->replicaIdx);
 
     LogEntry *entry = log.Find(msg.opnum());
 
     if (entry) {
         if (entry->state == LOG_STATE_RECEIVED) {
-            *(reply.mutable_req()) = entry->request;
-            reply.set_isfound(true);
-            reply.set_isgap(false);
+            *(reply->mutable_req()) = entry->request;
+            reply->set_isfound(true);
+            reply->set_isgap(false);
             RDebug("Replying log entry %lu to the gap requester", msg.opnum());
         } else if (entry->state == LOG_STATE_NOOP) {
-            reply.set_isfound(true);
-            reply.set_isgap(true);
+            reply->set_isfound(true);
+            reply->set_isgap(true);
             RDebug("Replying log entry (gap) op %lu to the gap requester", msg.opnum());
         } else {
             NOT_REACHABLE();
@@ -316,14 +286,14 @@ NOPaxosReplica::HandleGapRequest(const TransportAddress &remote,
         // actually missing the message (i.e. when we are also
         // requesting GapRequest for this message).
         if (this->gapRequestTimeout->Active() && this->lastOp+1 == msg.opnum()) {
-            reply.set_isfound(false);
-            reply.set_isgap(false);
+            reply->set_isfound(false);
+            reply->set_isgap(false);
             RDebug("Replica also has not received log entry %lu", msg.opnum());
         } else {
             return;
         }
     }
-    if (!(transport->SendMessage(this, remote, reply))) {
+    if (!(transport->SendMessage(this, remote, NOPaxosMessage(m)))) {
         RWarning("Failed to send GapReplyMessage");
     }
 }
@@ -403,13 +373,14 @@ NOPaxosReplica::HandleGapCommit(const TransportAddress &remote,
         ProcessNextOperation(noopRequest, vs, LOG_STATE_NOOP);
     }
 
-    GapCommitReplyMessage gapCommitReplyMessage;
-    gapCommitReplyMessage.set_sessnum(this->sessnum);
-    gapCommitReplyMessage.set_view(this->view);
-    gapCommitReplyMessage.set_opnum(msg.opnum());
-    gapCommitReplyMessage.set_replicaidx(this->replicaIdx);
+    ToReplicaMessage m;
+    GapCommitReplyMessage *gapCommitReplyMessage = m.mutable_gap_commit_reply();
+    gapCommitReplyMessage->set_sessnum(this->sessnum);
+    gapCommitReplyMessage->set_view(this->view);
+    gapCommitReplyMessage->set_opnum(msg.opnum());
+    gapCommitReplyMessage->set_replicaidx(this->replicaIdx);
 
-    if (!transport->SendMessage(this, remote, gapCommitReplyMessage)) {
+    if (!transport->SendMessage(this, remote, NOPaxosMessage(m))) {
         RWarning("Failed to send GapCommitReplyMessage");
     }
 }
@@ -462,19 +433,20 @@ NOPaxosReplica::HandleStateTransferRequest(const TransportAddress &remote,
         return;
     }
 
-    StateTransferReplyMessage reply;
-    reply.set_view(this->view);
-    reply.set_sessnum(this->sessnum);
-    reply.set_begin(msg.begin());
-    reply.set_end(msg.end());
+    ToReplicaMessage m;
+    StateTransferReplyMessage *reply = m.mutable_state_transfer_reply();
+    reply->set_view(this->view);
+    reply->set_sessnum(this->sessnum);
+    reply->set_begin(msg.begin());
+    reply->set_end(msg.end());
 
-    this->log.Dump(msg.begin(), msg.end(), reply.mutable_entries());
+    this->log.Dump(msg.begin(), msg.end(), reply->mutable_entries());
 
     RDebug("Sending StateTransfer from %lu to %lu",
            msg.begin(),
            msg.end());
 
-    if (!(transport->SendMessage(this, remote, reply))) {
+    if (!(transport->SendMessage(this, remote, NOPaxosMessage(m)))) {
         RWarning("Failed to send StateTransferReplyMessage");
     }
 }
@@ -542,17 +514,18 @@ NOPaxosReplica::HandleViewChange(const TransportAddress &remote,
         // replica sending the ViewChange did not receive
         // the StartViewMessage. Resend StartViewMessage.
         // (but do not set the timer)
-        StartViewMessage startViewMessage;
-        startViewMessage.set_sessnum(this->sessnum);
-        startViewMessage.set_view(this->view);
-        startViewMessage.set_lastnormalsessnum(this->startViewLastNormalSessnum);
-        startViewMessage.set_lastnormalview(this->startViewLastNormalView);
-        startViewMessage.set_lastop(this->startViewLastOp);
+        ToReplicaMessage m;
+        StartViewMessage *startViewMessage = m.mutable_start_view();
+        startViewMessage->set_sessnum(this->sessnum);
+        startViewMessage->set_view(this->view);
+        startViewMessage->set_lastnormalsessnum(this->startViewLastNormalSessnum);
+        startViewMessage->set_lastnormalview(this->startViewLastNormalView);
+        startViewMessage->set_lastop(this->startViewLastOp);
         for (opnum_t gap : this->startViewCommittedGaps) {
-            startViewMessage.add_committedgaps(gap);
+            startViewMessage->add_committedgaps(gap);
         }
 
-        if (!this->transport->SendMessage(this, remote, startViewMessage)) {
+        if (!this->transport->SendMessage(this, remote, NOPaxosMessage(m))) {
             RWarning("Failed to send StartViewMessage");
         }
 
@@ -907,13 +880,15 @@ NOPaxosReplica::HandleSyncCommit(const TransportAddress &remote,
     } else {
         // We will request the SyncPrepareMessage from the
         // leader.
-        SyncPrepareRequestMessage syncPrepareRequestMessage;
-        syncPrepareRequestMessage.set_sessnum(this->sessnum);
-        syncPrepareRequestMessage.set_view(this->view);
+        ToReplicaMessage m;
+        SyncPrepareRequestMessage *syncPrepareRequestMessage =
+            m.mutable_sync_prepare_request();
+        syncPrepareRequestMessage->set_sessnum(this->sessnum);
+        syncPrepareRequestMessage->set_view(this->view);
 
         if (!this->transport->SendMessageToReplica(this,
                                                    this->configuration.GetLeaderIndex(this->view),
-                                                   syncPrepareRequestMessage)) {
+                                                   NOPaxosMessage(m))) {
             RWarning("Failed to send SyncPrepareRequestMessage");
         }
     }
@@ -929,27 +904,29 @@ NOPaxosReplica::HandleSyncPrepareRequest(const TransportAddress &remote,
 
     ASSERT(AmLeader());
 
-    SyncPrepareMessage syncPrepareMessage;
-    syncPrepareMessage.set_sessnum(this->sessnum);
-    syncPrepareMessage.set_view(this->view);
-    syncPrepareMessage.set_lastop(this->leaderLastSyncPreparePoint);
+    ToReplicaMessage m;
+    SyncPrepareMessage *syncPrepareMessage = m.mutable_sync_prepare();
+    syncPrepareMessage->set_sessnum(this->sessnum);
+    syncPrepareMessage->set_view(this->view);
+    syncPrepareMessage->set_lastop(this->leaderLastSyncPreparePoint);
     for (opnum_t gap : this->leaderLastSyncCommittedGaps) {
-        syncPrepareMessage.add_committedgaps(gap);
+        syncPrepareMessage->add_committedgaps(gap);
     }
 
-    if (!this->transport->SendMessage(this, remote, syncPrepareMessage)) {
+    if (!this->transport->SendMessage(this, remote, NOPaxosMessage(m))) {
         RWarning("Failed to send SyncPrepareMessage");
     }
 
     // If we have already committed the sync point, also send
     // a SyncCommit to the requester.
     if (this->lastCommittedOp >= this->leaderLastSyncPreparePoint) {
-        SyncCommitMessage syncCommitMessage;
-        syncCommitMessage.set_sessnum(this->sessnum);
-        syncCommitMessage.set_view(this->view);
-        syncCommitMessage.set_syncpoint(this->leaderLastSyncPreparePoint);
+        ToReplicaMessage m;
+        SyncCommitMessage *syncCommitMessage = m.mutable_sync_commit();
+        syncCommitMessage->set_sessnum(this->sessnum);
+        syncCommitMessage->set_view(this->view);
+        syncCommitMessage->set_syncpoint(this->leaderLastSyncPreparePoint);
 
-        if (!this->transport->SendMessage(this, remote, syncCommitMessage)) {
+        if (!this->transport->SendMessage(this, remote, NOPaxosMessage(m))) {
             RWarning("Failed to send SyncCommitMessage");
         }
     }
@@ -1047,16 +1024,18 @@ NOPaxosReplica::ProcessNextOperation(const Request &request,
             ExecuteUptoOp(vs.opnum);
         } else {
             // Non-leader replica simply reply without execution.
-            ReplyMessage reply;
+            ToClientMessage m;
+            ReplyMessage *reply = m.mutable_reply();
             auto addr = this->clientAddresses.find(request.clientid());
             if (addr != this->clientAddresses.end()) {
-                reply.set_clientreqid(request.clientreqid());
-                reply.set_replicaidx(this->replicaIdx);
-                reply.set_view(vs.view);
-                reply.set_opnum(vs.opnum);
-                reply.set_sessnum(vs.sessnum);
+                reply->set_clientreqid(request.clientreqid());
+                reply->set_replicaidx(this->replicaIdx);
+                reply->set_view(vs.view);
+                reply->set_opnum(vs.opnum);
+                reply->set_sessnum(vs.sessnum);
 
-                if (!this->transport->SendMessage(this, *(addr->second), reply)) {
+                if (!this->transport->SendMessage(this, *(addr->second),
+                            NOPaxosMessage(m))) {
                     RWarning("Failed to send reply to client");
                 }
             }

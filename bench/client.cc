@@ -47,8 +47,8 @@
 static void
 Usage(const char *progName)
 {
-        fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-q dscp] [-d delay-ms] [-u duration-sec] -c conf-file -m unreplicated|vr|fastpaxos|nopaxos\n",
-                progName);
+    fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-d delay-ms] [-u duration-sec] -c conf-file -m unreplicated|vr|fastpaxos|nopaxos\n",
+            progName);
         exit(1);
 }
 
@@ -63,7 +63,6 @@ int main(int argc, char **argv)
     const char *configPath = NULL;
     int numClients = 1;
     int duration = 1;
-    int dscp = 0;
     uint64_t delay = 0;
     int tputInterval = 0;
 
@@ -81,7 +80,7 @@ int main(int argc, char **argv)
 
     // Parse arguments
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:q:s:m:t:i:u:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:s:m:t:i:u:")) != -1) {
         switch (opt) {
         case 'c':
             configPath = optarg;
@@ -95,20 +94,6 @@ int main(int argc, char **argv)
             {
                 fprintf(stderr,
                         "option -d requires a numeric arg\n");
-                Usage(argv[0]);
-            }
-            break;
-        }
-
-        case 'q':
-        {
-            char *strtolPtr;
-            dscp = strtoul(optarg, &strtolPtr, 10);
-            if ((*optarg == '\0') || (*strtolPtr != '\0') ||
-                (dscp < 0))
-            {
-                fprintf(stderr,
-                        "option -q requires a numeric arg\n");
                 Usage(argv[0]);
             }
             break;
@@ -200,7 +185,7 @@ int main(int argc, char **argv)
     }
     dsnet::Configuration config(configStream);
 
-    dsnet::UDPTransport transport(0, 0, dscp);
+    dsnet::UDPTransport transport(0, 0);
     std::vector<dsnet::Client *> clients;
     std::vector<dsnet::BenchmarkClient *> benchClients;
 

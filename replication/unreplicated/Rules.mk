@@ -8,8 +8,8 @@ PROTOS += $(addprefix $(d), \
 
 OBJS-unreplicated-client := $(o)client.o $(o)unreplicated-proto.o \
                $(OBJS-client) $(LIB-message) \
-               $(LIB-configuration)
+               $(LIB-configuration) $(LIB-pbmessage)
 
 OBJS-unreplicated-replica := $(o)replica.o $(o)unreplicated-proto.o \
                $(OBJS-replica) $(LIB-message) \
-               $(LIB-configuration)
+               $(LIB-configuration) $(LIB-pbmessage)

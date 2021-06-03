@@ -23,8 +23,7 @@ class PbftClient : public Client {
       timeout_continuation_t timeoutContinuation = nullptr,
       uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
   virtual void ReceiveMessage(const TransportAddress &remote,
-                              const string &type, const string &data,
-                              void *meta_data) override;
+                              void *buf, size_t size) override;
 
  private:
   int f;  // the number of faulty servers that could be toleranced
@@ -61,6 +60,6 @@ class PbftClient : public Client {
 };
 
 }  // namespace pbft
-}  // namespace specpaxos
+}  // namespace dsnet
 
 #endif /* _PBFT_CLIENT_H_ */

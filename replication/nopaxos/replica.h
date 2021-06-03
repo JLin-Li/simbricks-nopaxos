@@ -37,6 +37,7 @@
 #include "common/replica.h"
 #include "common/quorumset.h"
 #include "replication/nopaxos/nopaxos-proto.pb.h"
+#include "replication/nopaxos/message.h"
 
 #include <map>
 #include <list>
@@ -54,8 +55,7 @@ public:
     ~NOPaxosReplica();
 
     void ReceiveMessage(const TransportAddress &remote,
-                        const string &type, const string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
 public:
     Log log;
@@ -138,8 +138,7 @@ private:
 
     /* Message handlers */
     void HandleClientRequest(const TransportAddress &remote,
-                             proto::RequestMessage &msg,
-                             void *meta_data);
+                             const proto::RequestMessage &msg,
     void HandleUnloggedRequest(const TransportAddress &remote,
                                const proto::UnloggedRequestMessage &msg);
     void HandleGapRequest(const TransportAddress &remote,

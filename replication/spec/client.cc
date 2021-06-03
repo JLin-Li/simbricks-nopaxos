@@ -30,6 +30,7 @@
 
 #include "common/client.h"
 #include "common/request.pb.h"
+#include "common/pbmessage.h"
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/transport.h"
@@ -106,28 +107,30 @@ SpecClient::InvokeUnlogged(int replicaIdx,
     pendingUnloggedRequest = new PendingRequest(request, reqId, continuation);
     pendingUnloggedRequest->timeoutContinuation = timeoutContinuation;
 
-    proto::UnloggedRequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingUnloggedRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(pendingUnloggedRequest->clientReqId);
+    ToReplicaMessage m;
+    UnloggedRequestMessage *reqMsg = m.mutable_unlogged_request();
+    reqMsg->mutable_req()->set_op(pendingUnloggedRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(pendingUnloggedRequest->clientReqId);
 
     ASSERT(!unloggedRequestTimeout->Active());
     unloggedRequestTimeout->SetTimeout(timeout);
     unloggedRequestTimeout->Start();
 
-    transport->SendMessageToReplica(this, replicaIdx, reqMsg);
+    transport->SendMessageToReplica(this, replicaIdx, PBMessage(m));
 }
 
 
 void
 SpecClient::SendRequest()
 {
-    RequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(pendingRequest->clientReqId);
+    ToReplicaMessage m;
+    RequestMessage *reqMsg = m.mutable_request();
+    reqMsg->mutable_req()->set_op(pendingRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(pendingRequest->clientReqId);
 
-    transport->SendMessageToAll(this, reqMsg);
+    transport->SendMessageToMulticast(this, PBMessage(m));
 
     requestTimeout->Reset();
 }
@@ -141,25 +144,23 @@ SpecClient::ResendRequest()
 
 void
 SpecClient::ReceiveMessage(const TransportAddress &remote,
-                           const string &type,
-                           const string &data,
-                           void *meta_data)
+                           void *buf, size_t size)
 {
-    static RequestMessage reqMsg;
-    static SpeculativeReplyMessage reply;
-    static UnloggedReplyMessage unloggedReply;
+    static ToClientMessage client_msg;
+    static PBMessage m(client_msg);
 
-    if (type == reqMsg.GetTypeName()) {
-        // Ignore
-        return;
-    } else if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else if (type == unloggedReply.GetTypeName()) {
-        unloggedReply.ParseFromString(data);
-        HandleUnloggedReply(remote, unloggedReply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, meta_data);
+    m.Parse(buf, size);
+
+    switch (client_msg.msg_case()) {
+        case ToClientMessage::MsgCase::kReply:
+            HandleReply(remote, client_msg.reply());
+            break;
+        case ToClientMessage::MsgCase::kUnloggedReply:
+            HandleUnloggedReply(remote, client_msg.unlogged_reply());
+            break;
+        default:
+            Panic("Received unexpected message type: %u",
+                    client_msg.msg_case());
     }
 }
 
@@ -241,9 +242,10 @@ SpecClient::HandleReply(const TransportAddress &remote,
 			kv.second.view(), kv.second.opnum());
 	    }
 
-	    RequestViewChangeMessage rvc;
-	    rvc.set_view(msg.view());
-	    transport->SendMessageToAll(this, rvc);
+        ToReplicaMessage m;
+	    RequestViewChangeMessage *rvc = m.mutable_request_view_change();
+	    rvc->set_view(msg.view());
+	    transport->SendMessageToAll(this, PBMessage(m));
 	}
     }
 }

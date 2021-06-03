@@ -8,8 +8,8 @@ PROTOS += $(addprefix $(d), \
 
 OBJS-spec-client := $(o)client.o $(o)spec-proto.o \
                     $(OBJS-client) $(LIB-message) \
-                    $(LIB-configuration)
+                    $(LIB-configuration) $(LIB-pbmessage)
 
 OBJS-spec-replica := $(o)replica.o $(o)spec-proto.o \
                      $(OBJS-replica) $(LIB-message) \
-                     $(LIB-configuration) $(LIB-latency)
+                     $(LIB-configuration) $(LIB-latency) $(LIB-pbmessage)

@@ -29,12 +29,15 @@
  *
  **********************************************************************/
 
-#include "replication/nopaxos/client.h"
 #include "lib/assert.h"
 #include "lib/message.h"
+#include "replication/nopaxos/client.h"
+#include "replication/nopaxos/message.h"
 
 namespace dsnet {
 namespace nopaxos {
+
+using namespace proto;
 
 NOPaxosClient::NOPaxosClient(const Configuration &config,
                              Transport *transport,
@@ -94,29 +97,32 @@ NOPaxosClient::InvokeUnlogged(int replicaIdx,
     pendingUnloggedRequest = new PendingRequest(request, lastReqID, continuation);
     pendingUnloggedRequest->timeoutContinuation = timeoutContinuation;
 
-    proto::UnloggedRequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(lastReqID);
+    ToReplicaMessage m;
+    UnloggedRequestMessage *reqMsg = m.mutable_unlogged_request();
+    reqMsg->mutable_req()->set_op(request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(lastReqID);
 
     ASSERT(!unloggedRequestTimeout->Active());
     unloggedRequestTimeout->SetTimeout(timeout);
     unloggedRequestTimeout->Start();
 
-    transport->SendMessageToReplica(this, replicaIdx, reqMsg);
+    transport->SendMessageToReplica(this, replicaIdx, NOPaxosMessage(m));
 }
 
 void
 NOPaxosClient::SendRequest()
 {
-    proto::RequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(pendingRequest->clientReqID);
-    reqMsg.set_msgnum(0);
-    reqMsg.set_sessnum(0);
+    ToReplicaMessage m;
+    RequestMessage *reqMsg = m.mutable_request();
+    reqMsg->mutable_req()->set_op(pendingRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(pendingRequest->clientReqID);
+    reqMsg->set_msgnum(0);
+    reqMsg->set_sessnum(0);
 
-    transport->OrderedMulticast(this, reqMsg);
+    transport->SendMessageToMulticast(this,
+            NOPaxosMessage(m, true));
 
     requestTimeout->Reset();
 }
@@ -130,21 +136,23 @@ NOPaxosClient::ResendRequest()
 
 void
 NOPaxosClient::ReceiveMessage(const TransportAddress &remote,
-                              const string &type,
-                              const string &data,
-                              void *meta_data)
+                              void *buf, size_t size)
 {
-    static proto::ReplyMessage reply;
-    static proto::UnloggedReplyMessage unloggedReply;
+    static ToClientMessage client_msg;
+    static NOPaxosMessage m(client_msg);
 
-    if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else if (type == unloggedReply.GetTypeName()) {
-        unloggedReply.ParseFromString(data);
-        HandleUnloggedReply(remote, unloggedReply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, nullptr);
+    m.Parse(buf, size);
+
+    switch (client_msg.msg_case()) {
+        case ToClientMessage::MsgCase::kReply:
+            HandleReply(remote, client_msg.reply());
+            break;
+        case ToClientMessage::MsgCase::kUnloggedReply:
+            HandleUnloggedReply(remote, client_msg.unlogged_reply());
+            break;
+        default:
+            Panic("Received unexpected message type %u",
+                    client_msg.msg_case());
     }
 }
 

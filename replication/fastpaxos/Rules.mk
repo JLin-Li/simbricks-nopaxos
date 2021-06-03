@@ -8,10 +8,8 @@ PROTOS += $(addprefix $(d), \
 
 OBJS-fastpaxos-client := $(o)client.o $(o)fastpaxos-proto.o \
                    $(OBJS-client) $(LIB-message) \
-                   $(LIB-configuration)
+                   $(LIB-configuration) $(LIB-pbmessage)
 
 OBJS-fastpaxos-replica := $(o)replica.o $(o)fastpaxos-proto.o \
                    $(OBJS-replica) $(LIB-message) \
-                   $(LIB-configuration)
-
-#include $(d)tests/Rules.mk
+                   $(LIB-configuration) $(LIB-pbmessage)

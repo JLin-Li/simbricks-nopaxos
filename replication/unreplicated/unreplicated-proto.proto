@@ -12,7 +12,7 @@ message UnloggedRequestMessage {
     required dsnet.UnloggedRequest req = 1;
 }
 
-message ToRelicaMessage {
+message ToReplicaMessage {
     oneof msg {
         RequestMessage request = 1;
         UnloggedRequestMessage unlogged_request = 2;
