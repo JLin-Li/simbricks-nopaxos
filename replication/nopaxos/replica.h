@@ -138,7 +138,7 @@ private:
 
     /* Message handlers */
     void HandleClientRequest(const TransportAddress &remote,
-                             const proto::RequestMessage &msg,
+                             const proto::RequestMessage &msg);
     void HandleUnloggedRequest(const TransportAddress &remote,
                                const proto::UnloggedRequestMessage &msg);
     void HandleGapRequest(const TransportAddress &remote,

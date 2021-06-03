@@ -144,7 +144,7 @@ message ToReplicaMessage {
         GapCommitMessage gap_commit = 7;
         GapCommitReplyMessage gap_commit_reply = 8;
         ViewChangeRequestMessage view_change_request = 9;
-        ViewChangeMessage view_chage = 10;
+        ViewChangeMessage view_change = 10;
         StartViewMessage start_view = 11;
         StartViewReplyMessage start_view_reply = 12;
         SyncPrepareRequestMessage sync_prepare_request = 13;

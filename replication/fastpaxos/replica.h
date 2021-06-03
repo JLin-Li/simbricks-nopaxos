@@ -52,8 +52,7 @@ public:
     ~FastPaxosReplica();
 
     void ReceiveMessage(const TransportAddress &remote,
-                        const string &type, const string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
 private:
     view_t view;
@@ -66,7 +65,7 @@ private:
                         proto::PrepareMessage> > pendingPrepares;
     std::list<std::pair<TransportAddress *,
                         proto::PrepareOKMessage> > pendingPrepareOKs;
-    proto::PrepareMessage lastPrepare;
+    proto::ToReplicaMessage lastPrepare;
 
     Log log;
     std::map<uint64_t, std::unique_ptr<TransportAddress> > clientAddresses;
@@ -74,7 +73,7 @@ private:
     {
         uint64_t lastReqId;
         bool replied;
-        proto::ReplyMessage reply;
+        proto::ToClientMessage reply;
     };
     std::map<uint64_t, ClientTableEntry> clientTable;
 

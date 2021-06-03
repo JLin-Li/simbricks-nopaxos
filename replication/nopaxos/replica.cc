@@ -196,7 +196,7 @@ NOPaxosReplica::ReceiveMessage(const TransportAddress &remote,
         case ToReplicaMessage::MsgCase::kStartView:
             HandleStartView(remote, replica_msg.start_view());
             break;
-        case ToReplicaMessage::MsgCase::kStateTransferReply:
+        case ToReplicaMessage::MsgCase::kStartViewReply:
             HandleStartViewReply(remote, replica_msg.start_view_reply());
             break;
         case ToReplicaMessage::MsgCase::kSyncPrepareRequest:
@@ -208,7 +208,7 @@ NOPaxosReplica::ReceiveMessage(const TransportAddress &remote,
         case ToReplicaMessage::MsgCase::kSyncPrepareReply:
             HandleSyncPrepareReply(remote, replica_msg.sync_prepare_reply());
             break;
-        case ToReplicaMessage::MsgCase::kCommit:
+        case ToReplicaMessage::MsgCase::kSyncCommit:
             HandleSyncCommit(remote, replica_msg.sync_commit());
             break;
         default:
@@ -1082,7 +1082,8 @@ NOPaxosReplica::ExecuteUptoOp(opnum_t opnum)
         this->lastExecutedOp = op;
         if (entry->state == LOG_STATE_RECEIVED) {
             Request request = entry->request;
-            ReplyMessage reply;
+            ToClientMessage m;
+            ReplyMessage *reply = m.mutable_reply();
 
             // Check client table for duplicate requests.
             auto kv = this->clientTable.find(request.clientid());
@@ -1095,16 +1096,16 @@ NOPaxosReplica::ExecuteUptoOp(opnum_t opnum)
                 if (request.clientreqid() == entry.lastReqId) {
                     // Duplicate request (potentially client
                     // retry). Send back the last reply.
-                    reply.set_reply(entry.reply.reply());
+                    reply->set_reply(entry.reply.reply());
                 }
             }
 
             // Only execute if this is not a duplicate
             // of the last request (client table check
             // will otherwise fill the reply).
-            if (!reply.has_reply()) {
-                Execute(op, request, reply);
-                UpdateClientTable(request, reply);
+            if (!reply->has_reply()) {
+                Execute(op, request, *reply);
+                UpdateClientTable(request, *reply);
             }
 
             // Only reply back to client if the replica
@@ -1112,16 +1113,17 @@ NOPaxosReplica::ExecuteUptoOp(opnum_t opnum)
             // to. Otherwise, it has already responded to
             // the client during ProcessNextOperation.
             if (this->configuration.GetLeaderIndex(entry->viewstamp.view) == this->replicaIdx) {
-                ASSERT(reply.has_reply());
+                ASSERT(reply->has_reply());
                 auto addr = this->clientAddresses.find(request.clientid());
                 if (addr != this->clientAddresses.end()) {
-                    reply.set_clientreqid(request.clientreqid());
-                    reply.set_replicaidx(this->replicaIdx);
-                    reply.set_view(entry->viewstamp.view);
-                    reply.set_opnum(op);
-                    reply.set_sessnum(entry->viewstamp.sessnum);
+                    reply->set_clientreqid(request.clientreqid());
+                    reply->set_replicaidx(this->replicaIdx);
+                    reply->set_view(entry->viewstamp.view);
+                    reply->set_opnum(op);
+                    reply->set_sessnum(entry->viewstamp.sessnum);
 
-                    if (!this->transport->SendMessage(this, *(addr->second), reply)) {
+                    if (!this->transport->SendMessage(this, *(addr->second),
+                                NOPaxosMessage(m))) {
                         RWarning("Failed to send reply to client");
                     }
                 }
@@ -1407,15 +1409,16 @@ NOPaxosReplica::ProcessSyncPrepare(opnum_t syncpoint)
     } else {
         // Otherwise, we acknowlege the leader we have received
         // the sync prepare message.
-        SyncPrepareReplyMessage reply;
-        reply.set_sessnum(this->sessnum);
-        reply.set_view(this->view);
-        reply.set_syncpoint(syncpoint);
-        reply.set_replicaidx(this->replicaIdx);
+        ToReplicaMessage m;
+        SyncPrepareReplyMessage *reply = m.mutable_sync_prepare_reply();
+        reply->set_sessnum(this->sessnum);
+        reply->set_view(this->view);
+        reply->set_syncpoint(syncpoint);
+        reply->set_replicaidx(this->replicaIdx);
 
         if (!this->transport->SendMessageToReplica(this,
                                                    configuration.GetLeaderIndex(this->view),
-                                                   reply)) {
+                                                   NOPaxosMessage(m))) {
             RWarning("Failed to send SyncPrepareReplyMessage to leader");
         }
     }
@@ -1424,21 +1427,22 @@ NOPaxosReplica::ProcessSyncPrepare(opnum_t syncpoint)
 void
 NOPaxosReplica::SendGapRequest()
 {
-    GapRequestMessage gapRequestMessage;
-    gapRequestMessage.set_view(this->view);
-    gapRequestMessage.set_sessnum(this->sessnum);
-    gapRequestMessage.set_opnum(this->lastOp+1);
+    ToReplicaMessage m;
+    GapRequestMessage *gapRequestMessage = m.mutable_gap_request();
+    gapRequestMessage->set_view(this->view);
+    gapRequestMessage->set_sessnum(this->sessnum);
+    gapRequestMessage->set_opnum(this->lastOp+1);
 
     RDebug("Sending GapRequestMessage with opnum %lu", this->lastOp+1);
     if (!AmLeader()) {
         if (!this->transport->SendMessageToReplica(this,
                                                    this->configuration.GetLeaderIndex(this->view),
-                                                   gapRequestMessage)) {
+                                                   NOPaxosMessage(m))) {
             RWarning("Failed to send GapRequestMessage to leader");
         }
     } else {
         if (!this->transport->SendMessageToAll(this,
-                                               gapRequestMessage)) {
+                                               NOPaxosMessage(m))) {
             RWarning("Failed to send GapRequestMessage to replicas");
         }
     }
@@ -1451,14 +1455,15 @@ NOPaxosReplica::SendGapCommit()
     ASSERT(AmLeader());
     ASSERT(this->status == STATUS_GAP_COMMIT);
 
-    GapCommitMessage gapCommitMessage;
-    gapCommitMessage.set_sessnum(this->sessnum);
-    gapCommitMessage.set_view(this->view);
+    ToReplicaMessage m;
+    GapCommitMessage *gapCommitMessage = m.mutable_gap_commit();
+    gapCommitMessage->set_sessnum(this->sessnum);
+    gapCommitMessage->set_view(this->view);
     // not lastOp+1 because we have already appended
     // NOOP to the log.
-    gapCommitMessage.set_opnum(this->lastOp);
+    gapCommitMessage->set_opnum(this->lastOp);
 
-    if (!(this->transport->SendMessageToAll(this, gapCommitMessage))) {
+    if (!(this->transport->SendMessageToAll(this, NOPaxosMessage(m)))) {
         RWarning("Failed to send GapCommitMessage");
     }
     this->gapCommitTimeout->Reset();
@@ -1467,31 +1472,33 @@ NOPaxosReplica::SendGapCommit()
 void
 NOPaxosReplica::SendViewChange()
 {
-    ViewChangeRequestMessage viewChangeRequestMessage;
-    viewChangeRequestMessage.set_sessnum(this->sessnum);
-    viewChangeRequestMessage.set_view(this->view);
+    ToReplicaMessage m;
+    ViewChangeRequestMessage *viewChangeRequestMessage = m.mutable_view_change_request();
+    viewChangeRequestMessage->set_sessnum(this->sessnum);
+    viewChangeRequestMessage->set_view(this->view);
 
-    if (!transport->SendMessageToAll(this, viewChangeRequestMessage)) {
+    if (!transport->SendMessageToAll(this, NOPaxosMessage(m))) {
         RWarning("Failed to send ViewChangeRequestMessage to all replicas");
     }
 
     // Leader does not need to send viewchange message
     // to itself.
     if (!AmLeader()) {
-        ViewChangeMessage viewChangeMessage;
-        viewChangeMessage.set_sessnum(this->sessnum);
-        viewChangeMessage.set_view(this->view);
-        viewChangeMessage.set_lastnormalsessnum(this->lastNormalSessnum);
-        viewChangeMessage.set_lastnormalview(this->lastNormalView);
-        viewChangeMessage.set_lastop(this->lastOp);
-        viewChangeMessage.set_replicaidx(this->replicaIdx);
+        ToReplicaMessage m;
+        ViewChangeMessage *viewChangeMessage = m.mutable_view_change();
+        viewChangeMessage->set_sessnum(this->sessnum);
+        viewChangeMessage->set_view(this->view);
+        viewChangeMessage->set_lastnormalsessnum(this->lastNormalSessnum);
+        viewChangeMessage->set_lastnormalview(this->lastNormalView);
+        viewChangeMessage->set_lastop(this->lastOp);
+        viewChangeMessage->set_replicaidx(this->replicaIdx);
         for (opnum_t gap : this->committedGaps) {
-            viewChangeMessage.add_committedgaps(gap);
+            viewChangeMessage->add_committedgaps(gap);
         }
 
         if (!this->transport->SendMessageToReplica(this,
                                                    this->configuration.GetLeaderIndex(this->view),
-                                                   viewChangeMessage)) {
+                                                   NOPaxosMessage(m))) {
             RWarning("Failed to send ViewChangeMessage to leader");
         }
     }
@@ -1501,11 +1508,12 @@ NOPaxosReplica::SendViewChange()
 void
 NOPaxosReplica::SendStateTransferRequest()
 {
-    StateTransferRequestMessage request;
-    request.set_sessnum(this->sessnum);
-    request.set_view(this->view);
-    request.set_begin(this->stateTransferOpBegin);
-    request.set_end(this->stateTransferOpEnd);
+    ToReplicaMessage m;
+    StateTransferRequestMessage *request = m.mutable_state_transfer_request();
+    request->set_sessnum(this->sessnum);
+    request->set_view(this->view);
+    request->set_begin(this->stateTransferOpBegin);
+    request->set_end(this->stateTransferOpEnd);
 
     RDebug("Leader requesting StateTransfer from %lu to %lu from replica %u",
            this->stateTransferOpBegin,
@@ -1517,7 +1525,7 @@ NOPaxosReplica::SendStateTransferRequest()
     }
     if (!(this->transport->SendMessageToReplica(this,
                                                 this->stateTransferReplicaIdx,
-                                                request))) {
+                                                NOPaxosMessage(m)))) {
         RWarning("Failed to send StateTransferRequestMessage during view change");
     }
     this->stateTransferTimeout->Reset();
@@ -1527,17 +1535,18 @@ void
 NOPaxosReplica::SendStartView()
 {
     ASSERT(AmLeader());
-    StartViewMessage startViewMessage;
-    startViewMessage.set_sessnum(this->sessnum);
-    startViewMessage.set_view(this->view);
-    startViewMessage.set_lastnormalsessnum(this->startViewLastNormalSessnum);
-    startViewMessage.set_lastnormalview(this->startViewLastNormalView);
-    startViewMessage.set_lastop(this->startViewLastOp);
+    ToReplicaMessage m;
+    StartViewMessage *startViewMessage = m.mutable_start_view();
+    startViewMessage->set_sessnum(this->sessnum);
+    startViewMessage->set_view(this->view);
+    startViewMessage->set_lastnormalsessnum(this->startViewLastNormalSessnum);
+    startViewMessage->set_lastnormalview(this->startViewLastNormalView);
+    startViewMessage->set_lastop(this->startViewLastOp);
     for (opnum_t gap : this->startViewCommittedGaps) {
-        startViewMessage.add_committedgaps(gap);
+        startViewMessage->add_committedgaps(gap);
     }
 
-    if (!(this->transport->SendMessageToAll(this, startViewMessage))) {
+    if (!(this->transport->SendMessageToAll(this, NOPaxosMessage(m)))) {
         RWarning("Failed to send StartViewMessage to all replicas");
     }
     this->startViewTimeout->Reset();
@@ -1549,14 +1558,15 @@ NOPaxosReplica::SendStartViewReply()
     ASSERT(!AmLeader());
     ASSERT(this->status != STATUS_VIEW_CHANGE);
 
-    StartViewReplyMessage startViewReplyMessage;
-    startViewReplyMessage.set_sessnum(this->sessnum);
-    startViewReplyMessage.set_view(this->view);
-    startViewReplyMessage.set_replicaidx(this->replicaIdx);
+    ToReplicaMessage m;
+    StartViewReplyMessage *startViewReplyMessage = m.mutable_start_view_reply();
+    startViewReplyMessage->set_sessnum(this->sessnum);
+    startViewReplyMessage->set_view(this->view);
+    startViewReplyMessage->set_replicaidx(this->replicaIdx);
 
     if (!this->transport->SendMessageToReplica(this,
                                                this->configuration.GetLeaderIndex(this->view),
-                                               startViewReplyMessage)) {
+                                               NOPaxosMessage(m))) {
         RWarning("Failed to send StartViewReplyMessage to leader");
     }
 }
@@ -1569,15 +1579,16 @@ NOPaxosReplica::SendSyncPrepare()
     this->leaderLastSyncPreparePoint = this->lastOp;
     this->leaderLastSyncCommittedGaps = this->committedGaps;
     RDebug("Send SyncPrepare for syncpoint %lu", this->leaderLastSyncPreparePoint);
-    SyncPrepareMessage syncPrepareMessage;
-    syncPrepareMessage.set_sessnum(this->sessnum);
-    syncPrepareMessage.set_view(this->view);
-    syncPrepareMessage.set_lastop(this->lastOp);
+    ToReplicaMessage m;
+    SyncPrepareMessage *syncPrepareMessage = m.mutable_sync_prepare();
+    syncPrepareMessage->set_sessnum(this->sessnum);
+    syncPrepareMessage->set_view(this->view);
+    syncPrepareMessage->set_lastop(this->lastOp);
     for (opnum_t gap : this->leaderLastSyncCommittedGaps) {
-        syncPrepareMessage.add_committedgaps(gap);
+        syncPrepareMessage->add_committedgaps(gap);
     }
 
-    if (!this->transport->SendMessageToAll(this, syncPrepareMessage)) {
+    if (!this->transport->SendMessageToAll(this, NOPaxosMessage(m))) {
         RWarning("Failed to send SyncPrepare");
     }
 }
@@ -1587,12 +1598,13 @@ NOPaxosReplica::SendSyncCommit()
 {
     ASSERT(AmLeader());
 
-    SyncCommitMessage syncCommitMessage;
-    syncCommitMessage.set_sessnum(this->sessnum);
-    syncCommitMessage.set_view(this->view);
-    syncCommitMessage.set_syncpoint(this->lastCommittedOp);
+    ToReplicaMessage m;
+    SyncCommitMessage *syncCommitMessage = m.mutable_sync_commit();
+    syncCommitMessage->set_sessnum(this->sessnum);
+    syncCommitMessage->set_view(this->view);
+    syncCommitMessage->set_syncpoint(this->lastCommittedOp);
 
-    if (!this->transport->SendMessageToAll(this, syncCommitMessage)) {
+    if (!this->transport->SendMessageToAll(this, NOPaxosMessage(m))) {
         RWarning("Failed to send SyncCommitMessage");
     }
 }
