@@ -1,6 +1,7 @@
 #include "replication/pbft/replica.h"
 
 #include "common/replica.h"
+#include "common/pbmessage.h"
 #include "lib/message.h"
 #include "lib/transport.h"
 #include "replication/pbft/pbft-proto.pb.h"
@@ -25,14 +26,14 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
                                 const RequestMessage &msg) {
   auto kv = clientTable.find(msg.req().clientid());
   if (kv != clientTable.end()) {
-    const ClientTableEntry &entry = kv->second;
+    ClientTableEntry &entry = kv->second;
     if (msg.req().clientreqid() < entry.lastReqId) {
       Notice("Ignoring stale request");
       return;
     }
     if (msg.req().clientreqid() == entry.lastReqId) {
       Notice("Received duplicate request; resending reply");
-      if (!(transport->SendMessage(this, remote, entry.reply))) {
+      if (!(transport->SendMessage(this, remote, PBMessage(entry.reply)))) {
         Warning("Failed to resend reply to client");
       }
       return;
@@ -49,49 +50,54 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   log.Append(entry);
   Debug("Received request %s", msg.req().op().c_str());
 
-  ReplyMessage reply;
-  Execute(0, msg.req(), reply);
+  ToClientMessage m;
+  ReplyMessage *reply = m.mutable_reply();
+  Execute(0, msg.req(), *reply);
   // The protocol defines these as required, even if they're not
   // meaningful.
-  reply.set_view(0);
-  reply.set_opnum(0);
+  reply->set_view(0);
+  reply->set_opnum(0);
 
-  reply.set_replicaid(replicaIdx);
-  *(reply.mutable_req()) = msg.req();
-  if (!(transport->SendMessage(this, remote, reply)))
+  reply->set_replicaid(replicaIdx);
+  *(reply->mutable_req()) = msg.req();
+  if (!(transport->SendMessage(this, remote, PBMessage(m))))
     Warning("Failed to send reply message");
 
-  UpdateClientTable(msg.req(), reply);
+  UpdateClientTable(msg.req(), m);
 }
 
 void PbftReplica::HandleUnloggedRequest(const TransportAddress &remote,
                                         const UnloggedRequestMessage &msg) {
   Debug("Received unlogged request %s", (char *)msg.req().op().c_str());
-  UnloggedReplyMessage reply;
-  ExecuteUnlogged(msg.req(), reply);
-  if (!(transport->SendMessage(this, remote, reply)))
+  ToClientMessage m;
+  UnloggedReplyMessage *reply = m.mutable_unlogged_reply();
+  ExecuteUnlogged(msg.req(), *reply);
+  if (!(transport->SendMessage(this, remote, PBMessage(m))))
     Warning("Failed to send reply message");
 }
 
 void PbftReplica::ReceiveMessage(const TransportAddress &remote,
-                                 const string &type, const string &data,
-                                 void *meta_data) {
-  static proto::RequestMessage request;
-  static proto::UnloggedRequestMessage unloggedRequest;
+                                 void *buf, size_t size)
+{
+    static ToReplicaMessage replica_msg;
+    static PBMessage m(replica_msg);
 
-  if (type == request.GetTypeName()) {
-    request.ParseFromString(data);
-    HandleRequest(remote, request);
-  } else if (type == unloggedRequest.GetTypeName()) {
-    unloggedRequest.ParseFromString(data);
-    HandleUnloggedRequest(remote, unloggedRequest);
-  } else {
-    Panic("Received unexpected message type in pbft proto: %s", type.c_str());
-  }
+    m.Parse(buf, size);
+
+    switch (replica_msg.msg_case()) {
+        case ToReplicaMessage::MsgCase::kRequest:
+            HandleRequest(remote, replica_msg.request());
+            break;
+        case ToReplicaMessage::MsgCase::kUnloggedRequest:
+            HandleUnloggedRequest(remote, replica_msg.unlogged_request());
+            break;
+        default:
+            Panic("Received unexpected message type: %u", replica_msg.msg_case());
+    }
 }
 
 void PbftReplica::UpdateClientTable(const Request &req,
-                                    const proto::ReplyMessage &reply) {
+                                    const ToClientMessage &reply) {
   ClientTableEntry &entry = clientTable[req.clientid()];
   ASSERT(entry.lastReqId <= req.clientreqid());
 

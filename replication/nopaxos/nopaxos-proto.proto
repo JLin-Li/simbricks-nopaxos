@@ -28,6 +28,7 @@ message RequestMessage {
   required uint64 sessnum = 1;
   required uint64 msgnum = 2;
   required dsnet.Request req = 3;
+  required bytes addr = 4;
 }
 
 message UnloggedRequestMessage {

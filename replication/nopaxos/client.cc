@@ -120,6 +120,7 @@ NOPaxosClient::SendRequest()
     reqMsg->mutable_req()->set_clientreqid(pendingRequest->clientReqID);
     reqMsg->set_msgnum(0);
     reqMsg->set_sessnum(0);
+    reqMsg->set_addr(myAddress->Serialize());
 
     transport->SendMessageToMulticast(this,
             NOPaxosMessage(m, true));

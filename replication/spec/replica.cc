@@ -33,6 +33,7 @@
 #define VIEW_CHANGE_TIMEOUT_MS     5000
 
 #include "common/replica.h"
+#include "common/pbmessage.h"
 #include "replication/spec/replica.h"
 
 #include "lib/assert.h"
@@ -217,57 +218,50 @@ SpecReplica::UpdateClientTable(const Request &req,
 
 void
 SpecReplica::ReceiveMessage(const TransportAddress &remote,
-                            const string &type, const string &data,
-                            void *meta_data)
+                            void *buf, size_t size)
 {
-    static RequestMessage request;
-    static UnloggedRequestMessage unloggedRequest;
-    static SyncMessage sync;
-    static SyncReplyMessage syncReply;
-    static StartViewChangeMessage startViewChange;
-    static DoViewChangeMessage doViewChange;
-    static StartViewMessage startView;
-    static InViewMessage inView;
-    static FillLogGapMessage fillLogGap;
-    static FillDVCGapMessage fillDVCGap;
-    static RequestViewChangeMessage requestViewChange;
+    static ToReplicaMessage replica_msg;
+    static PBMessage m(replica_msg);
 
-    if (type == request.GetTypeName()) {
-        request.ParseFromString(data);
-        HandleRequest(remote, request);
-    } else if (type == unloggedRequest.GetTypeName()) {
-        unloggedRequest.ParseFromString(data);
-        HandleUnloggedRequest(remote, unloggedRequest);
-    } else if (type == sync.GetTypeName()) {
-        sync.ParseFromString(data);
-        HandleSync(remote, sync);
-    } else if (type == syncReply.GetTypeName()) {
-        syncReply.ParseFromString(data);
-        HandleSyncReply(remote, syncReply);
-    } else if (type == startViewChange.GetTypeName()) {
-        startViewChange.ParseFromString(data);
-        HandleStartViewChange(remote, startViewChange);
-    } else if (type == doViewChange.GetTypeName()) {
-        doViewChange.ParseFromString(data);
-        HandleDoViewChange(remote, doViewChange);
-    } else if (type == startView.GetTypeName()) {
-        startView.ParseFromString(data);
-        HandleStartView(remote, startView);
-    } else if (type == inView.GetTypeName()) {
-        inView.ParseFromString(data);
-        HandleInView(remote, inView);
-    } else if (type == fillLogGap.GetTypeName()) {
-        fillLogGap.ParseFromString(data);
-        HandleFillLogGap(remote, fillLogGap);
-    } else if (type == fillDVCGap.GetTypeName()) {
-        fillDVCGap.ParseFromString(data);
-        HandleFillDVCGap(remote, fillDVCGap);
-    } else if (type == requestViewChange.GetTypeName()) {
-        requestViewChange.ParseFromString(data);
-        HandleRequestViewChange(remote, requestViewChange);
-    } else {
-        RPanic("Received unexpected message type in SPEC proto: %s",
-              type.c_str());
+    m.Parse(buf, size);
+
+    switch (replica_msg.msg_case()) {
+        case ToReplicaMessage::MsgCase::kRequest:
+            HandleRequest(remote, replica_msg.request());
+            break;
+        case ToReplicaMessage::MsgCase::kUnloggedRequest:
+            HandleUnloggedRequest(remote, replica_msg.unlogged_request());
+            break;
+        case ToReplicaMessage::MsgCase::kSync:
+            HandleSync(remote, replica_msg.sync());
+            break;
+        case ToReplicaMessage::MsgCase::kSyncReply:
+            HandleSyncReply(remote, replica_msg.sync_reply());
+            break;
+        case ToReplicaMessage::MsgCase::kRequestViewChange:
+            HandleRequestViewChange(remote, replica_msg.request_view_change());
+            break;
+        case ToReplicaMessage::MsgCase::kStartViewChange:
+            HandleStartViewChange(remote, replica_msg.start_view_change());
+            break;
+        case ToReplicaMessage::MsgCase::kDoViewChange:
+            HandleDoViewChange(remote, replica_msg.do_view_change());
+            break;
+        case ToReplicaMessage::MsgCase::kStartView:
+            HandleStartView(remote, replica_msg.start_view());
+            break;
+        case ToReplicaMessage::MsgCase::kInView:
+            HandleInView(remote, replica_msg.in_view());
+            break;
+        case ToReplicaMessage::MsgCase::kFillLogGap:
+            HandleFillLogGap(remote, replica_msg.fill_log_gap());
+            break;
+        case ToReplicaMessage::MsgCase::kFillDvcGap:
+            HandleFillDVCGap(remote, replica_msg.fill_dvc_gap());
+            break;
+        default:
+            RPanic("Received unexpected message type: %u",
+              replica_msg.msg_case());
     }
 }
 
@@ -312,8 +306,10 @@ SpecReplica::HandleRequest(const TransportAddress &remote,
             if (le->state == LOG_STATE_COMMITTED) {
                 reply->set_committed(true);
             }
+            ToClientMessage m;
+            *m.mutable_reply() = *reply;
             if (!(transport->SendMessage(this, remote,
-                                         *reply))) {
+                                         PBMessage(m)))) {
                 RWarning("Failed to resend reply to client");
             }
             Latency_EndType(&requestLatency, 'r');
@@ -340,26 +336,27 @@ SpecReplica::HandleRequest(const TransportAddress &remote,
           FMT_VIEWSTAMP,
           msg.req().clientid(), msg.req().clientreqid(), VA_VIEWSTAMP(v));
 
-    SpeculativeReplyMessage reply;
-    reply.set_clientreqid(msg.req().clientreqid());
-    reply.set_view(v.view);
-    reply.set_opnum(v.opnum);
-    reply.set_replicaidx(this->replicaIdx);
-    reply.set_committed(false);
+    ToClientMessage m;
+    SpeculativeReplyMessage *reply = m.mutable_reply();
+    reply->set_clientreqid(msg.req().clientreqid());
+    reply->set_view(v.view);
+    reply->set_opnum(v.opnum);
+    reply->set_replicaidx(this->replicaIdx);
+    reply->set_committed(false);
 
     /* Add the request to my log and speculatively execute it */
     LogEntry &newEntry =
         log.Append(LogEntry(v, LOG_STATE_SPECULATIVE, msg.req()));
-    Execute(v.opnum, msg.req(), reply);
+    Execute(v.opnum, msg.req(), *reply);
 
-    reply.set_loghash(log.LastHash());
+    reply->set_loghash(log.LastHash());
 
-    if (!(transport->SendMessage(this, remote, reply))) {
+    if (!(transport->SendMessage(this, remote, PBMessage(m)))) {
         RWarning("Failed to send speculative reply");
     }
 
     // Update the client table
-    UpdateClientTable(msg.req(), newEntry, reply);
+    UpdateClientTable(msg.req(), newEntry, *reply);
 
     Latency_End(&requestLatency);
 
@@ -388,13 +385,14 @@ SpecReplica::HandleUnloggedRequest(const TransportAddress &remote,
         return;
     }
 
-    UnloggedReplyMessage reply;
+    ToClientMessage m;
+    UnloggedReplyMessage *reply = m.mutable_unlogged_reply();
 
     Debug("Received unlogged request %s", (char *)msg.req().op().c_str());
 
-    ExecuteUnlogged(msg.req(), reply);
+    ExecuteUnlogged(msg.req(), *reply);
 
-    if (!(transport->SendMessage(this, remote, reply)))
+    if (!(transport->SendMessage(this, remote, PBMessage(m))))
         Warning("Failed to send reply message");
 }
 
@@ -419,15 +417,16 @@ SpecReplica::SendSync()
 
     RNotice("Starting synchronization for " FMT_OPNUM, lastSpeculative);
 
-    SyncMessage msg;
-    msg.set_view(view);
-    msg.set_lastcommitted(lastCommitted);
+    ToReplicaMessage m;
+    SyncMessage *msg = m.mutable_sync();
+    msg->set_view(view);
+    msg->set_lastcommitted(lastCommitted);
     if (lastCommitted != 0) {
-        msg.set_lastcommittedhash(log.Find(lastCommitted)->hash);
+        msg->set_lastcommittedhash(log.Find(lastCommitted)->hash);
     }
-    msg.set_lastspeculative(lastSpeculative);
+    msg->set_lastspeculative(lastSpeculative);
 
-    if (!(transport->SendMessageToAll(this, msg))) {
+    if (!(transport->SendMessageToAll(this, PBMessage(m)))) {
         RWarning("Failed to send sync message");
     }
 }
@@ -499,23 +498,24 @@ SpecReplica::HandleSync(const TransportAddress &remote,
 void
 SpecReplica::SendSyncReply(opnum_t opnum)
 {
-    SyncReplyMessage reply;
-    reply.set_replicaidx(this->replicaIdx);
-    reply.set_view(this->view);
-    reply.set_lastspeculative(opnum);
+    ToReplicaMessage m;
+    SyncReplyMessage *reply = m.mutable_sync_reply();
+    reply->set_replicaidx(this->replicaIdx);
+    reply->set_view(this->view);
+    reply->set_lastspeculative(opnum);
 
     if (opnum == 0) {
-        reply.set_lastspeculativehash("");
+        reply->set_lastspeculativehash("");
     } else {
         const LogEntry *entry = log.Find(opnum);
         ASSERT(entry != NULL);
 
-        reply.set_lastspeculativehash(entry->hash);
+        reply->set_lastspeculativehash(entry->hash);
     }
 
     if (!(transport->SendMessageToReplica(this,
                                           configuration.GetLeaderIndex(view),
-                                          reply))) {
+                                          PBMessage(m)))) {
         RWarning("Failed to send SYNCREPLY");
     }
 }
@@ -670,13 +670,13 @@ SpecReplica::StartViewChange(view_t newview)
     syncTimeout->Stop();
     failedSyncTimeout->Stop();
 
+    ToReplicaMessage m;
+    StartViewChangeMessage *svc = m.mutable_start_view_change();
+    svc->set_view(newview);
+    svc->set_replicaidx(this->replicaIdx);
+    svc->set_lastcommitted(lastCommitted);
 
-    StartViewChangeMessage m;
-    m.set_view(newview);
-    m.set_replicaidx(this->replicaIdx);
-    m.set_lastcommitted(lastCommitted);
-
-    if (!transport->SendMessageToAll(this, m)) {
+    if (!transport->SendMessageToAll(this, PBMessage(m))) {
         RWarning("Failed to send StartViewChange message to all replicas");
     }
 }
@@ -742,12 +742,13 @@ SpecReplica::HandleStartViewChange(const TransportAddress &remote,
         RNotice("Have quorum of StartViewChange messages; "
                 "sending DoViewChange to replica %d", leader);
 
-        DoViewChangeMessage dvc;
-        dvc.set_view(view);
-        dvc.set_lastnormalview(log.LastViewstamp().view);
-        dvc.set_lastspeculative(lastSpeculative);
-        dvc.set_lastcommitted(lastCommitted);
-        dvc.set_replicaidx(this->replicaIdx);
+        ToReplicaMessage m;
+        DoViewChangeMessage *dvc = m.mutable_do_view_change();
+        dvc->set_view(view);
+        dvc->set_lastnormalview(log.LastViewstamp().view);
+        dvc->set_lastspeculative(lastSpeculative);
+        dvc->set_lastcommitted(lastCommitted);
+        dvc->set_replicaidx(this->replicaIdx);
 
         // Figure out how much of the log to include
         opnum_t minCommitted = std::min_element(
@@ -776,16 +777,16 @@ SpecReplica::HandleStartViewChange(const TransportAddress &remote,
         }
 
         // Dump log
-        log.Dump(minCommitted, dvc.mutable_entries());
-        ASSERT(lastSpeculative - minCommitted + 1 == (unsigned long)dvc.entries_size());
+        log.Dump(minCommitted, dvc->mutable_entries());
+        ASSERT(lastSpeculative - minCommitted + 1 == (unsigned long)dvc->entries_size());
 
         if (leader != this->replicaIdx) {
-            if (!(transport->SendMessageToReplica(this, leader, dvc))) {
+            if (!(transport->SendMessageToReplica(this, leader, PBMessage(m)))) {
                 RWarning("Failed to send DoViewChange message to leader of new view");
             }
         } else {
             doViewChangeQuorum.AddAndCheckForQuorum(msg.view(), this->replicaIdx,
-                                                    dvc);
+                                                    *dvc);
         }
     }
 }
@@ -1242,7 +1243,8 @@ SpecReplica::InstallLog(const std::vector<LogEntry> &entries)
 
     // Now install any new speculative or committed operations
     for (opnum_t i = lastSpeculative + 1; i <= newLastSpeculative; i++) {
-        SpeculativeReplyMessage reply;
+        ToClientMessage m;
+        SpeculativeReplyMessage *reply = m.mutable_reply();
         const LogEntry *newEntry = &entries[i-entriesStart];
 
         RDebug("Speculatively executing new operation (%lx, %ld) as " FMT_VIEWSTAMP,
@@ -1254,26 +1256,26 @@ SpecReplica::InstallLog(const std::vector<LogEntry> &entries)
         LogEntry &installedEntry =
             log.Append(LogEntry(newEntry->viewstamp, LOG_STATE_SPECULATIVE,
                         newEntry->request));
-        Execute(newEntry->viewstamp.opnum, newEntry->request, reply);
+        Execute(newEntry->viewstamp.opnum, newEntry->request, *reply);
 
         // Prepare a reply to send to the client. Send it to the
         // client if we know the address. Either way, put it in the
         // client table so we have it available if the client
         // retries.
-        reply.set_clientreqid(newEntry->request.clientreqid());
-        reply.set_view(newEntry->viewstamp.view);
-        reply.set_opnum(newEntry->viewstamp.opnum);
-        reply.set_replicaidx(this->replicaIdx);
-        reply.set_loghash(log.LastHash());
-        reply.set_committed(newEntry->state == LOG_STATE_COMMITTED);
+        reply->set_clientreqid(newEntry->request.clientreqid());
+        reply->set_view(newEntry->viewstamp.view);
+        reply->set_opnum(newEntry->viewstamp.opnum);
+        reply->set_replicaidx(this->replicaIdx);
+        reply->set_loghash(log.LastHash());
+        reply->set_committed(newEntry->state == LOG_STATE_COMMITTED);
 
         auto addr = clientAddresses.find(newEntry->request.clientid());
         if (addr != clientAddresses.end()) {
-            if (!(transport->SendMessage(this, *(addr->second), reply))) {
+            if (!(transport->SendMessage(this, *(addr->second), PBMessage(m)))) {
                 RWarning("Failed to send speculative reply");
             }
         }
-        UpdateClientTable(newEntry->request, installedEntry, reply);
+        UpdateClientTable(newEntry->request, installedEntry, *reply);
 
         ASSERT(log.LastHash() == newEntry->hash);
     }
@@ -1292,11 +1294,12 @@ SpecReplica::SendFillDVCGapMessage(int replicaIdx,
     ASSERT(replicaIdx != this->replicaIdx);
     Notice("Sending FillDVCGap " FMT_VIEWSTAMP " to %d",
            view, lastCommitted, replicaIdx);
-    FillDVCGapMessage m;
-    m.set_view(view);
-    m.set_lastcommitted(lastCommitted);
+    ToReplicaMessage m;
+    FillDVCGapMessage *f = m.mutable_fill_dvc_gap();
+    f->set_view(view);
+    f->set_lastcommitted(lastCommitted);
 
-    if (!(transport->SendMessageToReplica(this, replicaIdx, m))) {
+    if (!(transport->SendMessageToReplica(this, replicaIdx, PBMessage(m)))) {
         RWarning("Failed to send FillDVCGapMessage");
     }
 }
@@ -1461,14 +1464,15 @@ SpecReplica::HandleDoViewChange(const TransportAddress &remote,
         ASSERT(AmLeader());;
 
         // Send the log to the other replicas
-        StartViewMessage sv;
-        sv.set_view(view);
-        sv.set_lastspeculative(lastSpeculative);
-        sv.set_lastcommitted(lastCommitted);
+        ToReplicaMessage m;
+        StartViewMessage *sv = m.mutable_start_view();
+        sv->set_view(view);
+        sv->set_lastspeculative(lastSpeculative);
+        sv->set_lastcommitted(lastCommitted);
 
-        log.Dump(minCommitted, sv.mutable_entries());
+        log.Dump(minCommitted, sv->mutable_entries());
 
-        if (!(transport->SendMessageToAll(this, sv))) {
+        if (!(transport->SendMessageToAll(this, PBMessage(m)))) {
             RWarning("Failed to send StartView message to all replicas");
         }
     }
@@ -1521,10 +1525,11 @@ SpecReplica::HandleStartView(const TransportAddress &remote,
             (msg.entries(0).hash() !=
              log.Find(msg.entries(0).opnum())->hash)) {
             Notice("Requesting longer log");
-            FillLogGapMessage flg;
-            flg.set_view(msg.view());
-            flg.set_lastcommitted(lastCommitted);
-            if (!(transport->SendMessage(this, remote, flg))) {
+            ToReplicaMessage m;
+            FillLogGapMessage *flg = m.mutable_fill_log_gap();
+            flg->set_view(msg.view());
+            flg->set_lastcommitted(lastCommitted);
+            if (!(transport->SendMessage(this, remote, PBMessage(m)))) {
                 RWarning("Failed to send FillLogGapMessage");
             }
             return;
@@ -1539,12 +1544,13 @@ SpecReplica::HandleStartView(const TransportAddress &remote,
     CommitUpTo(msg.lastcommitted());
 
     // Send in-view message
-    InViewMessage iv;
-    iv.set_replicaidx(this->replicaIdx);
-    iv.set_view(msg.view());
-    iv.set_lastspeculative(msg.lastspeculative());
+    ToReplicaMessage m;
+    InViewMessage *iv = m.mutable_in_view();
+    iv->set_replicaidx(this->replicaIdx);
+    iv->set_view(msg.view());
+    iv->set_lastspeculative(msg.lastspeculative());
     int leader = configuration.GetLeaderIndex(msg.view());
-    if (!(transport->SendMessageToReplica(this, leader, iv))) {
+    if (!(transport->SendMessageToReplica(this, leader, PBMessage(m)))) {
         RWarning("Failed to send InView message to leader of new view");
     }
 
@@ -1602,13 +1608,14 @@ SpecReplica::HandleFillLogGap(const TransportAddress &remote,
 
     ASSERT(AmLeader());
 
-    StartViewMessage sv;
-    sv.set_view(view);
-    sv.set_lastspeculative(lastSpeculative);
-    sv.set_lastcommitted(lastCommitted);
-    log.Dump(msg.lastcommitted(), sv.mutable_entries());
+    ToReplicaMessage m;
+    StartViewMessage *sv = m.mutable_start_view();
+    sv->set_view(view);
+    sv->set_lastspeculative(lastSpeculative);
+    sv->set_lastcommitted(lastCommitted);
+    log.Dump(msg.lastcommitted(), sv->mutable_entries());
 
-    if (!(transport->SendMessage(this, remote, sv))) {
+    if (!(transport->SendMessage(this, remote, PBMessage(m)))) {
         RWarning("Failed to send StartView message to requesting replica");
     }
 }
@@ -1626,17 +1633,18 @@ SpecReplica::HandleFillDVCGap(const TransportAddress &remote,
 
     ASSERT(!AmLeader());
 
-    DoViewChangeMessage dvc;
-    dvc.set_view(view);
-    dvc.set_lastnormalview(log.LastViewstamp().view);
-    dvc.set_lastspeculative(lastSpeculative);
-    dvc.set_lastcommitted(lastCommitted);
-    dvc.set_replicaidx(this->replicaIdx);
+    ToReplicaMessage m;
+    DoViewChangeMessage *dvc = m.mutable_do_view_change();
+    dvc->set_view(view);
+    dvc->set_lastnormalview(log.LastViewstamp().view);
+    dvc->set_lastspeculative(lastSpeculative);
+    dvc->set_lastcommitted(lastCommitted);
+    dvc->set_replicaidx(this->replicaIdx);
 
     opnum_t x = std::min(lastCommitted, msg.lastcommitted());
-    log.Dump(x, dvc.mutable_entries());
+    log.Dump(x, dvc->mutable_entries());
 
-    if (!(transport->SendMessage(this, remote, dvc))) {
+    if (!(transport->SendMessage(this, remote, PBMessage(m)))) {
         RWarning("Failed to send DoViewChangeMessage message to requesting replica");
     }
 }
