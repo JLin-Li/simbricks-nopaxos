@@ -94,7 +94,7 @@ ErisClient::InvokeTxn(const map<shardnum_t, string> &requests,
     ToServerMessage m;
     RequestMessage *requestMessage = m.mutable_request();
     Request *request = requestMessage->mutable_request();
-    std::vector<int> shards;
+    std::vector<int> groups;
 
     for (auto kv : this->replySet) {
         delete kv.second;
@@ -130,13 +130,13 @@ ErisClient::InvokeTxn(const map<shardnum_t, string> &requests,
             shard_op.set_op("");
         }
         *(request->add_ops()) = shard_op;
-        shards.push_back(kv.first);
+        groups.push_back(kv.first);
         this->replySet[kv.first] = new QuorumSet<opnum_t, ReplyMessage>(config.QuorumSize());
     }
 
     this->pendingRequest = new PendingRequest(m, this->lastReqId,
                                               txn_type, requests, replies,
-                                              shards, continuation);
+                                              groups, continuation);
 
     SendRequest();
 }
@@ -279,7 +279,7 @@ void
 ErisClient::SendRequest()
 {
     this->transport->SendMessageToMulticast(this,
-            ErisMessage(this->pendingRequest->msg, true));
+            ErisMessage(this->pendingRequest->msg, this->pendingRequest->groups));
 
     this->requestTimeout->Reset();
 }

@@ -75,18 +75,18 @@ private:
         std::map<shardnum_t, std::string> requests;
         std::map<shardnum_t, std::string> replies;
         std::map<shardnum_t, bool> has_replies;
-        std::vector<int> shards;
+        std::vector<int> groups;
         g_continuation_t continuation;
         inline PendingRequest(const proto::ToServerMessage &msg,
                 opnum_t client_req_id,
                 proto::RequestType txn_type,
                 const std::map<shardnum_t, std::string> &requests,
                 const std::map<shardnum_t, std::string> &replies,
-                const std::vector<int> &shards,
+                const std::vector<int> &groups,
                 g_continuation_t continuation)
             : msg(msg), client_req_id(client_req_id),
             txn_type(txn_type), commit(true), requests(requests),
-            replies(replies), shards(shards), continuation(continuation) {
+            replies(replies), groups(groups), continuation(continuation) {
                 for (const auto &kv : replies) {
                     has_replies[kv.first] = false;
                 }

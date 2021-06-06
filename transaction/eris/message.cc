@@ -8,9 +8,9 @@ namespace eris {
 
 /*
  * Packet format:
- * multistamp len  + sess num + number of groups + each (group id + msg num)
+ * sequencer header size  + sess num + number of groups + each (group id + msg num)
  */
-typedef uint16_t MultistampSize;
+typedef uint16_t HeaderSize;
 typedef uint8_t NumGroups;
 
 size_t
@@ -20,16 +20,24 @@ Multistamp::SerializedSize() const
         msg_nums.size() * (sizeof(GroupID) + sizeof(MsgNum));
 }
 
-ErisMessage::ErisMessage(::google::protobuf::Message &msg, bool sequencing)
-    : PBMessage(msg), sequencing_(sequencing) { }
+ErisMessage::ErisMessage(::google::protobuf::Message &msg)
+    : PBMessage(msg) { }
+
+ErisMessage::ErisMessage(::google::protobuf::Message &msg, const std::vector<int> &groups)
+    : PBMessage(msg)
+{
+    for (const int group : groups) {
+        stamp_.msg_nums[group] = 0;
+    }
+}
 
 ErisMessage::~ErisMessage() { }
 
 size_t
 ErisMessage::SerializedSize() const
 {
-    size_t sz = sizeof(MultistampSize);
-    if (sequencing_) {
+    size_t sz = sizeof(HeaderSize);
+    if (stamp_.msg_nums.size() > 0) {
         sz += stamp_.SerializedSize();
     }
     return sz + PBMessage::SerializedSize();
@@ -39,9 +47,9 @@ void
 ErisMessage::Parse(const void *buf, size_t size)
 {
     const char *p = (const char*)buf;
-    MultistampSize multistamp_sz = *(MultistampSize *)p;
-    p += sizeof(MultistampSize);
-    if (multistamp_sz > 0) {
+    HeaderSize header_sz = *(HeaderSize *)p;
+    p += sizeof(HeaderSize);
+    if (header_sz > 0) {
         stamp_.sess_num = *(SessNum *)p;
         p += sizeof(SessNum);
         NumGroups n_groups = *(NumGroups *)p;
@@ -54,8 +62,8 @@ ErisMessage::Parse(const void *buf, size_t size)
             stamp_.msg_nums[id] = msg_num;
         }
     }
-    PBMessage::Parse(p, size - sizeof(MultistampSize) - multistamp_sz);
-    if (multistamp_sz > 0) {
+    PBMessage::Parse(p, size - sizeof(HeaderSize) - header_sz);
+    if (header_sz > 0) {
         // Only client request message will be tagged with multistamp
         proto::ToServerMessage &to_server =
             dynamic_cast<proto::ToServerMessage &>(*msg_);
@@ -77,9 +85,9 @@ void
 ErisMessage::Serialize(void *buf) const
 {
     char *p = (char *)buf;
-    *(MultistampSize *)p = sequencing_ ? stamp_.SerializedSize() : 0;
-    p += sizeof(MultistampSize);
-    if (sequencing_) {
+    *(HeaderSize *)p = stamp_.msg_nums.size() > 0 ? stamp_.SerializedSize() : 0;
+    p += sizeof(HeaderSize);
+    if (stamp_.msg_nums.size() > 0) {
         // sess num filled by sequencer
         p += sizeof(SessNum);
         *(NumGroups *)p = stamp_.msg_nums.size();
@@ -94,8 +102,8 @@ ErisMessage::Serialize(void *buf) const
     PBMessage::Serialize(p);
 }
 
-Multistamp &
-ErisMessage::GetStamp()
+const Multistamp &
+ErisMessage::GetStamp() const
 {
     return stamp_;
 }

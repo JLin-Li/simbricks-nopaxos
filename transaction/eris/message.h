@@ -1,6 +1,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <vector>
 
 #include "common/pbmessage.h"
 
@@ -22,16 +23,17 @@ struct Multistamp {
 class ErisMessage : public PBMessage
 {
 public:
-    ErisMessage(::google::protobuf::Message &msg, bool sequencing = false);
+    ErisMessage(::google::protobuf::Message &msg);
+    ErisMessage(::google::protobuf::Message &msg, const std::vector<int> &groups);
     ~ErisMessage();
 
     virtual size_t SerializedSize() const override;
     virtual void Parse(const void *buf, size_t size) override;
     virtual void Serialize(void *buf) const override;
-    Multistamp & GetStamp();
+
+    const Multistamp &GetStamp() const;
 
 private:
-    bool sequencing_;
     Multistamp stamp_;
 };
 
