@@ -154,6 +154,8 @@ ErisServer::ErisServer(const Configuration &config, int myShard, int myIdx,
     } else {
         this->leaderSyncHeardTimeout->Start();
     }
+
+    client_addr_ = myAddress->clone();
 }
 
 ErisServer::~ErisServer()
@@ -171,6 +173,7 @@ ErisServer::~ErisServer()
     delete this->epochChangeAckTimeout;
     delete this->ecStateTransferTimeout;
     delete this->ecStateTransferAckTimeout;
+    delete client_addr_;
 }
 
 void
@@ -233,15 +236,6 @@ ErisServer::HandleClientRequest(const TransportAddress &remote,
                                 const RequestMessage &msg,
                                 const Multistamp &stamp)
 {
-    // Save client's address if not exist. Assume client
-    // addresses never change.
-    if (this->clientAddresses.find(msg.request().clientid()) ==
-            this->clientAddresses.end()) {
-        this->clientAddresses.insert(
-                std::pair<uint64_t, std::unique_ptr<TransportAddress>>(
-                    msg.request().clientid(),
-                    std::unique_ptr<TransportAddress>(remote.clone())));
-    }
     msgnum_t msg_num = stamp.msg_nums.at(this->groupIdx);
     if (!TryProcessClientRequest(msg, stamp.sess_num, msg_num)) {
         AddPendingRequest(msg, stamp.sess_num, msg_num);
@@ -1092,21 +1086,18 @@ ErisServer::ProcessNextOperation(const RequestMessage &msg,
         } else {
             // Non-leader replica simply reply without execution.
             ReplyMessage reply;
-            auto addr = this->clientAddresses.find(msg.request().clientid());
-            if (addr != this->clientAddresses.end()) {
-                reply.set_clientid(msg.request().clientid());
-                reply.set_clientreqid(msg.request().clientreqid());
-                reply.set_shard_num(this->groupIdx);
-                reply.set_replica_num(this->replicaIdx);
-                reply.mutable_view()->set_view_num(vs.view);
-                reply.mutable_view()->set_sess_num(vs.sessnum);
-                reply.set_op_num(vs.opnum);
+            reply.set_clientid(msg.request().clientid());
+            reply.set_clientreqid(msg.request().clientreqid());
+            reply.set_shard_num(this->groupIdx);
+            reply.set_replica_num(this->replicaIdx);
+            reply.mutable_view()->set_view_num(vs.view);
+            reply.mutable_view()->set_sess_num(vs.sessnum);
+            reply.set_op_num(vs.opnum);
 
-                if (!this->transport->SendMessage(this,
-                            *(addr->second),
-                            ErisMessage(reply))) {
-                    RWarning("Failed to send reply to client");
-                }
+            client_addr_->Parse(msg.request().clientaddr());
+            if (!this->transport->SendMessage(this, *client_addr_,
+                        ErisMessage(reply))) {
+                RWarning("Failed to send reply to client");
             }
         }
     }
@@ -1211,13 +1202,11 @@ ErisServer::ExecuteUptoOp(opnum_t opnum) {
                         entry.reply.mutable_view()->set_view_num(this->view);
                         entry.reply.mutable_view()->set_sess_num(this->sessnum);
                         entry.reply.set_op_num(op);
-                        auto addr = this->clientAddresses.find(logEntry->request.clientid());
-                        if (addr != this->clientAddresses.end()) {
-                            if (!this->transport->SendMessage(this,
-                                        *(addr->second),
+
+                        client_addr_->Parse(logEntry->request.clientaddr());
+                        if (!this->transport->SendMessage(this, *client_addr_,
                                         ErisMessage(entry.reply))) {
                                 RWarning("Failed to send reply to client");
-                            }
                         }
                     }
                     continue;
@@ -1306,13 +1295,10 @@ ErisServer::ExecuteTxn(opnum_t opnum) {
         cte.replied = true;
         cte.reply = reply;
 
-        auto addr = this->clientAddresses.find(logEntry->request.clientid());
-        if (addr != this->clientAddresses.end()) {
-            if (!this->transport->SendMessage(this,
-                        *(addr->second),
-                        ErisMessage(reply))) {
-                RWarning("Failed to send reply to client");
-            }
+        client_addr_->Parse(logEntry->request.clientaddr());
+        if (!this->transport->SendMessage(this, *client_addr_,
+                    ErisMessage(reply))) {
+            RWarning("Failed to send reply to client");
         }
     }
 }

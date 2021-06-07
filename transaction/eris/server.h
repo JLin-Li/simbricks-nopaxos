@@ -130,7 +130,7 @@ private:
     std::map<shardnum_t, msgnum_t> shardToMsgnum;
 
     /* Client information */
-    std::map<uint64_t, std::unique_ptr<TransportAddress> > clientAddresses;
+    TransportAddress *client_addr_;
     struct ClientTableEntry
     {
         uint64_t lastReqId;
