@@ -52,8 +52,9 @@ class UDPTransportAddress : public TransportAddress
 {
 public:
     UDPTransportAddress(const std::string &s);
-    UDPTransportAddress * clone() const;
+    virtual UDPTransportAddress * clone() const override;
     virtual std::string Serialize() const override;
+    virtual void Parse(const std::string &s) override;
 
 private:
     UDPTransportAddress(const sockaddr_in &addr);

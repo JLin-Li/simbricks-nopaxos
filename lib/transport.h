@@ -57,6 +57,7 @@ public:
     virtual ~TransportAddress() { }
     virtual TransportAddress *clone() const = 0;
     virtual std::string Serialize() const = 0;
+    virtual void Parse(const std::string &s) = 0;
 };
 
 class TransportReceiver

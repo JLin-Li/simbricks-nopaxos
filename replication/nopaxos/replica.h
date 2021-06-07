@@ -79,7 +79,7 @@ private:
     opnum_t lastExecutedOp;
 
     /* Client information */
-    std::map<uint64_t, std::unique_ptr<TransportAddress> > clientAddresses;
+    TransportAddress *client_addr_;
     struct ClientTableEntry
     {
         uint64_t lastReqId;

@@ -70,7 +70,7 @@ using std::pair;
 
 UDPTransportAddress::UDPTransportAddress(const std::string &s)
 {
-    memcpy(&addr, s.data(), sizeof(addr));
+    Parse(s);
 }
 
 UDPTransportAddress::UDPTransportAddress(const sockaddr_in &addr)
@@ -92,6 +92,12 @@ UDPTransportAddress::Serialize() const
     std::string s;
     s.append((const char *)&addr, sizeof(addr));
     return s;
+}
+
+void
+UDPTransportAddress::Parse(const std::string &s)
+{
+    memcpy(&addr, s.data(), sizeof(addr));
 }
 
 bool operator==(const UDPTransportAddress &a, const UDPTransportAddress &b)

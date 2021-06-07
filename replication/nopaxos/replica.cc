@@ -137,6 +137,8 @@ NOPaxosReplica::NOPaxosReplica(const Configuration &config, int myIdx, bool init
     } else {
         this->leaderSyncHeardTimeout->Start();
     }
+
+    client_addr_ = myAddress->clone();
 }
 
 NOPaxosReplica::~NOPaxosReplica()
@@ -148,6 +150,7 @@ NOPaxosReplica::~NOPaxosReplica()
     delete startViewTimeout;
     delete syncTimeout;
     delete leaderSyncHeardTimeout;
+    delete client_addr_;
 }
 
 
@@ -222,12 +225,6 @@ void
 NOPaxosReplica::HandleClientRequest(const TransportAddress &remote,
                                     const RequestMessage &msg)
 {
-    // Save client's address if not exist. Assume client addresses
-    // never change.
-    if (this->clientAddresses.find(msg.req().clientid()) == this->clientAddresses.end()) {
-        this->clientAddresses.insert(std::pair<uint64_t, std::unique_ptr<TransportAddress> >(msg.req().clientid(), std::unique_ptr<TransportAddress>(remote.clone())));
-    }
-
     if (msg.sessnum() == 0 && msg.msgnum() == 0) {
         Panic("Client request has no ordering timestamp");
     }
@@ -1026,18 +1023,16 @@ NOPaxosReplica::ProcessNextOperation(const Request &request,
             // Non-leader replica simply reply without execution.
             ToClientMessage m;
             ReplyMessage *reply = m.mutable_reply();
-            auto addr = this->clientAddresses.find(request.clientid());
-            if (addr != this->clientAddresses.end()) {
-                reply->set_clientreqid(request.clientreqid());
-                reply->set_replicaidx(this->replicaIdx);
-                reply->set_view(vs.view);
-                reply->set_opnum(vs.opnum);
-                reply->set_sessnum(vs.sessnum);
+            reply->set_clientreqid(request.clientreqid());
+            reply->set_replicaidx(this->replicaIdx);
+            reply->set_view(vs.view);
+            reply->set_opnum(vs.opnum);
+            reply->set_sessnum(vs.sessnum);
 
-                if (!this->transport->SendMessage(this, *(addr->second),
-                            NOPaxosMessage(m))) {
-                    RWarning("Failed to send reply to client");
-                }
+            client_addr_->Parse(request.clientaddr());
+            if (!this->transport->SendMessage(this, *client_addr_,
+                        NOPaxosMessage(m))) {
+                RWarning("Failed to send reply to client");
             }
         }
     }
@@ -1114,18 +1109,16 @@ NOPaxosReplica::ExecuteUptoOp(opnum_t opnum)
             // the client during ProcessNextOperation.
             if (this->configuration.GetLeaderIndex(entry->viewstamp.view) == this->replicaIdx) {
                 ASSERT(reply->has_reply());
-                auto addr = this->clientAddresses.find(request.clientid());
-                if (addr != this->clientAddresses.end()) {
-                    reply->set_clientreqid(request.clientreqid());
-                    reply->set_replicaidx(this->replicaIdx);
-                    reply->set_view(entry->viewstamp.view);
-                    reply->set_opnum(op);
-                    reply->set_sessnum(entry->viewstamp.sessnum);
+                reply->set_clientreqid(request.clientreqid());
+                reply->set_replicaidx(this->replicaIdx);
+                reply->set_view(entry->viewstamp.view);
+                reply->set_opnum(op);
+                reply->set_sessnum(entry->viewstamp.sessnum);
 
-                    if (!this->transport->SendMessage(this, *(addr->second),
-                                NOPaxosMessage(m))) {
-                        RWarning("Failed to send reply to client");
-                    }
+                client_addr_->Parse(request.clientaddr());
+                if (!this->transport->SendMessage(this, *client_addr_,
+                            NOPaxosMessage(m))) {
+                    RWarning("Failed to send reply to client");
                 }
             }
         }
