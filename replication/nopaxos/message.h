@@ -1,12 +1,10 @@
 #pragma once
 
 #include "common/pbmessage.h"
+#include "replication/nopaxos/types.h"
 
 namespace dsnet {
 namespace nopaxos {
-
-typedef uint16_t SessNum;
-typedef uint64_t MsgNum;
 
 class NOPaxosMessage : public PBMessage
 {

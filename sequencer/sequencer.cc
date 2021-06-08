@@ -4,10 +4,9 @@
 #include "lib/message.h"
 #include "lib/udptransport.h"
 #include "sequencer/sequencer.h"
+#include "replication/nopaxos/sequencer.h"
 
 namespace dsnet {
-
-typedef uint16_t HeaderSize;
 
 BufferMessage::BufferMessage(const void *buf, size_t size)
     : buf_(buf), size_(size) { }
@@ -36,7 +35,7 @@ BufferMessage::Serialize(void *buf) const
 }
 
 Sequencer::Sequencer(const Configuration &config, Transport *transport, int id)
-    : config_(config), transport_(transport), sess_num_(0), msg_num_(0)
+    : config_(config), transport_(transport)
 {
     if (config.NumSequencers() <= id) {
         Panic("Address for sequencer %d not properly configured", id);
@@ -46,34 +45,36 @@ Sequencer::Sequencer(const Configuration &config, Transport *transport, int id)
 
 Sequencer::~Sequencer() { }
 
-void
-Sequencer::ReceiveMessage(const TransportAddress &remote, void *buf, size_t size)
-{
-    char *p = (char *)buf;
-    HeaderSize header_sz = *(HeaderSize *)p;
-    p += sizeof(HeaderSize);
-    if (header_sz > 0) {
-        // Session number
-        *(SessNum *)p = htobe64(sess_num_);
-        p += sizeof(SessNum);
-        // Message number
-        *(MsgNum *)p = htobe64(++msg_num_);
-        p += sizeof(MsgNum);
-
-        transport_->SendMessageToAll(this, BufferMessage(buf, size));
-    }
-}
-
 } // namespace dsnet
 
+static void
+Usage(const char *name)
+{
+    fprintf(stderr, "usage: %s -c conf-file -m nopaxos\n", name);
+    exit(1);
+}
 int main(int argc, char *argv[]) {
     const char *config_path = nullptr;
+    dsnet::Sequencer *sequencer = nullptr;
     int opt;
 
-    while ((opt = getopt(argc, argv, "c:")) != -1) {
+    enum {
+        PROTO_UNKNOWN,
+        PROTO_NOPAXOS
+    } proto = PROTO_UNKNOWN;
+
+    while ((opt = getopt(argc, argv, "c:m:")) != -1) {
         switch (opt) {
         case 'c':
             config_path = optarg;
+            break;
+
+        case 'm':
+            if (strcasecmp(optarg, "nopaxos") == 0) {
+                proto = PROTO_NOPAXOS;
+            } else {
+                Panic("Unknown sequencer mode '%s'", optarg);
+            }
             break;
 
         default:
@@ -83,7 +84,13 @@ int main(int argc, char *argv[]) {
     }
 
     if (config_path == nullptr) {
-        Panic("option -c is required\n");
+        fprintf(stderr, "option -c is required\n");
+        Usage(argv[0]);
+    }
+
+    if (proto == PROTO_UNKNOWN) {
+        fprintf(stderr, "option -m is required\n");
+        Usage(argv[0]);
     }
 
     std::ifstream config_stream(config_path);
@@ -93,8 +100,15 @@ int main(int argc, char *argv[]) {
 
     dsnet::Configuration config(config_stream);
     dsnet::UDPTransport transport;
-    dsnet::Sequencer sequencer(config, &transport, 0);
+    switch (proto) {
+        case PROTO_NOPAXOS:
+            sequencer = new dsnet::nopaxos::NOPaxosSequencer(config, &transport, 0);
+            break;
+        default:
+            NOT_REACHABLE();
+    }
     transport.Run();
+    delete sequencer;
 
     return 0;
 }

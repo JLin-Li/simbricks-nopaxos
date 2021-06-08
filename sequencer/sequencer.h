@@ -27,16 +27,11 @@ private:
 class Sequencer : public TransportReceiver {
 public:
     Sequencer(const Configuration &config, Transport *transport, int id);
-    ~Sequencer();
+    virtual ~Sequencer();
 
-    virtual void ReceiveMessage(const TransportAddress &remote,
-                               void *buf, size_t size) override;
-
-private:
+protected:
     const Configuration &config_;
     Transport *transport_;
-    SessNum sess_num_;
-    MsgNum msg_num_;
 };
 
 } // namespace dsnet
