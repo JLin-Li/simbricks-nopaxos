@@ -245,7 +245,7 @@ public:
             Panic("Configuration has no sequencer addresses");
         }
 
-        if (index >= kv->second.size()) {
+        if (index >= (int)kv->second.size()) {
             Panic("Sequencer index exceed number of sequencer configured");
         }
 
