@@ -10,8 +10,6 @@ namespace eris {
  * Packet format:
  * sequencer header size  + sess num + number of groups + each (group id + msg num)
  */
-typedef uint16_t HeaderSize;
-typedef uint8_t NumGroups;
 
 size_t
 Multistamp::SerializedSize() const
@@ -47,17 +45,17 @@ void
 ErisMessage::Parse(const void *buf, size_t size)
 {
     const char *p = (const char*)buf;
-    HeaderSize header_sz = *(HeaderSize *)p;
+    HeaderSize header_sz = NTOH_HEADERSIZE(*(HeaderSize *)p);
     p += sizeof(HeaderSize);
     if (header_sz > 0) {
-        stamp_.sess_num = *(SessNum *)p;
+        stamp_.sess_num = NTOH_SESSNUM(*(SessNum *)p);
         p += sizeof(SessNum);
-        NumGroups n_groups = *(NumGroups *)p;
+        NumGroups n_groups = NTOH_NUMGROUPS(*(NumGroups *)p);
         p += sizeof(NumGroups);
         for (int i = 0; i < n_groups; i++) {
-            GroupID id = *(GroupID *)p;
+            GroupID id = NTOH_GROUPID(*(GroupID *)p);
             p += sizeof(GroupID);
-            MsgNum msg_num = *(MsgNum *)p;
+            MsgNum msg_num = NTOH_MSGNUM(*(MsgNum *)p);
             p += sizeof(MsgNum);
             stamp_.msg_nums[id] = msg_num;
         }
@@ -85,15 +83,16 @@ void
 ErisMessage::Serialize(void *buf) const
 {
     char *p = (char *)buf;
-    *(HeaderSize *)p = stamp_.msg_nums.size() > 0 ? stamp_.SerializedSize() : 0;
+    *(HeaderSize *)p = HTON_HEADERSIZE(stamp_.msg_nums.size() > 0 ?
+            stamp_.SerializedSize() : 0);
     p += sizeof(HeaderSize);
     if (stamp_.msg_nums.size() > 0) {
         // sess num filled by sequencer
         p += sizeof(SessNum);
-        *(NumGroups *)p = stamp_.msg_nums.size();
+        *(NumGroups *)p = HTON_NUMGROUPS(stamp_.msg_nums.size());
         p += sizeof(NumGroups);
         for (const auto &kv : stamp_.msg_nums) {
-            *(GroupID *)p = kv.first;
+            *(GroupID *)p = HTON_GROUPID(kv.first);
             p += sizeof(GroupID);
             // msg num filled by sequencer
             p += sizeof(MsgNum);

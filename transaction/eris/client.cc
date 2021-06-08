@@ -280,8 +280,13 @@ ErisClient::CompleteOperation(bool commit)
 void
 ErisClient::SendRequest()
 {
-    this->transport->SendMessageToMulticast(this,
-            ErisMessage(this->pendingRequest->msg, this->pendingRequest->groups));
+    ErisMessage m(this->pendingRequest->msg, this->pendingRequest->groups);
+
+    if (config.NumSequencers() > 0) {
+        transport->SendMessageToSequencer(this, 0, m);
+    } else {
+        transport->SendMessageToMulticast(this, m);
+    }
 
     this->requestTimeout->Reset();
 }

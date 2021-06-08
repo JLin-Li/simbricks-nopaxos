@@ -4,14 +4,11 @@
 #include <vector>
 
 #include "common/pbmessage.h"
+#include "transaction/eris/types.h"
 
 namespace dsnet {
 namespace transaction {
 namespace eris {
-
-typedef uint16_t SessNum;
-typedef uint32_t GroupID;
-typedef uint64_t MsgNum;
 
 struct Multistamp {
     SessNum sess_num;

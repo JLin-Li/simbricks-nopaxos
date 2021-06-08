@@ -4,7 +4,9 @@
 #include "lib/message.h"
 #include "lib/udptransport.h"
 #include "sequencer/sequencer.h"
+
 #include "replication/nopaxos/sequencer.h"
+#include "transaction/eris/sequencer.h"
 
 namespace dsnet {
 
@@ -53,6 +55,7 @@ Usage(const char *name)
     fprintf(stderr, "usage: %s -c conf-file -m nopaxos\n", name);
     exit(1);
 }
+
 int main(int argc, char *argv[]) {
     const char *config_path = nullptr;
     dsnet::Sequencer *sequencer = nullptr;
@@ -60,7 +63,8 @@ int main(int argc, char *argv[]) {
 
     enum {
         PROTO_UNKNOWN,
-        PROTO_NOPAXOS
+        PROTO_NOPAXOS,
+        PROTO_ERIS
     } proto = PROTO_UNKNOWN;
 
     while ((opt = getopt(argc, argv, "c:m:")) != -1) {
@@ -72,6 +76,8 @@ int main(int argc, char *argv[]) {
         case 'm':
             if (strcasecmp(optarg, "nopaxos") == 0) {
                 proto = PROTO_NOPAXOS;
+            } else if (strcasecmp(optarg, "eris") == 0) {
+                proto = PROTO_ERIS;
             } else {
                 Panic("Unknown sequencer mode '%s'", optarg);
             }
@@ -103,6 +109,9 @@ int main(int argc, char *argv[]) {
     switch (proto) {
         case PROTO_NOPAXOS:
             sequencer = new dsnet::nopaxos::NOPaxosSequencer(config, &transport, 0);
+            break;
+        case PROTO_ERIS:
+            sequencer = new dsnet::transaction::eris::ErisSequencer(config, &transport, 0);
             break;
         default:
             NOT_REACHABLE();
