@@ -40,9 +40,10 @@ namespace dsnet {
 namespace vr {
 
 VRClient::VRClient(const Configuration &config,
+                   const ReplicaAddress &addr,
                    Transport *transport,
                    uint64_t clientid)
-    : Client(config, transport, clientid)
+    : Client(config, addr, transport, clientid)
 {
     pendingRequest = NULL;
     pendingUnloggedRequest = NULL;

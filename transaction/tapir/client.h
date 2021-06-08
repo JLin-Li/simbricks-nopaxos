@@ -49,6 +49,7 @@ class TapirClient : public transaction::TxnClient
 {
 public:
     TapirClient(const Configuration &config,
+                const ReplicaAddress &addr,
                 Transport *transport,
                 uint64_t clientid = 0);
     ~TapirClient() override;

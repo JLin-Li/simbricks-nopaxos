@@ -42,9 +42,10 @@ namespace spec {
 using namespace dsnet::spec::proto;
 
 SpecClient::SpecClient(const Configuration &config,
+                       const ReplicaAddress &addr,
                        Transport *transport,
                        uint64_t clientid)
-    : Client(config, transport, clientid),
+    : Client(config, addr, transport, clientid),
       speculativeReplyQuorum(config.FastQuorumSize())
 {
     lastReqId = 0;

@@ -229,6 +229,28 @@ public:
         return SendMessageInternal(src, kv->second, m);
     }
 
+    virtual bool SendMessageToSequencer(TransportReceiver *src,
+                                        int index,
+                                        const Message &m) override
+    {
+        const dsnet::Configuration *cfg = configurations[src];
+        ASSERT(cfg != NULL);
+
+        if (!replicaAddressesInitialized) {
+            LookupAddresses();
+        }
+
+        auto kv = sequencerAddresses.find(cfg);
+        if (kv == sequencerAddresses.end()) {
+            Panic("Configuration has no sequencer addresses");
+        }
+
+        if (index >= kv->second.size()) {
+            Panic("Sequencer index exceed number of sequencer configured");
+        }
+
+        return SendMessageInternal(src, kv->second.at(index), m);
+    }
 
 protected:
     virtual void RegisterInternal(TransportReceiver *receiver,

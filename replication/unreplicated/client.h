@@ -43,6 +43,7 @@ class UnreplicatedClient : public Client
 {
 public:
     UnreplicatedClient(const Configuration &config,
+                       const ReplicaAddress &addr,
                        Transport *transport,
                        uint64_t clientid = 0);
     virtual ~UnreplicatedClient();

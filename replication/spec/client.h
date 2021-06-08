@@ -43,8 +43,9 @@ class SpecClient : public Client
 {
 public:
     SpecClient(const Configuration &config,
-             Transport *transport,
-             uint64_t clientid = 0);
+               const ReplicaAddress &addr,
+               Transport *transport,
+               uint64_t clientid = 0);
     virtual ~SpecClient();
     virtual void Invoke(const string &request,
                         continuation_t continuation);

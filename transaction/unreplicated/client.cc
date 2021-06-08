@@ -39,9 +39,10 @@ using namespace std;
 using namespace proto;
 
 UnreplicatedClient::UnreplicatedClient(const Configuration &config,
+                                       const ReplicaAddress &addr,
                                        Transport *transport,
                                        uint64_t clientid)
-    : Client(config, transport, clientid),
+    : Client(config, addr, transport, clientid),
     replySet(1)
 {
     this->txnid = (this->clientid / 10000) * 10000;

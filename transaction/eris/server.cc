@@ -61,7 +61,9 @@ ErisServer::ErisServer(const Configuration &config, int myShard, int myIdx,
     this->lastCommittedOp = 0;
     this->lastExecutedOp = 0;
 
-    this->fcorClient = new dsnet::vr::VRClient(fcorConfig, transport);
+    ReplicaAddress fcor_addr = config.replica(myShard, myIdx);
+    fcor_addr.port = string("0");
+    this->fcorClient = new dsnet::vr::VRClient(fcorConfig, fcor_addr, transport);
     InitShardMsgNum();
 
     this->gapRequestTimeout = new Timeout(transport,

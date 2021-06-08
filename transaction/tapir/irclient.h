@@ -58,6 +58,7 @@ public:
     typedef std::function<string (const std::set<string> &)> decide_t;
 
     IRClient(const Configuration &config,
+             const ReplicaAddress &addr,
              Transport *transport,
              shardnum_t shard,
              uint64_t clientid = 0);

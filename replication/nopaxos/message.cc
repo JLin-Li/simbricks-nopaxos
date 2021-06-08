@@ -37,9 +37,9 @@ NOPaxosMessage::Parse(const void *buf, size_t size)
     HeaderSize header_sz = *(HeaderSize *)p;
     p += sizeof(HeaderSize);
     if (header_sz > 0) {
-        sess_num = *(SessNum *)p;
+        sess_num = be64toh(*(SessNum *)p);
         p += sizeof(SessNum);
-        msg_num = *(MsgNum *)p;
+        msg_num = be64toh(*(MsgNum *)p);
         p += sizeof(MsgNum);
     }
     PBMessage::Parse(p, size - sizeof(HeaderSize) - header_sz);

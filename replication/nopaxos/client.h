@@ -44,6 +44,7 @@ class NOPaxosClient : public Client
 {
 public:
     NOPaxosClient(const Configuration &config,
+                  const ReplicaAddress &addr,
                   Transport *transport,
                   uint64_t clientid = 0);
     ~NOPaxosClient();

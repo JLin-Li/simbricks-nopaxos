@@ -43,10 +43,11 @@ using namespace std;
 using namespace proto;
 
 IRClient::IRClient(const Configuration &config,
+                   const ReplicaAddress &addr,
                    Transport *transport,
                    shardnum_t shard,
                    uint64_t clientid)
-    : Client(config, transport, clientid),
+    : Client(config, addr, transport, clientid),
       myShard(shard),
       view(0),
       lastReqId(0),

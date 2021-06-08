@@ -13,8 +13,8 @@ namespace pbft {
 
 class PbftClient : public Client {
  public:
-  PbftClient(const Configuration &config, Transport *transport,
-             uint64_t clientid = 0);
+  PbftClient(const Configuration &config, const ReplicaAddress &addr,
+             Transport *transport, uint64_t clientid = 0);
   virtual ~PbftClient();
   virtual void Invoke(const string &request,
                       continuation_t continuation) override;

@@ -12,9 +12,9 @@ namespace pbft {
 
 using namespace proto;
 
-PbftClient::PbftClient(const Configuration &config, Transport *transport,
-                       uint64_t clientid)
-    : Client(config, transport, clientid) {
+PbftClient::PbftClient(const Configuration &config, const ReplicaAddress &addr,
+                       Transport *transport, uint64_t clientid)
+    : Client(config, addr, transport, clientid) {
   lastReqId = 0;
   pendingRequest = nullptr;
   requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });

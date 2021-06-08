@@ -60,7 +60,8 @@ class KVClient
 public:
     KVClient(TxnClient *txn_client,
              uint32_t nshards);
-    KVClient(std::string configPath, int nshards, int mode); // for YCSB
+    KVClient(const std::string configPath, const ReplicaAddress &addr,
+             int nshards, int mode); // for YCSB
     ~KVClient();
 
     bool InvokeKVTxn(const std::vector<KVOp_t> &kvops, std::map<std::string, std::string> &results, bool indep);

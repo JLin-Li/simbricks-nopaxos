@@ -39,9 +39,10 @@ using namespace proto;
 using namespace std;
 
 ErisClient::ErisClient(const Configuration &config,
+                       const ReplicaAddress &addr,
                        Transport *transport,
                        uint64_t clientid)
-    : Client(config, transport, clientid)
+    : Client(config, addr, transport, clientid)
 {
     this->txnid = (this->clientid / 10000) * 10000;
     this->pendingRequest = nullptr;

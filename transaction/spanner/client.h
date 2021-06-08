@@ -47,6 +47,7 @@ class SpannerClient : public Client
 {
 public:
     SpannerClient(const Configuration &config,
+                  const ReplicaAddress &addr,
                   Transport *transport,
                   uint64_t clientid = 0);
     ~SpannerClient();

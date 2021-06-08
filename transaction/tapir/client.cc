@@ -42,6 +42,7 @@ using namespace std;
 using namespace proto;
 
 TapirClient::TapirClient(const Configuration &config,
+                         const ReplicaAddress &addr,
                          Transport *transport,
                          uint64_t clientid)
     : transport(transport)
@@ -59,7 +60,7 @@ TapirClient::TapirClient(const Configuration &config,
     this->txnid = (clientid / 10000) * 10000;
 
     for (int i = 0; i < config.g; i++) {
-        this->irClients.push_back(new IRClient(config, transport, i, clientid));
+        this->irClients.push_back(new IRClient(config, addr, transport, i, clientid));
     }
 
     this->transportThread = new thread(&TapirClient::Run, this);

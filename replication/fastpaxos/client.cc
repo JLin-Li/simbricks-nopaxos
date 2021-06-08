@@ -42,9 +42,10 @@ namespace fastpaxos {
 using namespace proto;
 
 FastPaxosClient::FastPaxosClient(const Configuration &config,
-                   Transport *transport,
-                   uint64_t clientid)
-    : Client(config, transport, clientid)
+                                 const ReplicaAddress &addr,
+                                 Transport *transport,
+                                 uint64_t clientid)
+    : Client(config, addr, transport, clientid)
 {
     pendingRequest = NULL;
     pendingUnloggedRequest = NULL;

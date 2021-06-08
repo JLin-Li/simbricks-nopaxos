@@ -34,15 +34,18 @@
 #include "replication/nopaxos/client.h"
 #include "replication/nopaxos/message.h"
 
+#include <netinet/ip.h>
+
 namespace dsnet {
 namespace nopaxos {
 
 using namespace proto;
 
 NOPaxosClient::NOPaxosClient(const Configuration &config,
+                             const ReplicaAddress &addr,
                              Transport *transport,
                              uint64_t clientid)
-    : Client(config, transport, clientid),
+    : Client(config, addr, transport, clientid),
     replyQuorum(config.QuorumSize())
 {
     pendingRequest = NULL;
@@ -122,8 +125,13 @@ NOPaxosClient::SendRequest()
     reqMsg->set_msgnum(0);
     reqMsg->set_sessnum(0);
 
-    transport->SendMessageToMulticast(this,
-            NOPaxosMessage(m, true));
+    if (config.NumSequencers() > 0) {
+        transport->SendMessageToSequencer(this, 0,
+                NOPaxosMessage(m, true));
+    } else {
+        transport->SendMessageToMulticast(this,
+                NOPaxosMessage(m, true));
+    }
 
     requestTimeout->Reset();
 }

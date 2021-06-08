@@ -54,8 +54,8 @@ public:
 
     static const uint32_t DEFAULT_UNLOGGED_OP_TIMEOUT = 1000; // milliseconds
 
-    Client(const Configuration &config, Transport *transport,
-           uint64_t clientid = 0);
+    Client(const Configuration &config, const ReplicaAddress &addr,
+           Transport *transport, uint64_t clientid = 0);
     virtual ~Client();
     virtual void Invoke(const string &request,
                         continuation_t continuation) = 0; // Request goes to the default group (0)

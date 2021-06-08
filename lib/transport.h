@@ -121,6 +121,10 @@ public:
     /* Send message to multicast address */
     virtual bool SendMessageToMulticast(TransportReceiver *src,
                                         const Message &m) = 0;
+    /* Send message to sequencer */
+    virtual bool SendMessageToSequencer(TransportReceiver *src,
+                                        int index,
+                                        const Message &m) = 0;
     virtual int Timer(uint64_t ms, timer_callback_t cb) = 0;
     virtual bool CancelTimer(int id) = 0;
     virtual void CancelAllTimers() = 0;

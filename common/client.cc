@@ -37,8 +37,8 @@
 
 namespace dsnet {
 
-Client::Client(const Configuration &config, Transport *transport,
-               uint64_t clientid)
+Client::Client(const Configuration &config, const ReplicaAddress &addr,
+               Transport *transport, uint64_t clientid)
     : config(config), transport(transport)
 {
     this->clientid = clientid;
@@ -53,7 +53,7 @@ Client::Client(const Configuration &config, Transport *transport,
         this->clientid = dis(gen);
     }
 
-    transport->RegisterAddress(this, config, nullptr);
+    transport->RegisterAddress(this, config, &addr);
 }
 
 Client::~Client()
