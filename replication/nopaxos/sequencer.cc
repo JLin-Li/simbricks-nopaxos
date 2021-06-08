@@ -14,14 +14,14 @@ void
 NOPaxosSequencer::ReceiveMessage(const TransportAddress &remote, void *buf, size_t size)
 {
     char *p = (char *)buf;
-    HeaderSize header_sz = *(HeaderSize *)p;
+    HeaderSize header_sz = NTOH_HEADERSIZE(*(HeaderSize *)p);
     p += sizeof(HeaderSize);
     if (header_sz > 0) {
         // Session number
-        *(SessNum *)p = htobe64(sess_num_);
+        *(SessNum *)p = HTON_SESSNUM(sess_num_);
         p += sizeof(SessNum);
         // Message number
-        *(MsgNum *)p = htobe64(++msg_num_);
+        *(MsgNum *)p = HTON_MSGNUM(++msg_num_);
         p += sizeof(MsgNum);
 
         transport_->SendMessageToAll(this, BufferMessage(buf, size));

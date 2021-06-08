@@ -33,12 +33,12 @@ NOPaxosMessage::Parse(const void *buf, size_t size)
     SessNum sess_num;
     MsgNum msg_num;
     const char *p = (const char*)buf;
-    HeaderSize header_sz = *(HeaderSize *)p;
+    HeaderSize header_sz = NTOH_HEADERSIZE(*(HeaderSize *)p);
     p += sizeof(HeaderSize);
     if (header_sz > 0) {
-        sess_num = be64toh(*(SessNum *)p);
+        sess_num = NTOH_SESSNUM(*(SessNum *)p);
         p += sizeof(SessNum);
-        msg_num = be64toh(*(MsgNum *)p);
+        msg_num = NTOH_MSGNUM(*(MsgNum *)p);
         p += sizeof(MsgNum);
     }
     PBMessage::Parse(p, size - sizeof(HeaderSize) - header_sz);
@@ -60,7 +60,7 @@ void
 NOPaxosMessage::Serialize(void *buf) const
 {
     char *p = (char *)buf;
-    *(HeaderSize *)p = sequencing_ ? sizeof(SessNum) + sizeof(MsgNum) : 0;
+    *(HeaderSize *)p = HTON_HEADERSIZE(sequencing_ ? sizeof(SessNum) + sizeof(MsgNum) : 0);
     p += sizeof(HeaderSize);
     if (sequencing_) {
         // sess num filled by sequencer
