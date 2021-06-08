@@ -3,8 +3,6 @@
 namespace dsnet {
 namespace nopaxos {
 
-typedef uint16_t HeaderSize;
-
 NOPaxosSequencer::NOPaxosSequencer(const Configuration &config,
                                    Transport *transport, int id)
     : Sequencer(config, transport, id),

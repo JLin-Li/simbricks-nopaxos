@@ -11,7 +11,6 @@ using namespace proto;
  * Packet format:
  * sequencer header size + sess num + msg num
  */
-typedef uint16_t HeaderSize;
 
 NOPaxosMessage::NOPaxosMessage(::google::protobuf::Message &msg, bool sequencing)
     : PBMessage(msg), sequencing_(sequencing) { }
