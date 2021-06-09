@@ -23,7 +23,7 @@ PbftClient::PbftClient(const Configuration &config, Transport *transport,
         if (!unloggedTimeoutContinuation) {
           return;
         }
-        Debug("Unlogged timeout call cont");
+        Debug("Unlogged timeout call continuation");
         unloggedTimeoutContinuation(pendingUnloggedRequest->request);
         unloggedRequestTimeout->Stop();
       });
@@ -63,7 +63,7 @@ void PbftClient::SendRequest() {
   const std::string message = reqMsg.SerializeAsString();
   signer.Sign(message, *reqMsg.mutable_sig());
 
-  // todo
+  // TODO
   // transport->SendMessageToReplica(this, 0, reqMsg);
   transport->SendMessageToAll(this, reqMsg);
   requestTimeout->Reset();
