@@ -89,7 +89,7 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   prePrepare.set_sig(std::string());
   *prePrepare.mutable_message() = msg;
 
-  acceptedPrePrepareTable[seqNum] = prePrepare;
+  AppendPreparedLog(prePrepare);
   transport->SendMessageToAll(this, prePrepare);
 }
 
@@ -112,13 +112,15 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   if (view != msg.common().view()) return;
 
   opnum_t seqNum = msg.common().seqnum();
-  if (acceptedPrePrepareTable.count(seqNum)) return;
+  if (acceptedPrePrepareTable.count(seqNum) &&
+      !Match(acceptedPrePrepareTable[seqNum], msg.common()))
+    return;
 
   // no impl high and low water mark, along with GC
 
   RDebug("Backup accept pre-prepare message for view#%ld seq#%ld", view,
          seqNum);
-  acceptedPrePrepareTable[msg.common().seqnum()] = msg;
+  AppendPreparedLog(msg);
   PrepareMessage prepare;
   *prepare.mutable_common() = msg.common();
   prepare.set_replicaid(ReplicaId());
@@ -126,14 +128,18 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   prepare.set_sig(std::string());
   transport->SendMessageToAll(this, prepare);
 
-  prepareSet.Add(seqNum, ReplicaId(), msg.common().SerializeAsString());
+  prepareSet.Add(seqNum, ReplicaId(), msg.common());
   TryBroadcastCommit(msg.common());
+}
+
+void PbftReplica::AppendPreparedLog(proto::PrePrepareMessage message) {
+  // TODO append to log
+  acceptedPrePrepareTable[message.common().seqnum()] = message.common();
 }
 
 void PbftReplica::HandlePrepare(const TransportAddress &remote,
                                 const proto::PrepareMessage &msg) {
-  prepareSet.Add(msg.common().seqnum(), msg.replicaid(),
-                 msg.common().SerializeAsString());
+  prepareSet.Add(msg.common().seqnum(), msg.replicaid(), msg.common());
   TryBroadcastCommit(msg.common());
 }
 

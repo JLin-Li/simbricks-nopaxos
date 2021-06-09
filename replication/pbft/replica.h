@@ -81,24 +81,40 @@ class PbftReplica : public Replica {
   };
 
   Log log;
-  // tables/sets clean up when view changed
-  std::map<opnum_t, proto::PrePrepareMessage> acceptedPrePrepareTable;
-  ByzantineQuorumSet<opnum_t, std::string> prepareSet, commitSet;
+  // get cleared on view changing
+  std::map<opnum_t, proto::Common> acceptedPrePrepareTable;
+  // PREPARED state maps to pre-prepared in PBFT
+  void AppendPreparedLog(proto::PrePrepareMessage message);
+
+  // transparent proto::Common wrapper to help use it in quorum sets
+  struct CommonAsKey {
+    proto::Common common;
+    // implicit intented
+    CommonAsKey(const proto::Common &common) : common(common) {}
+    bool operator<(const CommonAsKey &other) const {
+      return common.SerializeAsString() < other.common.SerializeAsString();
+    }
+  };
+  static bool Match(const proto::Common &lhs, const proto::Common &rhs) {
+    return lhs.SerializeAsString() == rhs.SerializeAsString();
+  }
+
+  // get cleared on view changing
+  ByzantineQuorumSet<opnum_t, CommonAsKey> prepareSet, commitSet;
   // prepared(m, v, n, i) where v(view) and i(replica index) should
   // be fixed for each calling
   // theoretically this verb could use const this, but underlying CheckForQuorum
   // does not, and we actually don't need it to do so, so that's it
   bool Prepared(opnum_t seqNum, proto::Common message) {
     return acceptedPrePrepareTable.count(seqNum) &&
-           acceptedPrePrepareTable[seqNum].common().SerializeAsString() ==
-               message.SerializeAsString() &&
-           prepareSet.CheckForQuorum(seqNum, message.SerializeAsString());
+           Match(acceptedPrePrepareTable[seqNum], message) &&
+           prepareSet.CheckForQuorum(seqNum, message);
   }
   void TryBroadcastCommit(const proto::Common &message);
   // similar to prepared
   bool CommittedLocal(opnum_t seqNum, proto::Common message) {
     return Prepared(seqNum, message) &&
-           commitSet.CheckForQuorum(seqNum, message.SerializeAsString());
+           commitSet.CheckForQuorum(seqNum, message);
   }
 
   struct ClientTableEntry {
