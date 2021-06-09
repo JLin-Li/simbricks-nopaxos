@@ -24,6 +24,6 @@ $(d)signature-test: $(o)signature-test.o $(LIB-signature) $(GTEST_MAIN)
 
 TEST_BINS += $(d)signature-test
 
-$(d)quorumset-test: $(o)quorumset-test.o $(GTEST_MAIN)
+$(d)quorumset-test: $(o)quorumset-test.o $(LIB-message) $(GTEST_MAIN)
 
 TEST_BINS += $(d)quorumset-test

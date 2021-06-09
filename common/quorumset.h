@@ -104,16 +104,14 @@ class ByzantineQuorumSet {
   ByzantineQuorumSet(int numRequired) : numRequired(numRequired) {}
   void Clear() { messages.clear(); }
   void Clear(SeqNumType seqNum) { messages[seqNum].clear(); }
-
- private:
   bool CheckForQuorum(SeqNumType seqNum, const MsgType &msg) {
     // should always check immediately
-    Assert(messages[seqNum][msg].count() <= numRequired);
-    return messages[seqNum][msg].count() == numRequired;
+    Assert((int)messages[seqNum][msg].size() <= numRequired);
+    return (int)messages[seqNum][msg].size() == numRequired;
   }
-
- public:
   bool Add(SeqNumType seqNum, int replicaId, const MsgType &msg) {
+    // is it necessary to check whether (faulty) replica sending multiple
+    // versions of one message?
     messages[seqNum][msg].insert(replicaId);
     return CheckForQuorum(seqNum, msg);
   }
