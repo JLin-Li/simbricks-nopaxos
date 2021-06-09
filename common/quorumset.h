@@ -33,7 +33,8 @@
 #define _COMMON_QUORUMSET_H_
 
 #include <map>
-#include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "lib/assert.h"
 
@@ -97,7 +98,7 @@ class QuorumSet {
 template <typename SeqNumType, typename MsgType>
 class ByzantineQuorumSet {
  private:
-  std::map<SeqNumType, std::map<MsgType, std::set<int>>> messages;
+  std::unordered_map<SeqNumType, std::map<MsgType, std::unordered_set<int>>> messages;
   int numRequired;
 
  public:

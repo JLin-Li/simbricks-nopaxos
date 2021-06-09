@@ -27,27 +27,27 @@ message UnloggedReplyMessage {
     required bytes reply = 1;
 }
 
-message PrePrepareMessage {
+message Common {
     required uint64 view = 1;
     required uint64 seqnum = 2;
     required bytes digest = 3;
-    required bytes sig = 4;
+}
+
+message PrePrepareMessage {
+    required Common common = 1;
+    required bytes sig = 2;
     // non-sig fields
-    required RequestMessage message = 5;
+    required RequestMessage message = 3;
 }
 
 message PrepareMessage {
-    required uint64 view = 1;
-    required uint64 seqnum = 2;
-    required bytes digest = 3;
-    required uint64 replicaid = 4;
-    required bytes sig = 5;
+    required Common common = 1;
+    required uint64 replicaid = 2;
+    required bytes sig = 3;
 }
 
 message CommitMessage {
-    required uint64 view = 1;
-    required uint64 seqnum = 2;
-    required bytes digest = 3;
-    required uint64 replicaid = 4;
-    required bytes sig = 5;
+    required Common common = 1;
+    required uint64 replicaid = 2;
+    required bytes sig = 3;
 }

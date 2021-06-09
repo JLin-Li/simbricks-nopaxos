@@ -18,7 +18,10 @@ using namespace proto;
 
 PbftReplica::PbftReplica(Configuration config, int myIdx, bool initialize,
                          Transport *transport, AppReplica *app)
-    : Replica(config, 0, myIdx, initialize, transport, app), log(false) {
+    : Replica(config, 0, myIdx, initialize, transport, app),
+      log(false),
+      prepareSet(2 * config.f),
+      commitSet(2 * config.f + 1) {
   if (!initialize) NOT_IMPLEMENTED();
 
   this->status = STATUS_NORMAL;
@@ -32,18 +35,23 @@ PbftReplica::PbftReplica(Configuration config, int myIdx, bool initialize,
 void PbftReplica::ReceiveMessage(const TransportAddress &remote,
                                  const string &type, const string &data,
                                  void *meta_data) {
-  static proto::RequestMessage request;
-  static proto::UnloggedRequestMessage unloggedRequest;
-
-  if (type == request.GetTypeName()) {
-    request.ParseFromString(data);
-    HandleRequest(remote, request);
-  } else if (type == unloggedRequest.GetTypeName()) {
-    unloggedRequest.ParseFromString(data);
-    HandleUnloggedRequest(remote, unloggedRequest);
-  } else {
-    RPanic("Received unexpected message type in pbft proto: %s", type.c_str());
+#define Handle(MessageType)                       \
+  static proto::MessageType##Message MessageType; \
+  if (type == MessageType.GetTypeName()) {        \
+    MessageType.ParseFromString(data);            \
+    Handle##MessageType(remote, MessageType);     \
+    return;                                       \
   }
+
+  Handle(Request);
+  Handle(UnloggedRequest);
+  Handle(PrePrepare);
+  Handle(Prepare);
+  // Handle(Commit);
+
+#undef Handle
+
+  RPanic("Received unexpected message type in pbft proto: %s", type.c_str());
 }
 
 void PbftReplica::HandleRequest(const TransportAddress &remote,
@@ -74,84 +82,15 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
         msg.req().clientreqid());
   seqNum += 1;
   PrePrepareMessage prePrepare;
-  prePrepare.set_view(view);
-  prePrepare.set_seqnum(seqNum);
+  prePrepare.mutable_common()->set_view(view);
+  prePrepare.mutable_common()->set_seqnum(seqNum);
   // TODO digest and sig
-  prePrepare.set_digest(std::string());
+  prePrepare.mutable_common()->set_digest(std::string());
   prePrepare.set_sig(std::string());
   *prePrepare.mutable_message() = msg;
 
-  loggedPrePrepareMessageTable[seqNum] = prePrepare;
-  // prepare replica table init?
+  acceptedPrePrepareTable[seqNum] = prePrepare;
   transport->SendMessageToAll(this, prePrepare);
-}
-
-void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
-                                   const proto::PrePrepareMessage &msg) {
-  if (AmPrimary()) RPanic("Unexpected PrePrepare sent to primary");
-
-  // TODO verify sig and digest
-
-  if (view != msg.view()) return;
-
-  if (loggedPrePrepareMessageTable.count(msg.seqnum()) &&
-      loggedPrePrepareMessageTable[msg.seqnum()].digest() != msg.digest()) {
-    // Byzantine case
-    NOT_IMPLEMENTED();
-  }
-  if (loggedPrepareMessageTable.count(msg.seqnum()) &&
-      loggedPrepareMessageTable[msg.seqnum()].digest() != msg.digest()) {
-    // Byzantine case
-    NOT_IMPLEMENTED();
-  }
-
-  // no impl high and low water mark
-
-  RDebug("Backup accept pre-prepare message for view#%ld seq#%ld", view,
-         seqNum);
-  loggedPrePrepareMessageTable[msg.seqnum()] = msg;
-  PrepareMessage prepare;
-  prepare.set_view(view);
-  prepare.set_seqnum(msg.seqnum());
-  prepare.set_digest(msg.digest());
-  prepare.set_replicaid(replicaIdx);
-  // TODO sig
-  prepare.set_sig(std::string());
-
-  loggedPrepareMessageTable[msg.seqnum()] = prepare;
-  loggedPrepareReplicaTable[msg.seqnum()].insert(replicaIdx);
-  transport->SendMessageToAll(this, prepare);
-  BroadcastCommitIfPrepared(msg.seqnum());
-}
-
-void PbftReplica::HandlePrepare(const TransportAddress &remote,
-                                const proto::PrepareMessage &msg) {
-  if (loggedPrePrepareMessageTable.count(msg.seqnum()) &&
-      loggedPrePrepareMessageTable[msg.seqnum()].digest() != msg.digest()) {
-    // Byzantine case
-    NOT_IMPLEMENTED();
-  }
-  if (loggedPrepareMessageTable.count(msg.seqnum()) &&
-      loggedPrepareMessageTable[msg.seqnum()].digest() != msg.digest()) {
-    // Byzantine case
-    NOT_IMPLEMENTED();
-  }
-
-  loggedPrepareMessageTable[msg.seqnum()] = msg;
-  loggedPrepareReplicaTable[msg.seqnum()].insert(replicaIdx);
-  BroadcastCommitIfPrepared(msg.seqnum());
-}
-
-void PbftReplica::BroadcastCommitIfPrepared(opnum_t seqNum) {
-  if (!prepared(seqNum)) return;
-  CommitMessage commit;
-  commit.set_view(view);
-  commit.set_seqnum(seqNum);
-  commit.set_digest(loggedPrePrepareMessageTable[seqNum].digest());
-  commit.set_replicaid(replicaIdx);
-  // TODO sig
-  commit.set_sig(std::string());
-  transport->SendMessageToAll(this, commit);
 }
 
 void PbftReplica::HandleUnloggedRequest(const TransportAddress &remote,
@@ -161,6 +100,54 @@ void PbftReplica::HandleUnloggedRequest(const TransportAddress &remote,
   ExecuteUnlogged(msg.req(), reply);
   if (!(transport->SendMessage(this, remote, reply)))
     RWarning("Failed to send reply message");
+}
+
+void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
+                                   const proto::PrePrepareMessage &msg) {
+  if (AmPrimary()) RPanic("Unexpected PrePrepare sent to primary");
+
+  // TODO verify sig and digest
+  // NOTICE verify both sig of PrePrepare and Request
+
+  if (view != msg.common().view()) return;
+
+  opnum_t seqNum = msg.common().seqnum();
+  if (acceptedPrePrepareTable.count(seqNum)) return;
+
+  // no impl high and low water mark, along with GC
+
+  RDebug("Backup accept pre-prepare message for view#%ld seq#%ld", view,
+         seqNum);
+  acceptedPrePrepareTable[msg.common().seqnum()] = msg;
+  PrepareMessage prepare;
+  *prepare.mutable_common() = msg.common();
+  prepare.set_replicaid(ReplicaId());
+  // TODO sig
+  prepare.set_sig(std::string());
+  transport->SendMessageToAll(this, prepare);
+
+  prepareSet.Add(seqNum, ReplicaId(), msg.common().SerializeAsString());
+  TryBroadcastCommit(msg.common());
+}
+
+void PbftReplica::HandlePrepare(const TransportAddress &remote,
+                                const proto::PrepareMessage &msg) {
+  prepareSet.Add(msg.common().seqnum(), msg.replicaid(),
+                 msg.common().SerializeAsString());
+  TryBroadcastCommit(msg.common());
+}
+
+void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
+  if (!Prepared(message.seqnum(), message)) return;
+
+  // TODO set a Timeout to prevent duplicated broadcast
+
+  CommitMessage commit;
+  *commit.mutable_common() = message;
+  commit.set_replicaid(replicaIdx);
+  // TODO sig
+  commit.set_sig(std::string());
+  transport->SendMessageToAll(this, commit);
 }
 
 void PbftReplica::UpdateClientTable(const Request &req,

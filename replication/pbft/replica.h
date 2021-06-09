@@ -3,7 +3,8 @@
  * pbft/replica.h:
  *   PBFT protocol replica
  *   This is only a fast-path performance-equivalent implmentation. Noticable
- *   missing parts include recovery, resending and Byzantine
+ *   missing parts include recovery, crash tolerance (i.e. view changing) and
+ *   part of Byzantine
  *
  * Copyright 2013 Dan R. K. Ports  <drkp@cs.washington.edu>
  * Copyright 2021 Sun Guangda      <sung@comp.nus.edu.sg>
@@ -34,6 +35,7 @@
 #define _PBFT_REPLICA_H_
 
 #include "common/log.h"
+#include "common/quorumset.h"
 #include "common/replica.h"
 #include "lib/signature.h"
 #include "replication/pbft/pbft-proto.pb.h"
@@ -70,34 +72,34 @@ class PbftReplica : public Replica {
   // void OnViewChange();
 
   // states and utils
+  int ReplicaId() const { return replicaIdx; }  // consistent naming to proto
+
   view_t view;
   opnum_t seqNum;           // only primary use this
   bool AmPrimary() const {  // following PBFT paper terminology
-    return replicaIdx == configuration.GetLeaderIndex(view);
+    return ReplicaId() == configuration.GetLeaderIndex(view);
   };
 
   Log log;
-  // key is seqNum, tables clean up when view changed
-  std::map<uint64_t, proto::PrePrepareMessage> loggedPrePrepareMessageTable;
-  std::map<uint64_t, proto::PrepareMessage> loggedPrepareMessageTable;
-  std::map<uint64_t, std::set<int>> loggedPrepareReplicaTable;
-  std::map<uint64_t, proto::CommitMessage> loggedCommitMessageTable;
-  std::map<uint64_t, std::set<int>> loggedCommitReplicaTable;
-  // prepared(m, v, n, i) where m (message), v(view) and i(replica index) should
+  // tables/sets clean up when view changed
+  std::map<opnum_t, proto::PrePrepareMessage> acceptedPrePrepareTable;
+  ByzantineQuorumSet<opnum_t, std::string> prepareSet, commitSet;
+  // prepared(m, v, n, i) where v(view) and i(replica index) should
   // be fixed for each calling
-  bool prepared(opnum_t seqNum) {
-    // omit match PrePrepare with Prepare, done when handling them
-    return loggedPrePrepareMessageTable.count(seqNum) &&
-           // assert seqNum in table
-           loggedPrepareReplicaTable[seqNum].size() >= 2u * configuration.f;
+  // theoretically this verb could use const this, but underlying CheckForQuorum
+  // does not, and we actually don't need it to do so, so that's it
+  bool Prepared(opnum_t seqNum, proto::Common message) {
+    return acceptedPrePrepareTable.count(seqNum) &&
+           acceptedPrePrepareTable[seqNum].common().SerializeAsString() ==
+               message.SerializeAsString() &&
+           prepareSet.CheckForQuorum(seqNum, message.SerializeAsString());
   }
-  void BroadcastCommitIfPrepared(opnum_t seqNum);
+  void TryBroadcastCommit(const proto::Common &message);
   // similar to prepared
-  bool committedLocal(opnum_t seqNum) {
-    return prepared(seqNum) &&
-           loggedCommitReplicaTable[seqNum].size() >= 2u * configuration.f + 1;
+  bool CommittedLocal(opnum_t seqNum, proto::Common message) {
+    return Prepared(seqNum, message) &&
+           commitSet.CheckForQuorum(seqNum, message.SerializeAsString());
   }
-  void ExecuteAvailable();
 
   struct ClientTableEntry {
     uint64_t lastReqId;
