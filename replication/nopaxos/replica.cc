@@ -997,7 +997,7 @@ NOPaxosReplica::ProcessNextOperation(const Request &request,
         state = LOG_STATE_NOOP;
     }
 
-    this->log.Append(LogEntry(vs, state, request));
+    this->log.Append(new LogEntry(vs, state, request));
 
     // If we have sent a GapRequestMessage, we can cancel
     // the timeout. Either some other replica responds with the

@@ -354,7 +354,7 @@ FastPaxosReplica::HandleRequest(const TransportAddress &remote,
     RDebug("Received REQUEST, assigning " FMT_VIEWSTAMP, VA_VIEWSTAMP(v));
 
     /* Add the request to my log */
-    log.Append(LogEntry(v, LOG_STATE_PREPARED, msg.req()));
+    log.Append(new LogEntry(v, LOG_STATE_PREPARED, msg.req()));
 
     if (AmLeader()) {
         /* Prepare a prepare message */
@@ -476,7 +476,7 @@ FastPaxosReplica::HandlePrepare(const TransportAddress &remote,
         ASSERT(msg.opnum() == lastFastPath+1);
         ++lastFastPath;
         ++lastSlowPath;
-        log.Append(LogEntry(viewstamp_t(msg.view(), msg.opnum()),
+        log.Append(new LogEntry(viewstamp_t(msg.view(), msg.opnum()),
                    LOG_STATE_PREPARED, msg.req()));
     } else {
         ASSERT(msg.opnum() == lastSlowPath+1);
@@ -749,7 +749,7 @@ FastPaxosReplica::HandleStateTransfer(const TransportAddress &remote,
                 oldLastSlowPath = lastSlowPath;
 
                 viewstamp_t vs = { newEntry.view(), newEntry.opnum() };
-                log.Append(LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
+                log.Append(new LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
             }
         } else if (newEntry.opnum() <= lastFastPath) {
             // This is a new slow-path operation, but we already have
@@ -766,7 +766,7 @@ FastPaxosReplica::HandleStateTransfer(const TransportAddress &remote,
             lastSlowPath++;
             lastFastPath++;
             viewstamp_t vs = { newEntry.view(), newEntry.opnum() };
-            log.Append(LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
+            log.Append(new LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
         }
     }
 

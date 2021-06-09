@@ -955,14 +955,14 @@ ErisServer::HandleEpochChangeStateTransferReply(const TransportAddress &remote,
                 this->nextMsgnum += 1;
                 viewstamp_t vs(this->view, this->lastOp, this->lastNormalSessnum, i, this->groupIdx);
                 if (i < it->msg_num()) {
-                    this->log.Append(ErisLogEntry(vs, LOG_STATE_NOOP, Request()));
+                    this->log.Append(new ErisLogEntry(vs, LOG_STATE_NOOP, Request()));
                     // Temporarily add it to the set of drops that we are sending to FC.
                     // (FC might have already dropped these txns, but thats fine)
                     this->pendingECStateTransfer.drops.insert(MsgStamp(this->groupIdx,
                                                                        i,
                                                                        this->lastNormalSessnum));
                 } else {
-                    this->log.Append(ErisLogEntry(vs,
+                    this->log.Append(new ErisLogEntry(vs,
                                 LOG_STATE_RECEIVED,
                                 it->request().request(),
                                 TxnData(it->request().txnid(), it->request().type())));
@@ -1659,7 +1659,7 @@ ErisServer::InstallLogEntry(const viewstamp_t &vs,
 {
     this->lastOp = vs.opnum;
     this->nextMsgnum = vs.msgnum+1;
-    this->log.Append(ErisLogEntry(vs,
+    this->log.Append(new ErisLogEntry(vs,
                 state, msg.request(),
                 TxnData(msg.txnid(), msg.type())));
     if (state == LOG_STATE_RECEIVED) {

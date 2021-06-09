@@ -52,21 +52,21 @@ Log::Log(bool useHash, opnum_t start, string initialHash)
 }
 
 LogEntry &
-Log::Append(const LogEntry &entry)
+Log::Append(LogEntry *entry)
 {
     if (entries.empty()) {
-        ASSERT(entry.viewstamp.opnum == start);
+        ASSERT(entry->viewstamp.opnum == start);
     } else {
-        ASSERT(entry.viewstamp.opnum == LastOpnum()+1);
+        ASSERT(entry->viewstamp.opnum == LastOpnum()+1);
     }
 
     string prevHash = LastHash();
-    entries.push_back(entry);
+    entries.push_back(std::unique_ptr<LogEntry>(entry));
     if (useHash) {
-        entries.back().hash = ComputeHash(prevHash, entries.back());
+        entries.back().get()->hash = ComputeHash(prevHash, entries.back().get());
     }
 
-    return entries.back();
+    return *entries.back().get();
 }
 
 // This really ought to be const
@@ -74,18 +74,18 @@ LogEntry *
 Log::Find(opnum_t opnum)
 {
     if (entries.empty()) {
-        return NULL;
+        return nullptr;
     }
 
     if (opnum < start) {
-        return NULL;
+        return nullptr;
     }
 
     if (opnum-start > entries.size()-1) {
-        return NULL;
+        return nullptr;
     }
 
-    LogEntry *entry = &entries[opnum-start];
+    LogEntry *entry = entries[opnum-start].get();
     ASSERT(entry->viewstamp.opnum == opnum);
     return entry;
 }
@@ -94,7 +94,7 @@ bool
 Log::SetStatus(opnum_t op, LogEntryState state)
 {
     LogEntry *entry = Find(op);
-    if (entry == NULL) {
+    if (entry == nullptr) {
         return false;
     }
 
@@ -110,7 +110,7 @@ Log::SetRequest(opnum_t op, const Request &req)
     }
 
     LogEntry *entry = Find(op);
-    if (entry == NULL) {
+    if (entry == nullptr) {
         return false;
     }
 
@@ -147,7 +147,7 @@ Log::Last()
         return NULL;
     }
 
-    return &entries.back();
+    return entries.back().get();
 }
 
 viewstamp_t
@@ -156,7 +156,7 @@ Log::LastViewstamp() const
     if (entries.empty()) {
         return viewstamp_t(0, start-1);
     } else {
-        return entries.back().viewstamp;
+        return entries.back().get()->viewstamp;
     }
 }
 
@@ -166,7 +166,7 @@ Log::LastOpnum() const
     if (entries.empty()) {
         return start-1;
     } else {
-        return entries.back().viewstamp.opnum;
+        return entries.back().get()->viewstamp.opnum;
     }
 }
 
@@ -190,12 +190,12 @@ Log::LastHash() const
     if (entries.empty()) {
         return initialHash;
     } else {
-        return entries.back().hash;
+        return entries.back().get()->hash;
     }
 }
 
 string
-Log::ComputeHash(string lastHash, const LogEntry &entry)
+Log::ComputeHash(string lastHash, const LogEntry *entry)
 {
     SHA_CTX ctx;
     unsigned char out[SHA_DIGEST_LENGTH];
@@ -205,8 +205,8 @@ Log::ComputeHash(string lastHash, const LogEntry &entry)
     SHA1_Update(&ctx, lastHash.c_str(), lastHash.size());
     //SHA1_Update(&ctx, &entry.viewstamp, sizeof(entry.viewstamp));
     uint64_t x[2];
-    x[0] = entry.request.clientid();
-    x[1] = entry.request.clientreqid();
+    x[0] = entry->request.clientid();
+    x[1] = entry->request.clientreqid();
     SHA1_Update(&ctx, x, sizeof(uint64_t)*2);
     // SHA1_Update(&ctx, entry.request.op().c_str(),
     //             entry.request.op().size());

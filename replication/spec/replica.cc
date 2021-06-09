@@ -346,7 +346,7 @@ SpecReplica::HandleRequest(const TransportAddress &remote,
 
     /* Add the request to my log and speculatively execute it */
     LogEntry &newEntry =
-        log.Append(LogEntry(v, LOG_STATE_SPECULATIVE, msg.req()));
+        log.Append(new LogEntry(v, LOG_STATE_SPECULATIVE, msg.req()));
     Execute(v.opnum, msg.req(), *reply);
 
     reply->set_loghash(log.LastHash());
@@ -989,7 +989,7 @@ SpecReplica::MergeLogs(view_t newView, opnum_t maxStart,
                 newEntry.viewstamp = viewstamp_t(newView,next);
                 newEntry.state = LOG_STATE_SPECULATIVE;
                 newEntry.request = entry.request();
-                newEntry.hash = Log::ComputeHash(lastHash, newEntry);
+                newEntry.hash = Log::ComputeHash(lastHash, &newEntry);
                 lastHash = newEntry.hash;
                 out.push_back(newEntry);
                 seen.insert(reqid);
@@ -1254,7 +1254,7 @@ SpecReplica::InstallLog(const std::vector<LogEntry> &entries)
 
         lastSpeculative++;
         LogEntry &installedEntry =
-            log.Append(LogEntry(newEntry->viewstamp, LOG_STATE_SPECULATIVE,
+            log.Append(new LogEntry(newEntry->viewstamp, LOG_STATE_SPECULATIVE,
                         newEntry->request));
         Execute(newEntry->viewstamp.opnum, newEntry->request, *reply);
 

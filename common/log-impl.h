@@ -91,7 +91,7 @@ Log::Install(iter start, iter end)
     // Install the new log entries
     for (; it != end; it++) {
         viewstamp_t vs = { it->view(), it->opnum() };
-        Append(LogEntry(vs, LOG_STATE_PREPARED, it->request()));
+        Append(new LogEntry(vs, LOG_STATE_PREPARED, it->request()));
     }
 }
 

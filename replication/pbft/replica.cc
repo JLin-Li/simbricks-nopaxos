@@ -46,8 +46,8 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   v.opnum = last_op_;
   v.sessnum = 0;
   v.msgnum = 0;
-  LogEntry entry(v, LOG_STATE_RECEIVED, msg.req());
-  log.Append(entry);
+
+  log.Append(new LogEntry(v, LOG_STATE_RECEIVED, msg.req()));
   Debug("Received request %s", msg.req().op().c_str());
 
   ToClientMessage m;

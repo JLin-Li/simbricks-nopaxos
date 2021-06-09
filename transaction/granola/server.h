@@ -96,7 +96,7 @@ class GranolaLog : public Log
 {
 public:
     GranolaLog();
-    virtual LogEntry & Append(const LogEntry &entry) override;
+    virtual LogEntry & Append(LogEntry *entry) override;
     LogEntry * Find(const std::pair<uint64_t, uint64_t> &reqid);
 
 private:

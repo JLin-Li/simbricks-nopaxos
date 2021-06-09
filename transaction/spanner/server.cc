@@ -143,7 +143,7 @@ SpannerServer::HandleClientRequest(const TransportAddress &remote,
 
     // Add the request to my log
     ASSERT(msg.type() != proto::UNKNOWN);
-    this->log.Append(SpannerLogEntry(v, LOG_STATE_PREPARED,
+    this->log.Append(new SpannerLogEntry(v, LOG_STATE_PREPARED,
                 msg.request(), TxnData(msg.txnid(), msg.type())));
 
     // Send PrepareMessage to other replicas
@@ -181,13 +181,13 @@ SpannerServer::HandlePrepare(const TransportAddress &remote,
     // XXX Hack here to get around state transfer
     while (this->lastOp + 1 < msg.opnum()) {
         this->lastOp++;
-        this->log.Append(SpannerLogEntry(viewstamp_t(msg.view(), this->lastOp),
+        this->log.Append(new SpannerLogEntry(viewstamp_t(msg.view(), this->lastOp),
                     LOG_STATE_EXECUTED, Request()));
     }
 
     this->lastOp++;
     ASSERT(msg.type() != proto::UNKNOWN);
-    this->log.Append(SpannerLogEntry(viewstamp_t(msg.view(), this->lastOp),
+    this->log.Append(new SpannerLogEntry(viewstamp_t(msg.view(), this->lastOp),
                 LOG_STATE_PREPARED, msg.request(), TxnData(msg.txnid(), msg.type())));
     UpdateClientTable(msg.request());
 

@@ -47,11 +47,11 @@ GranolaLog::GranolaLog()
     : Log(false) { }
 
 LogEntry &
-GranolaLog::Append(const LogEntry &entry)
+GranolaLog::Append(LogEntry *entry)
 {
-    this->clientReqMap[std::make_pair(entry.request.clientid(),
-                                      entry.request.clientreqid())] =
-        entry.viewstamp.opnum;
+    this->clientReqMap[std::make_pair(entry->request.clientid(),
+                                      entry->request.clientreqid())] =
+        entry->viewstamp.opnum;
     return Log::Append(entry);
 }
 
@@ -199,7 +199,7 @@ GranolaServer::HandleClientRequest(const TransportAddress &remote,
         this->pendingTransactions.insert(make_pair(v.opnum, txnData.proposed_ts));
     }
 
-    this->log.Append(GranolaLogEntry(v, LOG_STATE_PREPARED, msg.request(), txnData));
+    this->log.Append(new GranolaLogEntry(v, LOG_STATE_PREPARED, msg.request(), txnData));
 
     // Set vote quorum size (only for multi-shard transactions)
     if (msg.request().ops_size() > 1) {
@@ -241,7 +241,7 @@ GranolaServer::HandlePrepare(const TransportAddress &remote,
     // XXX Hack here to get around state transfer
     while (this->lastOp + 1 < msg.opnum()) {
         this->lastOp++;
-        this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+        this->log.Append(new GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
                     LOG_STATE_EXECUTED,
                     Request()));
     }
@@ -261,7 +261,7 @@ GranolaServer::HandlePrepare(const TransportAddress &remote,
     if (!this->locking) {
         this->pendingTransactions.insert(make_pair(this->lastOp, txnData.proposed_ts));
     }
-    this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+    this->log.Append(new GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
                 LOG_STATE_PREPARED,
                 msg.request(),
                 txnData));
@@ -387,7 +387,7 @@ GranolaServer::HandleFinalTimestamp(const TransportAddress &remote,
         // XXX Hack here to work around state transfer
         while (this->lastOp < msg.opnum()) {
             this->lastOp++;
-            this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+            this->log.Append(new GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
                         LOG_STATE_EXECUTED,
                         Request()));
         }

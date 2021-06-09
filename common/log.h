@@ -39,6 +39,7 @@
 #include "lib/viewstamp.h"
 
 #include <map>
+#include <memory>
 #include <google/protobuf/message.h>
 #include <openssl/sha.h>
 
@@ -100,7 +101,7 @@ class Log
 {
 public:
     Log(bool useHash, opnum_t start = 1, string initialHash = EMPTY_HASH);
-    virtual LogEntry & Append(const LogEntry &entry);
+    virtual LogEntry & Append(LogEntry *entry);
     LogEntry * Find(opnum_t opnum);
     bool SetStatus(opnum_t opnum, LogEntryState state);
     bool SetRequest(opnum_t op, const Request &req);
@@ -115,11 +116,11 @@ public:
     template <class iter> void Install(iter start, iter end);
     const string &LastHash() const;
 
-    static string ComputeHash(string lastHash, const LogEntry &entry);
+    static string ComputeHash(string lastHash, const LogEntry *entry);
 
 
 private:
-    std::vector<LogEntry> entries;
+    std::vector<std::unique_ptr<LogEntry>> entries;
     string initialHash;
     opnum_t start;
     bool useHash;
