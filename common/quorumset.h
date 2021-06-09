@@ -1,4 +1,3 @@
-// -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
  * quorumset.h:
@@ -6,6 +5,7 @@
  *   replicas and determining whether a quorum of responses has been met
  *
  * Copyright 2013 Dan R. K. Ports  <drkp@cs.washington.edu>
+ * Copyright 2021 Sun Guangda      <sung@comp.nus.edu.sg>
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -32,86 +32,93 @@
 #ifndef _COMMON_QUORUMSET_H_
 #define _COMMON_QUORUMSET_H_
 
+#include <map>
+#include <set>
+
+#include "lib/assert.h"
+
 namespace dsnet {
-    
+
 template <class IDTYPE, class MSGTYPE>
-class QuorumSet
-{
-public:
-    QuorumSet(int numRequired)
-        : numRequired(numRequired)
-    {
-           
-    }
-    
-    void
-    Clear()
-    {
-        messages.clear();
-    }
+class QuorumSet {
+ public:
+  QuorumSet(int numRequired) : numRequired(numRequired) {}
 
-    void
-    Clear(IDTYPE vs)
-    {
-        std::map<int, MSGTYPE> &vsmessages = messages[vs];
-        vsmessages.clear();
-    }
+  void Clear() { messages.clear(); }
 
-    int
-    NumRequired() const
-    {
-        return numRequired;
-    }
+  void Clear(IDTYPE vs) {
+    std::map<int, MSGTYPE> &vsmessages = messages[vs];
+    vsmessages.clear();
+  }
 
-    const std::map<int, MSGTYPE> &
-    GetMessages(IDTYPE vs)
-    {
-        return messages[vs];
-    }
+  int NumRequired() const { return numRequired; }
 
-    const std::map<int, MSGTYPE> *
-    CheckForQuorum(IDTYPE vs)
-    {
-        std::map<int, MSGTYPE> &vsmessages = messages[vs];
-        int count = vsmessages.size();
-        if (count >= numRequired) {
-            return &vsmessages;
-        } else {
-            return NULL;
-        }    
+  const std::map<int, MSGTYPE> &GetMessages(IDTYPE vs) { return messages[vs]; }
+
+  const std::map<int, MSGTYPE> *CheckForQuorum(IDTYPE vs) {
+    std::map<int, MSGTYPE> &vsmessages = messages[vs];
+    int count = vsmessages.size();
+    if (count >= numRequired) {
+      return &vsmessages;
+    } else {
+      return NULL;
+    }
+  }
+
+  const std::map<int, MSGTYPE> *AddAndCheckForQuorum(IDTYPE vs, int replicaIdx,
+                                                     const MSGTYPE &msg) {
+    std::map<int, MSGTYPE> &vsmessages = messages[vs];
+    if (vsmessages.find(replicaIdx) != vsmessages.end()) {
+      // This is a duplicate message
+
+      // But we'll ignore that, replace the old message from
+      // this replica, and proceed.
+      //
+      // XXX Is this the right thing to do? It is for
+      // speculative replies in SpecPaxos...
     }
 
-    const std::map<int, MSGTYPE> *
-    AddAndCheckForQuorum(IDTYPE vs, int replicaIdx, const MSGTYPE &msg)
-    {
-        std::map<int, MSGTYPE> &vsmessages = messages[vs];
-        if (vsmessages.find(replicaIdx) != vsmessages.end()) {
-            // This is a duplicate message
+    vsmessages[replicaIdx] = msg;
 
-            // But we'll ignore that, replace the old message from
-            // this replica, and proceed.
-            //
-            // XXX Is this the right thing to do? It is for
-            // speculative replies in SpecPaxos...
-        }
+    return CheckForQuorum(vs);
+  }
 
-        vsmessages[replicaIdx] = msg;
-        
-        return CheckForQuorum(vs);
-    }
+  void Add(IDTYPE vs, int replicaIdx, const MSGTYPE &msg) {
+    AddAndCheckForQuorum(vs, replicaIdx, msg);
+  }
 
-    void
-    Add(IDTYPE vs, int replicaIdx, const MSGTYPE &msg)
-    {
-        AddAndCheckForQuorum(vs, replicaIdx, msg);
-    }
-    
-public:
-    int numRequired;
-private:
-    std::map<IDTYPE, std::map<int, MSGTYPE> > messages;
+ public:
+  int numRequired;
+
+ private:
+  std::map<IDTYPE, std::map<int, MSGTYPE>> messages;
 };
 
-}      // namespace dsnet
+template <typename SeqNumType, typename MsgType>
+class ByzantineQuorumSet {
+ private:
+  std::map<SeqNumType, std::map<MsgType, std::set<int>>> messages;
+  int numRequired;
+
+ public:
+  ByzantineQuorumSet(int numRequired) : numRequired(numRequired) {}
+  void Clear() { messages.clear(); }
+  void Clear(SeqNumType seqNum) { messages[seqNum].clear(); }
+
+ private:
+  bool CheckForQuorum(SeqNumType seqNum, const MsgType &msg) {
+    // should always check immediately
+    Assert(messages[seqNum][msg].count() <= numRequired);
+    return messages[seqNum][msg].count() == numRequired;
+  }
+
+ public:
+  bool Add(SeqNumType seqNum, int replicaId, const MsgType &msg) {
+    messages[seqNum][msg].insert(replicaId);
+    return CheckForQuorum(seqNum, msg);
+  }
+};
+
+}  // namespace dsnet
 
 #endif  // _COMMON_QUORUMSET_H_

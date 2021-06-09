@@ -7,7 +7,8 @@ d := $(dir $(lastword $(MAKEFILE_LIST)))
 GTEST_SRCS += $(addprefix $(d), \
 			  configuration-test.cc \
 			  simtransport-test.cc \
-			  signature-test.cc)
+			  signature-test.cc \
+			  quorumset-test.cc)
 
 PROTOS += $(d)simtransport-testmessage.proto
 
@@ -22,3 +23,7 @@ TEST_BINS += $(d)simtransport-test
 $(d)signature-test: $(o)signature-test.o $(LIB-signature) $(GTEST_MAIN)
 
 TEST_BINS += $(d)signature-test
+
+$(d)quorumset-test: $(o)quorumset-test.o $(GTEST_MAIN)
+
+TEST_BINS += $(d)quorumset-test
