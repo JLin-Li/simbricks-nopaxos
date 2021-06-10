@@ -107,6 +107,7 @@ void PbftClient::HandleReply(const TransportAddress &remote,
   req->continuation(req->request, msg.reply());
   delete req;
 
+  Assert(msg.view() >= view);
   view = msg.view();
 }
 
