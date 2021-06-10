@@ -80,30 +80,30 @@ class PbftReplica : public Replica {
   Log log;
   // get cleared on view changing
   std::map<opnum_t, proto::Common> acceptedPrePrepareTable;
-  // PREPARED state maps to pre-prepared in PBFT
-  void AcceptPrePrepare(proto::PrePrepareMessage message);
-
-  static bool Match(const proto::Common &lhs, const proto::Common &rhs) {
-    return lhs.SerializeAsString() == rhs.SerializeAsString();
-  }
-
-  // get cleared on view changing
   ByzantineProtoQuorumSet<opnum_t, proto::Common> prepareSet, commitSet;
   // prepared(m, v, n, i) where v(view) and i(replica index) should
   // be fixed for each calling
   // theoretically this verb could use const this, but underlying CheckForQuorum
   // does not, and we actually don't need it to do so, so that's it
-  bool Prepared(opnum_t seqNum, proto::Common message) {
+  bool Prepared(opnum_t seqNum, const proto::Common &message) {
     return acceptedPrePrepareTable.count(seqNum) &&
            Match(acceptedPrePrepareTable[seqNum], message) &&
            prepareSet.CheckForQuorum(seqNum, message);
   }
-  void TryBroadcastCommit(const proto::Common &message);
   // similar to prepared
-  bool CommittedLocal(opnum_t seqNum, proto::Common message) {
+  bool CommittedLocal(opnum_t seqNum, const proto::Common &message) {
     return Prepared(seqNum, message) &&
            commitSet.CheckForQuorum(seqNum, message);
   }
+
+  // multi-entry common actions
+  // HandleRequest, HandlePrePrepare
+  // PREPARED state maps to pre-prepared in PBFT
+  void AcceptPrePrepare(proto::PrePrepareMessage message);
+  // AcceptPrePrepare, HandlePrePrepare, HandlePrepare
+  void TryBroadcastCommit(const proto::Common &message);
+  // TryBroadcastCommit, HandleCommit
+  void TryExecute(const proto::Common &message);
 
   struct ClientTableEntry {
     uint64_t lastReqId;
@@ -111,6 +111,10 @@ class PbftReplica : public Replica {
   };
   std::map<uint64_t, ClientTableEntry> clientTable;
   void UpdateClientTable(const Request &req, const proto::ReplyMessage &reply);
+
+  static bool Match(const proto::Common &lhs, const proto::Common &rhs) {
+    return lhs.SerializeAsString() == rhs.SerializeAsString();
+  }
 };
 
 }  // namespace pbft

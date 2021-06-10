@@ -118,8 +118,7 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
 
   // no impl high and low water mark, along with GC
 
-  RDebug("Backup accept pre-prepare message for view#%ld seq#%ld", view,
-         seqNum);
+  RDebug("Enter PREPARE round for view#%ld seq#%ld", view, seqNum);
   AcceptPrePrepare(msg);
   PrepareMessage prepare;
   *prepare.mutable_common() = msg.common();
@@ -140,13 +139,13 @@ void PbftReplica::HandlePrepare(const TransportAddress &remote,
 
 void PbftReplica::HandleCommit(const TransportAddress &remote,
                                const proto::CommitMessage &msg) {
-  //
+  commitSet.Add(msg.common().seqnum(), msg.replicaid(), msg.common());
+  TryExecute(msg.common());
 }
 
 void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
 
 void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
-  // TODO append to log
   acceptedPrePrepareTable[message.common().seqnum()] = message.common();
   if (message.common().seqnum() != log.LastOpnum() + 1) {
     // collect info of the gap, pend pre-prepare, and start state transfer
@@ -160,20 +159,27 @@ void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
 void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
   if (!Prepared(message.seqnum(), message)) return;
 
-  RDebug("Enter commit round for view#%lu seq#%lu", message.view(),
+  RDebug("Enter COMMIT round for view#%lu seq#%lu", message.view(),
          message.seqnum());
 
   // TODO set a Timeout to prevent duplicated broadcast
 
   CommitMessage commit;
   *commit.mutable_common() = message;
-  commit.set_replicaid(replicaIdx);
+  commit.set_replicaid(ReplicaId());
   // TODO sig
   commit.set_sig(std::string());
   transport->SendMessageToAll(this, commit);
 
   commitSet.Add(message.seqnum(), ReplicaId(), message);
-  // TODO try execute for single replica setup
+  TryExecute(message);  // for single replica setup
+}
+
+void PbftReplica::TryExecute(const proto::Common &message) {
+  if (!CommittedLocal(message.seqnum(), message)) return;
+
+  RDebug("Reach commit point for view #%lu seq#%lu", message.view(),
+         message.seqnum());
 }
 
 void PbftReplica::UpdateClientTable(const Request &req,

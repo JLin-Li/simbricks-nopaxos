@@ -100,7 +100,8 @@ class QuorumSet {
 template <typename SeqNumType, typename MsgType>
 class ByzantineQuorumSet {
  private:
-  std::unordered_map<SeqNumType, std::map<MsgType, std::unordered_set<int>>>
+  std::unordered_map<SeqNumType,
+                     std::unordered_map<MsgType, std::unordered_set<int>>>
       messages;
   int numRequired;
 
@@ -110,7 +111,7 @@ class ByzantineQuorumSet {
   void Clear(SeqNumType seqNum) { messages[seqNum].clear(); }
   bool CheckForQuorum(SeqNumType seqNum, const MsgType &msg) {
     // Assert((int)messages[seqNum][msg].size() <= numRequired);
-    return (int)messages[seqNum][msg].size() == numRequired;
+    return (int)messages[seqNum][msg].size() >= numRequired;
   }
   bool Add(SeqNumType seqNum, int replicaId, const MsgType &msg) {
     // is it necessary to check whether (faulty) replica sending multiple
