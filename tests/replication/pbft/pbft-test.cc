@@ -149,7 +149,8 @@ TEST(Pbft, OneOpFourServers) {
   PbftClient client(c, &transport);
 
   client.Invoke(string("test3"), ClientUpcallHandler);
-  transport.Timer(0, [&]() { transport.Stop(); });
+  // allow one retry for backups learn client address
+  transport.Timer(1100, [&]() { transport.Stop(); });
   transport.Run();
 
   EXPECT_EQ(replicaLastOp, "test3");

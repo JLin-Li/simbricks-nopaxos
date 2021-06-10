@@ -76,6 +76,8 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
       return;
     }
   }
+  clientAddressTable[msg.req().clientid()] =
+      unique_ptr<TransportAddress>(remote.clone());
 
   if (!AmPrimary()) {
     RWarning("Received Request but not primary; is primary dead?");
@@ -176,10 +178,42 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
 }
 
 void PbftReplica::TryExecute(const proto::Common &message) {
+  Assert(message.seqnum() <= log.LastOpnum());
+  if (log.Find(message.seqnum())->state == LOG_STATE_COMMITTED ||
+      log.Find(message.seqnum())->state == LOG_STATE_EXECUTED)
+    return;
+
   if (!CommittedLocal(message.seqnum(), message)) return;
 
   RDebug("Reach commit point for view #%lu seq#%lu", message.view(),
          message.seqnum());
+  log.SetStatus(message.seqnum(), LOG_STATE_COMMITTED);
+
+  opnum_t executing = message.seqnum();
+  if (executing != log.FirstOpnum() &&
+      log.Find(executing - 1)->state != LOG_STATE_EXECUTED)
+    return;
+  while (auto *entry = log.Find(executing)) {
+    Assert(entry->state != LOG_STATE_EXECUTED);
+    if (entry->state != LOG_STATE_COMMITTED) break;
+    entry->state = LOG_STATE_EXECUTED;
+
+    const Request &req = log.Find(executing)->request;
+    proto::ReplyMessage reply;
+    UpcallArg arg;
+    arg.isLeader = AmPrimary();
+    Execute(executing, log.Find(executing)->request, reply, &arg);
+    reply.set_view(view);
+    *reply.mutable_req() = req;
+    reply.set_replicaid(ReplicaId());
+    // TODO sig
+    reply.set_sig(std::string());
+    UpdateClientTable(req, reply);
+    if (clientAddressTable.count(req.clientid()))
+      transport->SendMessage(this, *clientAddressTable[req.clientid()], reply);
+
+    executing += 1;
+  }
 }
 
 void PbftReplica::UpdateClientTable(const Request &req,
