@@ -20,7 +20,7 @@ PbftClient::PbftClient(const Configuration &config, Transport *transport,
   signer.Initialize(PRIVATE_KEY);
   verifier.Initialize(PUBLIC_KEY);
 
-  view = 1;
+  view = 0;
 }
 
 PbftClient::~PbftClient() {

@@ -11,6 +11,8 @@
 #define RWarning(fmt, ...) Warning("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 
+using namespace std;
+
 namespace dsnet {
 namespace pbft {
 
@@ -30,6 +32,10 @@ PbftReplica::PbftReplica(Configuration config, int myIdx, bool initialize,
 
   signer.Initialize(PRIVATE_KEY);
   verifier.Initialize(PUBLIC_KEY);
+
+  // 1min timeout to make sure no one ever want to change view
+  viewChangeTimeout =
+      new Timeout(transport, 60 * 1000, bind(&PbftReplica::OnViewChange, this));
 }
 
 void PbftReplica::ReceiveMessage(const TransportAddress &remote,
@@ -44,10 +50,9 @@ void PbftReplica::ReceiveMessage(const TransportAddress &remote,
   }
 
   Handle(Request);
-  Handle(UnloggedRequest);
   Handle(PrePrepare);
   Handle(Prepare);
-  // Handle(Commit);
+  Handle(Commit);
 
 #undef Handle
 
@@ -74,12 +79,14 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
 
   if (!AmPrimary()) {
     RWarning("Received Request but not primary; is primary dead?");
-    // redirect to primary and start view change timer
-    NOT_IMPLEMENTED();
+    transport->SendMessageToReplica(this, configuration.GetLeaderIndex(view),
+                                    msg);
+    viewChangeTimeout->Start();
+    return;
   }
 
-  Debug("Start pre-prepare for client#%ld req#%ld", msg.req().clientid(),
-        msg.req().clientreqid());
+  RDebug("Start pre-prepare for client#%lu req#%lu", msg.req().clientid(),
+         msg.req().clientreqid());
   seqNum += 1;
   PrePrepareMessage prePrepare;
   prePrepare.mutable_common()->set_view(view);
@@ -89,17 +96,10 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   prePrepare.set_sig(std::string());
   *prePrepare.mutable_message() = msg;
 
-  AppendPreparedLog(prePrepare);
+  AcceptPrePrepare(prePrepare);
   transport->SendMessageToAll(this, prePrepare);
-}
 
-void PbftReplica::HandleUnloggedRequest(const TransportAddress &remote,
-                                        const UnloggedRequestMessage &msg) {
-  RDebug("Received unlogged request %s", (char *)msg.req().op().c_str());
-  UnloggedReplyMessage reply;
-  ExecuteUnlogged(msg.req(), reply);
-  if (!(transport->SendMessage(this, remote, reply)))
-    RWarning("Failed to send reply message");
+  TryBroadcastCommit(prePrepare.common());  // for single replica setup
 }
 
 void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
@@ -120,7 +120,7 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
 
   RDebug("Backup accept pre-prepare message for view#%ld seq#%ld", view,
          seqNum);
-  AppendPreparedLog(msg);
+  AcceptPrePrepare(msg);
   PrepareMessage prepare;
   *prepare.mutable_common() = msg.common();
   prepare.set_replicaid(ReplicaId());
@@ -132,19 +132,36 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   TryBroadcastCommit(msg.common());
 }
 
-void PbftReplica::AppendPreparedLog(proto::PrePrepareMessage message) {
-  // TODO append to log
-  acceptedPrePrepareTable[message.common().seqnum()] = message.common();
-}
-
 void PbftReplica::HandlePrepare(const TransportAddress &remote,
                                 const proto::PrepareMessage &msg) {
   prepareSet.Add(msg.common().seqnum(), msg.replicaid(), msg.common());
   TryBroadcastCommit(msg.common());
 }
 
+void PbftReplica::HandleCommit(const TransportAddress &remote,
+                               const proto::CommitMessage &msg) {
+  //
+}
+
+void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
+
+void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
+  // TODO append to log
+  acceptedPrePrepareTable[message.common().seqnum()] = message.common();
+  if (message.common().seqnum() != log.LastOpnum() + 1) {
+    // collect info of the gap, pend pre-prepare, and start state transfer
+    NOT_IMPLEMENTED();
+  }
+  log.Append(
+      LogEntry(viewstamp_t(message.common().view(), message.common().seqnum()),
+               LOG_STATE_PREPARED, message.message().req()));
+}
+
 void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
   if (!Prepared(message.seqnum(), message)) return;
+
+  RDebug("Enter commit round for view#%lu seq#%lu", message.view(),
+         message.seqnum());
 
   // TODO set a Timeout to prevent duplicated broadcast
 
@@ -154,6 +171,9 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
   // TODO sig
   commit.set_sig(std::string());
   transport->SendMessageToAll(this, commit);
+
+  commitSet.Add(message.seqnum(), ReplicaId(), message);
+  // TODO try execute for single replica setup
 }
 
 void PbftReplica::UpdateClientTable(const Request &req,

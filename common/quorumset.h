@@ -109,8 +109,7 @@ class ByzantineQuorumSet {
   void Clear() { messages.clear(); }
   void Clear(SeqNumType seqNum) { messages[seqNum].clear(); }
   bool CheckForQuorum(SeqNumType seqNum, const MsgType &msg) {
-    // should always check immediately
-    Assert((int)messages[seqNum][msg].size() <= numRequired);
+    // Assert((int)messages[seqNum][msg].size() <= numRequired);
     return (int)messages[seqNum][msg].size() == numRequired;
   }
   bool Add(SeqNumType seqNum, int replicaId, const MsgType &msg) {

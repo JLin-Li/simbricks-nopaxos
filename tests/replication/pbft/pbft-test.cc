@@ -86,7 +86,7 @@ TEST(Pbft, OneOp) {
   PbftClient client(c, &transport);
 
   client.Invoke(string("test"), ClientUpcallHandler);
-  transport.Timer(3000, [&]() { transport.Stop(); });
+  transport.Timer(0, [&]() { transport.Stop(); });
   transport.Run();
 
   EXPECT_EQ(replicaLastOp, "test");
@@ -149,7 +149,7 @@ TEST(Pbft, OneOpFourServers) {
   PbftClient client(c, &transport);
 
   client.Invoke(string("test3"), ClientUpcallHandler);
-  transport.Timer(3000, [&]() { transport.Stop(); });
+  transport.Timer(0, [&]() { transport.Stop(); });
   transport.Run();
 
   EXPECT_EQ(replicaLastOp, "test3");

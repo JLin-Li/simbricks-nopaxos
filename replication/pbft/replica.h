@@ -58,8 +58,6 @@ class PbftReplica : public Replica {
   // message handlers
   void HandleRequest(const TransportAddress &remote,
                      const proto::RequestMessage &msg);
-  void HandleUnloggedRequest(const TransportAddress &remote,
-                             const proto::UnloggedRequestMessage &msg);
   void HandlePrePrepare(const TransportAddress &remote,
                         const proto::PrePrepareMessage &msg);
   void HandlePrepare(const TransportAddress &remote,
@@ -68,14 +66,13 @@ class PbftReplica : public Replica {
                     const proto::CommitMessage &msg);
 
   // timers and timeout handlers
-  // Timeout *viewChangeTimeout;
-  // void OnViewChange();
+  Timeout *viewChangeTimeout;
+  void OnViewChange();
 
   // states and utils
-  int ReplicaId() const { return replicaIdx; }  // consistent naming to proto
-
   view_t view;
-  opnum_t seqNum;           // only primary use this
+  opnum_t seqNum;                               // only primary use this
+  int ReplicaId() const { return replicaIdx; }  // consistent naming to proto
   bool AmPrimary() const {  // following PBFT paper terminology
     return ReplicaId() == configuration.GetLeaderIndex(view);
   };
@@ -84,7 +81,7 @@ class PbftReplica : public Replica {
   // get cleared on view changing
   std::map<opnum_t, proto::Common> acceptedPrePrepareTable;
   // PREPARED state maps to pre-prepared in PBFT
-  void AppendPreparedLog(proto::PrePrepareMessage message);
+  void AcceptPrePrepare(proto::PrePrepareMessage message);
 
   static bool Match(const proto::Common &lhs, const proto::Common &rhs) {
     return lhs.SerializeAsString() == rhs.SerializeAsString();
