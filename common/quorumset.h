@@ -32,6 +32,8 @@
 #ifndef _COMMON_QUORUMSET_H_
 #define _COMMON_QUORUMSET_H_
 
+#include <google/protobuf/message.h>
+
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
@@ -98,7 +100,8 @@ class QuorumSet {
 template <typename SeqNumType, typename MsgType>
 class ByzantineQuorumSet {
  private:
-  std::unordered_map<SeqNumType, std::map<MsgType, std::unordered_set<int>>> messages;
+  std::unordered_map<SeqNumType, std::map<MsgType, std::unordered_set<int>>>
+      messages;
   int numRequired;
 
  public:
@@ -115,6 +118,23 @@ class ByzantineQuorumSet {
     // versions of one message?
     messages[seqNum][msg].insert(replicaId);
     return CheckForQuorum(seqNum, msg);
+  }
+};
+
+template <typename SeqNumType, typename MsgType>
+class ByzantineProtoQuorumSet {
+ private:
+  ByzantineQuorumSet<SeqNumType, std::string> inner;
+
+ public:
+  ByzantineProtoQuorumSet(int numRequired) : inner(numRequired) {}
+  void Clear() { inner.Clear(); };
+  void Clear(SeqNumType seqNum) { inner.Clear(seqNum); }
+  bool CheckForQuorum(SeqNumType seqNum, const MsgType &msg) {
+    return inner.CheckForQuorum(seqNum, msg.SerializeAsString());
+  }
+  bool Add(SeqNumType seqNum, int replicaId, const MsgType &msg) {
+    return inner.Add(seqNum, replicaId, msg.SerializeAsString());
   }
 };
 

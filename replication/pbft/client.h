@@ -37,7 +37,6 @@ class PbftClient : public Client {
     std::string request;
     std::uint64_t clientreqid;
     continuation_t continuation;
-    // in each group the result is the same
     ByzantineQuorumSet<std::uint64_t, std::string> replySet;
     PendingRequest(string request, uint64_t clientreqid,
                    continuation_t continuation, int numRequired)
@@ -50,13 +49,14 @@ class PbftClient : public Client {
   uint64_t lastReqId;
   PendingRequest *pendingRequest;
   Timeout *requestTimeout;
+  view_t view;
 
   void HandleReply(const TransportAddress &remote,
                    const proto::ReplyMessage &msg);
   // void HandleUnloggedReply(const TransportAddress &remote,
   //                          const proto::UnloggedReplyMessage &msg);
 
-  void SendRequest();
+  void SendRequest(bool broadcast = false);
   void ResendRequest();
 };
 

@@ -86,21 +86,12 @@ class PbftReplica : public Replica {
   // PREPARED state maps to pre-prepared in PBFT
   void AppendPreparedLog(proto::PrePrepareMessage message);
 
-  // transparent proto::Common wrapper to help use it in quorum sets
-  struct CommonAsKey {
-    proto::Common common;
-    // implicit intented
-    CommonAsKey(const proto::Common &common) : common(common) {}
-    bool operator<(const CommonAsKey &other) const {
-      return common.SerializeAsString() < other.common.SerializeAsString();
-    }
-  };
   static bool Match(const proto::Common &lhs, const proto::Common &rhs) {
     return lhs.SerializeAsString() == rhs.SerializeAsString();
   }
 
   // get cleared on view changing
-  ByzantineQuorumSet<opnum_t, CommonAsKey> prepareSet, commitSet;
+  ByzantineProtoQuorumSet<opnum_t, proto::Common> prepareSet, commitSet;
   // prepared(m, v, n, i) where v(view) and i(replica index) should
   // be fixed for each calling
   // theoretically this verb could use const this, but underlying CheckForQuorum

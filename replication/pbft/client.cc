@@ -19,6 +19,8 @@ PbftClient::PbftClient(const Configuration &config, Transport *transport,
 
   signer.Initialize(PRIVATE_KEY);
   verifier.Initialize(PUBLIC_KEY);
+
+  view = 1;
 }
 
 PbftClient::~PbftClient() {
@@ -38,7 +40,7 @@ void PbftClient::Invoke(const string &request, continuation_t continuation) {
   SendRequest();
 }
 
-void PbftClient::SendRequest() {
+void PbftClient::SendRequest(bool broadcast) {
   proto::RequestMessage reqMsg;
   reqMsg.mutable_req()->set_op(pendingRequest->request);
   reqMsg.mutable_req()->set_clientid(clientid);
@@ -47,15 +49,16 @@ void PbftClient::SendRequest() {
   // TODO sig
   reqMsg.set_sig(std::string());
 
-  // TODO
-  // transport->SendMessageToReplica(this, 0, reqMsg);
-  transport->SendMessageToAll(this, reqMsg);
+  if (broadcast)
+    transport->SendMessageToAll(this, reqMsg);
+  else
+    transport->SendMessageToReplica(this, config.GetLeaderIndex(view), reqMsg);
   requestTimeout->Reset();
 }
 
 void PbftClient::ResendRequest() {
   Warning("Timeout, resending request for req id %lu", lastReqId);
-  SendRequest();
+  SendRequest(true);
 }
 
 void PbftClient::InvokeUnlogged(int replicaIdx, const string &request,
@@ -93,7 +96,7 @@ void PbftClient::HandleReply(const TransportAddress &remote,
 
   Debug("Client received reply");
   if (!pendingRequest->replySet.Add(msg.req().clientreqid(), msg.replicaid(),
-                                    msg.SerializeAsString())) {
+                                    msg.reply())) {
     return;
   }
 
@@ -103,6 +106,8 @@ void PbftClient::HandleReply(const TransportAddress &remote,
   pendingRequest = nullptr;
   req->continuation(req->request, msg.reply());
   delete req;
+
+  view = msg.view();
 }
 
 }  // namespace pbft
