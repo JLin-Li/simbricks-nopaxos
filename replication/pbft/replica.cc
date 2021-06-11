@@ -61,6 +61,8 @@ void PbftReplica::ReceiveMessage(const TransportAddress &remote,
 
 void PbftReplica::HandleRequest(const TransportAddress &remote,
                                 const RequestMessage &msg) {
+  clientAddressTable[msg.req().clientid()] =
+      unique_ptr<TransportAddress>(remote.clone());
   auto kv = clientTable.find(msg.req().clientid());
   if (kv != clientTable.end()) {
     const ClientTableEntry &entry = kv->second;
@@ -76,8 +78,6 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
       return;
     }
   }
-  clientAddressTable[msg.req().clientid()] =
-      unique_ptr<TransportAddress>(remote.clone());
 
   if (!AmPrimary()) {
     RWarning("Received Request but not primary; is primary dead?");
