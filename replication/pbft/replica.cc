@@ -39,25 +39,29 @@ PbftReplica::PbftReplica(Configuration config, int myIdx, bool initialize,
       new Timeout(transport, 60 * 1000, bind(&PbftReplica::OnViewChange, this));
 }
 
-void PbftReplica::ReceiveMessage(const TransportAddress &remote,
-                                 const string &type, const string &data,
-                                 void *meta_data) {
-#define Handle(MessageType)                       \
-  static proto::MessageType##Message MessageType; \
-  if (type == MessageType.GetTypeName()) {        \
-    MessageType.ParseFromString(data);            \
-    Handle##MessageType(remote, MessageType);     \
-    return;                                       \
-  }
+void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
+                                 size_t size) {
+  static ToReplicaMessage replica_msg;
+  static PBMessage m(replica_msg);
 
-  Handle(Request);
-  Handle(PrePrepare);
-  Handle(Prepare);
-  Handle(Commit);
+  m.Parse(buf, size);
+
+  switch (replica_msg.msg_case()) {
+#define Handle(MessageType, message)                    \
+  case ToReplicaMessage::MsgCase::k##MessageType:       \
+    Handle##MessageType(remote, replica_msg.message()); \
+    break;
+
+    Handle(Request, request);
+    Handle(PrePrepare, pre_prepare);
+    Handle(Prepare, prepare);
+    Handle(Commit, commit);
 
 #undef Handle
-
-  RPanic("Received unexpected message type in pbft proto: %s", type.c_str());
+    default:
+      RPanic("Received unexpected message type in pbft proto: %u",
+             replica_msg.msg_case());
+  }
 }
 
 void PbftReplica::HandleRequest(const TransportAddress &remote,
@@ -82,8 +86,10 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
 
   if (!AmPrimary()) {
     RWarning("Received Request but not primary; is primary dead?");
+    ToReplicaMessage m;
+    *m.mutable_request() = msg;
     transport->SendMessageToReplica(this, configuration.GetLeaderIndex(view),
-                                    msg);
+                                    PBMessage(m));
     viewChangeTimeout->Start();
     return;
   }
@@ -91,7 +97,8 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   RDebug("Start pre-prepare for client#%lu req#%lu", msg.req().clientid(),
          msg.req().clientreqid());
   seqNum += 1;
-  PrePrepareMessage prePrepare;
+  ToReplicaMessage m;
+  PrePrepareMessage &prePrepare = *m.mutable_pre_prepare();
   prePrepare.mutable_common()->set_view(view);
   prePrepare.mutable_common()->set_seqnum(seqNum);
   // TODO digest and sig
@@ -100,7 +107,7 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   *prePrepare.mutable_message() = msg;
 
   AcceptPrePrepare(prePrepare);
-  transport->SendMessageToAll(this, prePrepare);
+  transport->SendMessageToAll(this, PBMessage(m));
 
   TryBroadcastCommit(prePrepare.common());  // for single replica setup
 }
@@ -123,12 +130,13 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
 
   RDebug("Enter PREPARE round for view#%ld seq#%ld", view, seqNum);
   AcceptPrePrepare(msg);
-  PrepareMessage prepare;
+  ToReplicaMessage m;
+  PrepareMessage &prepare = *m.mutable_prepare();
   *prepare.mutable_common() = msg.common();
   prepare.set_replicaid(ReplicaId());
   // TODO sig
   prepare.set_sig(std::string());
-  transport->SendMessageToAll(this, prepare);
+  transport->SendMessageToAll(this, PBMessage(m));
 
   prepareSet.Add(seqNum, ReplicaId(), msg.common());
   TryBroadcastCommit(msg.common());
@@ -154,9 +162,9 @@ void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
     // collect info of the gap, pend pre-prepare, and start state transfer
     NOT_IMPLEMENTED();
   }
-  log.Append(
-      LogEntry(viewstamp_t(message.common().view(), message.common().seqnum()),
-               LOG_STATE_PREPARED, message.message().req()));
+  log.Append(new LogEntry(
+      viewstamp_t(message.common().view(), message.common().seqnum()),
+      LOG_STATE_PREPARED, message.message().req()));
 }
 
 void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
@@ -167,12 +175,13 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
 
   // TODO set a Timeout to prevent duplicated broadcast
 
-  CommitMessage commit;
+  ToReplicaMessage m;
+  CommitMessage &commit = *m.mutable_commit();
   *commit.mutable_common() = message;
   commit.set_replicaid(ReplicaId());
   // TODO sig
   commit.set_sig(std::string());
-  transport->SendMessageToAll(this, commit);
+  transport->SendMessageToAll(this, PBMessage(m));
 
   commitSet.Add(message.seqnum(), ReplicaId(), message);
   TryExecute(message);  // for single replica setup
@@ -200,7 +209,8 @@ void PbftReplica::TryExecute(const proto::Common &message) {
     entry->state = LOG_STATE_EXECUTED;
 
     const Request &req = log.Find(executing)->request;
-    proto::ReplyMessage reply;
+    ToClientMessage m;
+    proto::ReplyMessage &reply = *m.mutable_reply();
     UpcallArg arg;
     arg.isLeader = AmPrimary();
     Execute(executing, log.Find(executing)->request, reply, &arg);
@@ -209,9 +219,10 @@ void PbftReplica::TryExecute(const proto::Common &message) {
     reply.set_replicaid(ReplicaId());
     // TODO sig
     reply.set_sig(std::string());
-    UpdateClientTable(req, reply);
+    UpdateClientTable(req, m);
     if (clientAddressTable.count(req.clientid()))
-      transport->SendMessage(this, *clientAddressTable[req.clientid()], reply);
+      transport->SendMessage(this, *clientAddressTable[req.clientid()],
+                             PBMessage(m));
 
     executing += 1;
   }

@@ -28,6 +28,9 @@ message ToReplicaMessage {
     oneof msg {
         RequestMessage request = 1;
         UnloggedRequestMessage unlogged_request = 2;
+        PrePrepareMessage pre_prepare = 3;
+        PrepareMessage prepare = 4;
+        CommitMessage commit = 5;
     }
 }
 

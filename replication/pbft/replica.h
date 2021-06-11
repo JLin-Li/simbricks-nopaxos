@@ -47,8 +47,8 @@ class PbftReplica : public Replica {
  public:
   PbftReplica(Configuration config, int myIdx, bool initialize,
               Transport *transport, AppReplica *app);
-  void ReceiveMessage(const TransportAddress &remote,
-                      void *buf, size_t size) override;
+  void ReceiveMessage(const TransportAddress &remote, void *buf,
+                      size_t size) override;
 
  private:
   // fundamental
@@ -112,7 +112,8 @@ class PbftReplica : public Replica {
   std::map<uint64_t, ClientTableEntry> clientTable;
   std::unordered_map<uint64_t, std::unique_ptr<TransportAddress>>
       clientAddressTable;
-  void UpdateClientTable(const Request &req, const proto::ReplyMessage &reply);
+  void UpdateClientTable(const Request &req,
+                         const proto::ToClientMessage &reply);
 
   static bool Match(const proto::Common &lhs, const proto::Common &rhs) {
     return lhs.SerializeAsString() == rhs.SerializeAsString();
