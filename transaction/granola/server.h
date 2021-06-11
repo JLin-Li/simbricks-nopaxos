@@ -96,7 +96,7 @@ class GranolaLog : public Log
 {
 public:
     GranolaLog();
-    virtual LogEntry & Append(const LogEntry &entry) override;
+    virtual LogEntry & Append(LogEntry *entry) override;
     LogEntry * Find(const std::pair<uint64_t, uint64_t> &reqid);
 
 private:
@@ -111,8 +111,7 @@ public:
     ~GranolaServer();
 
     void ReceiveMessage(const TransportAddress &remote,
-                        const std::string &type, const std::string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
     void SetMode(bool locking) { this->locking = locking; }
 
@@ -132,9 +131,9 @@ private:
     std::map<uint64_t, std::unique_ptr<TransportAddress> > clientAddresses;
     struct ClientTableEntry
     {
-	uint64_t lastReqId;
+        uint64_t lastReqId;
         bool replied;
-	proto::ReplyMessage reply;
+        proto::ReplyMessage reply;
     };
     std::map<uint64_t, ClientTableEntry> clientTable;
 

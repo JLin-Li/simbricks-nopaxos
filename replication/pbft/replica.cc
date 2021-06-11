@@ -1,5 +1,6 @@
 #include "replication/pbft/replica.h"
 
+#include "common/pbmessage.h"
 #include "common/replica.h"
 #include "lib/message.h"
 #include "lib/rsakeys.h"
@@ -65,15 +66,15 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
       unique_ptr<TransportAddress>(remote.clone());
   auto kv = clientTable.find(msg.req().clientid());
   if (kv != clientTable.end()) {
-    const ClientTableEntry &entry = kv->second;
+    ClientTableEntry &entry = kv->second;
     if (msg.req().clientreqid() < entry.lastReqId) {
       RNotice("Ignoring stale request");
       return;
     }
     if (msg.req().clientreqid() == entry.lastReqId) {
-      RNotice("Received duplicate request; resending reply");
-      if (!(transport->SendMessage(this, remote, entry.reply))) {
-        RWarning("Failed to resend reply to client");
+      Notice("Received duplicate request; resending reply");
+      if (!(transport->SendMessage(this, remote, PBMessage(entry.reply)))) {
+        Warning("Failed to resend reply to client");
       }
       return;
     }
@@ -217,7 +218,7 @@ void PbftReplica::TryExecute(const proto::Common &message) {
 }
 
 void PbftReplica::UpdateClientTable(const Request &req,
-                                    const proto::ReplyMessage &reply) {
+                                    const ToClientMessage &reply) {
   ClientTableEntry &entry = clientTable[req.clientid()];
   ASSERT(entry.lastReqId <= req.clientreqid());
 

@@ -57,8 +57,7 @@ public:
     ~SpecReplica();
 
     void ReceiveMessage(const TransportAddress &remote,
-                        const string &type, const string &data,
-                        void *meta_data);
+                        void *buf, size_t size);
 
 public:                     // XXX public for unit testing
     Log log;

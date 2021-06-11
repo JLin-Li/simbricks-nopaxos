@@ -4,10 +4,6 @@ import "common/request.proto";
 
 package dsnet.spec.proto;
 
-message RequestMessage {
-    required dsnet.Request req = 1;
-}
-
 message SpeculativeReplyMessage {
     required uint64 clientreqid = 1;
     required uint32 replicaidx = 2;
@@ -18,12 +14,23 @@ message SpeculativeReplyMessage {
     required bool committed = 7;
 }
 
-message UnloggedRequestMessage {
-    required dsnet.UnloggedRequest req = 1;
-}
-
 message UnloggedReplyMessage {
     required bytes reply = 1;
+}
+
+message ToClientMessage {
+    oneof msg {
+        SpeculativeReplyMessage reply = 1;
+        UnloggedReplyMessage unlogged_reply = 2;
+    }
+}
+
+message RequestMessage {
+    required dsnet.Request req = 1;
+}
+
+message UnloggedRequestMessage {
+    required dsnet.UnloggedRequest req = 1;
 }
 
 message SyncMessage {
@@ -84,4 +91,20 @@ message FillLogGapMessage {
 message FillDVCGapMessage {
     required uint64 view = 1;
     required uint64 lastCommitted = 2;
+}
+
+message ToReplicaMessage {
+    oneof msg {
+        RequestMessage request = 1;
+        UnloggedRequestMessage unlogged_request = 2;
+        SyncMessage sync = 3;
+        SyncReplyMessage sync_reply = 4;
+        RequestViewChangeMessage request_view_change = 5;
+        StartViewChangeMessage start_view_change = 6;
+        DoViewChangeMessage do_view_change = 7;
+        StartViewMessage start_view = 8;
+        InViewMessage in_view = 9;
+        FillLogGapMessage fill_log_gap = 10;
+        FillDVCGapMessage fill_dvc_gap = 11;
+    }
 }

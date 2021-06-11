@@ -29,6 +29,7 @@
  **********************************************************************/
 
 #include "transaction/eris/client.h"
+#include "transaction/eris/message.h"
 
 namespace dsnet {
 namespace transaction {
@@ -38,12 +39,13 @@ using namespace proto;
 using namespace std;
 
 ErisClient::ErisClient(const Configuration &config,
+                       const ReplicaAddress &addr,
                        Transport *transport,
                        uint64_t clientid)
-    : Client(config, transport, clientid)
+    : Client(config, addr, transport, clientid)
 {
     this->txnid = (this->clientid / 10000) * 10000;
-    this->pendingRequest = NULL;
+    this->pendingRequest = nullptr;
     this->lastReqId = 0;
     this->requestTimeout = new Timeout(this->transport, 100, [this]() {
         Warning("Client timeout; resending request");
@@ -64,7 +66,7 @@ ErisClient::Invoke(const std::map<shardnum_t, std::string> &requests,
                    void *arg)
 {
     ASSERT(arg != nullptr);
-    if (this->pendingRequest != NULL) {
+    if (this->pendingRequest != nullptr) {
         Panic("Client only supports one pending request");
     }
 
@@ -89,10 +91,11 @@ ErisClient::InvokeTxn(const map<shardnum_t, string> &requests,
                       g_continuation_t continuation,
                       RequestType txn_type)
 {
-    ASSERT(this->pendingRequest == NULL);
-    RequestMessage requestMessage;
-    Request request;
-    std::vector<int> shards;
+    ASSERT(this->pendingRequest == nullptr);
+    ToServerMessage m;
+    RequestMessage *requestMessage = m.mutable_request();
+    Request *request = requestMessage->mutable_request();
+    std::vector<int> groups;
 
     for (auto kv : this->replySet) {
         delete kv.second;
@@ -106,15 +109,16 @@ ErisClient::InvokeTxn(const map<shardnum_t, string> &requests,
         txn_type == proto::INDEPENDENT) {
         ++this->txnid;
     }
-    requestMessage.set_txnid(this->txnid);
-    requestMessage.set_type(txn_type);
+    requestMessage->set_txnid(this->txnid);
+    requestMessage->set_type(txn_type);
 
-    request.set_clientid(this->clientid);
-    request.set_clientreqid(this->lastReqId);
+    request->set_clientid(this->clientid);
+    request->set_clientreqid(this->lastReqId);
     // Set request op to empty string. Replica when receives
     // request will look for the corresponding ShardOp and set
     // op accordingly.
-    request.set_op(std::string());
+    request->set_op(std::string());
+    request->set_clientaddr(myAddress->Serialize());
     for (const auto &kv : requests) {
         dsnet::ShardOp shard_op;
         shard_op.set_shard(kv.first);
@@ -127,15 +131,14 @@ ErisClient::InvokeTxn(const map<shardnum_t, string> &requests,
         } else {
             shard_op.set_op("");
         }
-        *(request.add_ops()) = shard_op;
-        shards.push_back(kv.first);
+        *(request->add_ops()) = shard_op;
+        groups.push_back(kv.first);
         this->replySet[kv.first] = new QuorumSet<opnum_t, ReplyMessage>(config.QuorumSize());
     }
-    *(requestMessage.mutable_request()) = request;
 
-    this->pendingRequest = new PendingRequest(requestMessage, this->lastReqId,
+    this->pendingRequest = new PendingRequest(m, this->lastReqId,
                                               txn_type, requests, replies,
-                                              shards, continuation);
+                                              groups, continuation);
 
     SendRequest();
 }
@@ -158,25 +161,20 @@ ErisClient::InvokeUnlogged(int replicaIdx, const string &request,
 
 void
 ErisClient::ReceiveMessage(const TransportAddress &remote,
-                           const string &type,
-                           const string &data,
-                           void *meta_data)
+                           void *buf, size_t size)
 {
     static proto::ReplyMessage reply;
+    static ErisMessage m(reply);
 
-    if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, meta_data);
-    }
+    m.Parse(buf, size);
+    HandleReply(remote, reply);
 }
 
 void
 ErisClient::HandleReply(const TransportAddress &remote,
                         const proto::ReplyMessage &msg)
 {
-    if (this->pendingRequest == NULL) {
+    if (this->pendingRequest == nullptr) {
         Debug("Received reply when no request was pending");
         return;
     }
@@ -282,7 +280,13 @@ ErisClient::CompleteOperation(bool commit)
 void
 ErisClient::SendRequest()
 {
-    this->transport->OrderedMulticast(this, this->pendingRequest->shards, this->pendingRequest->request_msg);
+    ErisMessage m(this->pendingRequest->msg, this->pendingRequest->groups);
+
+    if (config.NumSequencers() > 0) {
+        transport->SendMessageToSequencer(this, 0, m);
+    } else {
+        transport->SendMessageToMulticast(this, m);
+    }
 
     this->requestTimeout->Reset();
 }

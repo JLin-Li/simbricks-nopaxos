@@ -4,12 +4,6 @@ import "common/request.proto";
 
 package dsnet.nopaxos.proto;
 
-message RequestMessage {
-  required uint64 sessnum = 1;
-  required uint64 msgnum = 2;
-  required dsnet.Request req = 3;
-}
-
 message ReplyMessage {
   required uint64 view = 1;
   required uint64 sessnum = 2;
@@ -19,12 +13,25 @@ message ReplyMessage {
   optional bytes reply = 6;
 }
 
-message UnloggedRequestMessage {
-  required dsnet.UnloggedRequest req = 1;
-}
-
 message UnloggedReplyMessage {
   required bytes reply = 1;
+}
+
+message ToClientMessage {
+    oneof msg {
+        ReplyMessage reply = 1;
+        UnloggedReplyMessage unlogged_reply = 2;
+    }
+}
+
+message RequestMessage {
+  required uint64 sessnum = 1;
+  required uint64 msgnum = 2;
+  required dsnet.Request req = 3;
+}
+
+message UnloggedRequestMessage {
+  required dsnet.UnloggedRequest req = 1;
 }
 
 message GapRequestMessage {
@@ -124,4 +131,25 @@ message SyncCommitMessage {
     required uint64 sessnum = 1;
     required uint64 view = 2;
     required uint64 syncpoint = 3;
+}
+
+message ToReplicaMessage {
+    oneof msg {
+        RequestMessage request = 1;
+        UnloggedRequestMessage unlogged_request = 2;
+        GapRequestMessage gap_request = 3;
+        GapReplyMessage gap_reply = 4;
+        StateTransferRequestMessage state_transfer_request = 5;
+        StateTransferReplyMessage state_transfer_reply = 6;
+        GapCommitMessage gap_commit = 7;
+        GapCommitReplyMessage gap_commit_reply = 8;
+        ViewChangeRequestMessage view_change_request = 9;
+        ViewChangeMessage view_change = 10;
+        StartViewMessage start_view = 11;
+        StartViewReplyMessage start_view_reply = 12;
+        SyncPrepareRequestMessage sync_prepare_request = 13;
+        SyncPrepareMessage sync_prepare = 14;
+        SyncPrepareReplyMessage sync_prepare_reply = 15;
+        SyncCommitMessage sync_commit = 16;
+    }
 }

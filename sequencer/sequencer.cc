@@ -1,81 +1,86 @@
 #include <fstream>
+#include <cstring>
 
 #include "lib/message.h"
 #include "lib/udptransport.h"
 #include "sequencer/sequencer.h"
 
+#include "replication/nopaxos/sequencer.h"
+#include "transaction/eris/sequencer.h"
+
 namespace dsnet {
 
-const uint32_t NONFRAG_MAGIC = 0x20050318;
+BufferMessage::BufferMessage(const void *buf, size_t size)
+    : buf_(buf), size_(size) { }
 
-Sequencer::Sequencer(const Configuration &config, Transport *transport, SeqId id)
-    : config_(config), transport_(transport), seq_id_(id)
+BufferMessage::~BufferMessage() { }
+
+std::string
+BufferMessage::Type() const
 {
-    if (config.NumSequencers() <= (int)id) {
-        Panic("Address for sequencer %lu not properly configured", id);
+    return std::string("Buffer Message");
+}
+
+size_t
+BufferMessage::SerializedSize() const
+{
+    return size_;
+}
+void
+BufferMessage::Parse(const void *buf, size_t size) { }
+
+
+void
+BufferMessage::Serialize(void *buf) const
+{
+    memcpy(buf, buf_, size_);
+}
+
+Sequencer::Sequencer(const Configuration &config, Transport *transport, int id)
+    : config_(config), transport_(transport)
+{
+    if (config.NumSequencers() <= id) {
+        Panic("Address for sequencer %d not properly configured", id);
     }
     transport_->RegisterAddress(this, config, &config.sequencer(id));
 }
 
 Sequencer::~Sequencer() { }
 
-TransportReceiver::ReceiveMode
-Sequencer::GetReceiveMode()
-{
-    return TransportReceiver::ReceiveMode::kReceiveBuffer;
-}
-
-void
-Sequencer::ReceiveBuffer(const TransportAddress &remote, void *buf, size_t len)
-{
-    uint8_t *ptr = (uint8_t *)buf;
-    size_t ngroups;
-
-    if (*(uint32_t *)ptr != NONFRAG_MAGIC) {
-        return;
-    }
-    ptr += sizeof(uint32_t) + sizeof(uint32_t);
-
-    // Source address
-    std::string src_addr = remote.Serialize();
-    memcpy(ptr, src_addr.data(), src_addr.size());
-    ptr += src_addr.size();
-
-    // Session number
-    *(SeqId *)ptr = htobe64(seq_id_);
-    ptr += sizeof(SeqId);
-
-    // Multi-stamp
-    ngroups = ntohl(*(uint32_t *)ptr);
-    ptr += sizeof(uint32_t);
-    for (size_t i = 0; i < ngroups; i++) {
-        GroupId groupid = ntohl(*(GroupId *)ptr);
-        ptr += sizeof(GroupId);
-        *(SeqNum *)ptr = htobe64(Increment(groupid));
-        ptr += sizeof(SeqNum);
-    }
-
-    transport_->SendBufferToAll(this, buf, len);
-}
-
-SeqNum
-Sequencer::Increment(GroupId id) {
-    if (seq_nums_.find(id) == seq_nums_.end()) {
-        seq_nums_.insert(std::make_pair(id, 0));
-    }
-    return ++seq_nums_[id];
-}
-
 } // namespace dsnet
+
+static void
+Usage(const char *name)
+{
+    fprintf(stderr, "usage: %s -c conf-file -m nopaxos\n", name);
+    exit(1);
+}
 
 int main(int argc, char *argv[]) {
     const char *config_path = nullptr;
+    dsnet::Sequencer *sequencer = nullptr;
     int opt;
 
-    while ((opt = getopt(argc, argv, "c:")) != -1) {
+    enum {
+        PROTO_UNKNOWN,
+        PROTO_NOPAXOS,
+        PROTO_ERIS
+    } proto = PROTO_UNKNOWN;
+
+    while ((opt = getopt(argc, argv, "c:m:")) != -1) {
         switch (opt) {
         case 'c':
             config_path = optarg;
+            break;
+
+        case 'm':
+            if (strcasecmp(optarg, "nopaxos") == 0) {
+                proto = PROTO_NOPAXOS;
+            } else if (strcasecmp(optarg, "eris") == 0) {
+                proto = PROTO_ERIS;
+            } else {
+                Panic("Unknown sequencer mode '%s'", optarg);
+            }
             break;
 
         default:
@@ -85,7 +90,13 @@ int main(int argc, char *argv[]) {
     }
 
     if (config_path == nullptr) {
-        Panic("option -c is required\n");
+        fprintf(stderr, "option -c is required\n");
+        Usage(argv[0]);
+    }
+
+    if (proto == PROTO_UNKNOWN) {
+        fprintf(stderr, "option -m is required\n");
+        Usage(argv[0]);
     }
 
     std::ifstream config_stream(config_path);
@@ -95,8 +106,18 @@ int main(int argc, char *argv[]) {
 
     dsnet::Configuration config(config_stream);
     dsnet::UDPTransport transport;
-    dsnet::Sequencer sequencer(config, &transport, 0);
+    switch (proto) {
+        case PROTO_NOPAXOS:
+            sequencer = new dsnet::nopaxos::NOPaxosSequencer(config, &transport, 0);
+            break;
+        case PROTO_ERIS:
+            sequencer = new dsnet::transaction::eris::ErisSequencer(config, &transport, 0);
+            break;
+        default:
+            NOT_REACHABLE();
+    }
     transport.Run();
+    delete sequencer;
 
     return 0;
 }

@@ -29,6 +29,7 @@
  **********************************************************************/
 
 #include "common/replica.h"
+#include "common/pbmessage.h"
 #include "replication/fastpaxos/replica.h"
 
 #include "lib/assert.h"
@@ -111,12 +112,13 @@ FastPaxosReplica::CommitUpTo(opnum_t upto)
 
         /* Execute it */
         RDebug("Executing request " FMT_OPNUM, lastCommitted);
-        ReplyMessage reply;
-        Execute(lastCommitted, entry->request, reply);
+        ToClientMessage m;
+        ReplyMessage *reply = m.mutable_reply();
+        Execute(lastCommitted, entry->request, *reply);
 
-        reply.set_view(entry->viewstamp.view);
-        reply.set_opnum(entry->viewstamp.opnum);
-        reply.set_clientreqid(entry->request.clientreqid());
+        reply->set_view(entry->viewstamp.view);
+        reply->set_opnum(entry->viewstamp.opnum);
+        reply->set_clientreqid(entry->request.clientreqid());
 
         /* Mark it as committed */
         log.SetStatus(lastCommitted, LOG_STATE_COMMITTED);
@@ -127,7 +129,7 @@ FastPaxosReplica::CommitUpTo(opnum_t upto)
         if (cte.lastReqId <= entry->request.clientreqid()) {
             cte.lastReqId = entry->request.clientreqid();
             cte.replied = true;
-            cte.reply = reply;
+            cte.reply = m;
         } else {
             // We've subsequently prepared another operation from the
             // same client. So this request must have been completed
@@ -138,7 +140,7 @@ FastPaxosReplica::CommitUpTo(opnum_t upto)
         /* Send reply */
         auto iter = clientAddresses.find(entry->request.clientid());
         if (iter != clientAddresses.end()) {
-            transport->SendMessage(this, *iter->second, reply);
+            transport->SendMessage(this, *iter->second, PBMessage(m));
         }
     }
 
@@ -165,19 +167,20 @@ FastPaxosReplica::SendPrepareOKs(opnum_t oldLastOp)
         ASSERT(entry->state == LOG_STATE_PREPARED);
         UpdateClientTable(entry->request);
 
-        PrepareOKMessage reply;
-        reply.set_view(view);
-        reply.set_opnum(i);
-        reply.set_replicaidx(this->replicaIdx);
-        reply.set_slowpath(1);
-        *(reply.mutable_req()) = entry->request;
+        ToReplicaMessage m;
+        PrepareOKMessage *reply = m.mutable_prepare_ok();
+        reply->set_view(view);
+        reply->set_opnum(i);
+        reply->set_replicaidx(this->replicaIdx);
+        reply->set_slowpath(1);
+        *(reply->mutable_req()) = entry->request;
 
         RDebug("Sending PREPAREOK " FMT_VIEWSTAMP " for new uncommitted operation",
-               reply.view(), reply.opnum());
+               reply->view(), reply->opnum());
 
         if (!(transport->SendMessageToReplica(this,
                                               configuration.GetLeaderIndex(view),
-                                              reply))) {
+                                              PBMessage(m)))) {
             RWarning("Failed to send PrepareOK message to leader");
         }
     }
@@ -186,9 +189,10 @@ FastPaxosReplica::SendPrepareOKs(opnum_t oldLastOp)
 void
 FastPaxosReplica::RequestStateTransfer()
 {
-    RequestStateTransferMessage m;
-    m.set_view(view);
-    m.set_opnum(lastCommitted);
+    ToReplicaMessage m;
+    RequestStateTransferMessage *r = m.mutable_request_state_transfer();
+    r->set_view(view);
+    r->set_opnum(lastCommitted);
 
     if ((lastRequestStateTransferOpnum != 0) &&
         (lastRequestStateTransferView == view) &&
@@ -203,7 +207,7 @@ FastPaxosReplica::RequestStateTransfer()
     this->lastRequestStateTransferView = view;
     this->lastRequestStateTransferOpnum = lastCommitted;
 
-    if (!transport->SendMessageToAll(this, m)) {
+    if (!transport->SendMessageToAll(this, PBMessage(m))) {
         RWarning("Failed to send RequestStateTransfer message to all replicas");
     }
 }
@@ -243,48 +247,46 @@ FastPaxosReplica::ResendPrepare()
     }
     RNotice("Resending prepare");
     resendPrepareTimeout->Reset();
-    if (!(transport->SendMessageToAll(this, lastPrepare))) {
+    if (!(transport->SendMessageToAll(this, PBMessage(lastPrepare)))) {
         RWarning("Failed to ressend prepare message to all replicas");
     }
 }
 
 void
 FastPaxosReplica::ReceiveMessage(const TransportAddress &remote,
-                                 const string &type, const string &data,
-                                 void *meta_data)
+                                 void *buf, size_t size)
 {
-    static RequestMessage request;
-    static UnloggedRequestMessage unloggedRequest;
-    static PrepareMessage prepare;
-    static PrepareOKMessage prepareOK;
-    static CommitMessage commit;
-    static RequestStateTransferMessage requestStateTransfer;
-    static StateTransferMessage stateTransfer;
 
-    if (type == request.GetTypeName()) {
-        request.ParseFromString(data);
-        HandleRequest(remote, request);
-    } else if (type == unloggedRequest.GetTypeName()) {
-        unloggedRequest.ParseFromString(data);
-        HandleUnloggedRequest(remote, unloggedRequest);
-    } else if (type == prepare.GetTypeName()) {
-        prepare.ParseFromString(data);
-        HandlePrepare(remote, prepare);
-    } else if (type == prepareOK.GetTypeName()) {
-        prepareOK.ParseFromString(data);
-        HandlePrepareOK(remote, prepareOK);
-    } else if (type == commit.GetTypeName()) {
-        commit.ParseFromString(data);
-        HandleCommit(remote, commit);
-    } else if (type == requestStateTransfer.GetTypeName()) {
-        requestStateTransfer.ParseFromString(data);
-        HandleRequestStateTransfer(remote, requestStateTransfer);
-    } else if (type == stateTransfer.GetTypeName()) {
-        stateTransfer.ParseFromString(data);
-        HandleStateTransfer(remote, stateTransfer);
-    } else {
-        RPanic("Received unexpected message type in FastPaxos proto: %s",
-               type.c_str());
+    static ToReplicaMessage replica_msg;
+    static PBMessage m(replica_msg);
+
+    m.Parse(buf, size);
+
+    switch (replica_msg.msg_case()) {
+        case ToReplicaMessage::MsgCase::kRequest:
+            HandleRequest(remote, replica_msg.request());
+            break;
+        case ToReplicaMessage::MsgCase::kUnloggedRequest:
+            HandleUnloggedRequest(remote, replica_msg.unlogged_request());
+            break;
+        case ToReplicaMessage::MsgCase::kPrepare:
+            HandlePrepare(remote, replica_msg.prepare());
+            break;
+        case ToReplicaMessage::MsgCase::kPrepareOk:
+            HandlePrepareOK(remote, replica_msg.prepare_ok());
+            break;
+        case ToReplicaMessage::MsgCase::kCommit:
+            HandleCommit(remote, replica_msg.commit());
+            break;
+        case ToReplicaMessage::MsgCase::kRequestStateTransfer:
+            HandleRequestStateTransfer(remote,
+                    replica_msg.request_state_transfer());
+            break;
+        case ToReplicaMessage::MsgCase::kStateTransfer:
+            HandleStateTransfer(remote, replica_msg.state_transfer());
+            break;
+        default:
+            RPanic("Received unexpected message type: %u", replica_msg.msg_case());
     }
 }
 
@@ -309,7 +311,7 @@ FastPaxosReplica::HandleRequest(const TransportAddress &remote,
     // Check the client table to see if this is a duplicate request
     auto kv = clientTable.find(msg.req().clientid());
     if (kv != clientTable.end()) {
-        const ClientTableEntry &entry = kv->second;
+        ClientTableEntry &entry = kv->second;
         if (msg.req().clientreqid() < entry.lastReqId) {
             RNotice("Ignoring stale request");
             return;
@@ -322,7 +324,7 @@ FastPaxosReplica::HandleRequest(const TransportAddress &remote,
             if (entry.replied) {
                 RNotice("Received duplicate request; resending reply");
                 if (!(transport->SendMessage(this, remote,
-                                             entry.reply))) {
+                                             PBMessage(entry.reply)))) {
                     RWarning("Failed to resend reply to client");
                 }
                 return;
@@ -352,15 +354,16 @@ FastPaxosReplica::HandleRequest(const TransportAddress &remote,
     RDebug("Received REQUEST, assigning " FMT_VIEWSTAMP, VA_VIEWSTAMP(v));
 
     /* Add the request to my log */
-    log.Append(LogEntry(v, LOG_STATE_PREPARED, msg.req()));
+    log.Append(new LogEntry(v, LOG_STATE_PREPARED, msg.req()));
 
     if (AmLeader()) {
         /* Prepare a prepare message */
-        PrepareMessage p;
-        p.set_view(v.view);
-        p.set_opnum(v.opnum);
-        *(p.mutable_req()) = msg.req();
-        lastPrepare = p;
+        ToReplicaMessage m;
+        PrepareMessage *p = m.mutable_prepare();
+        p->set_view(v.view);
+        p->set_opnum(v.opnum);
+        *(p->mutable_req()) = msg.req();
+        lastPrepare = m;
 
         // ...but don't actually send it, as an optimization. We'll
         // only send it if the timeout fires or we get a conflicting
@@ -380,16 +383,17 @@ FastPaxosReplica::HandleRequest(const TransportAddress &remote,
 
     } else {
         // Send fast-path prepareOK message to leader
-        PrepareOKMessage pok;
-        pok.set_view(v.view);
-        pok.set_opnum(v.opnum);
-        *(pok.mutable_req()) = msg.req();
-        pok.set_replicaidx(this->replicaIdx);
-        pok.set_slowpath(0);
+        ToReplicaMessage m;
+        PrepareOKMessage *pok = m.mutable_prepare_ok();
+        pok->set_view(v.view);
+        pok->set_opnum(v.opnum);
+        *(pok->mutable_req()) = msg.req();
+        pok->set_replicaidx(this->replicaIdx);
+        pok->set_slowpath(0);
 
         if (!(transport->SendMessageToReplica(this,
                                               configuration.GetLeaderIndex(view),
-                                              pok))) {
+                                              PBMessage(m)))) {
             RWarning("Failed to send fast-path PrepareOK message to leader");
         }
     }
@@ -406,13 +410,14 @@ FastPaxosReplica::HandleUnloggedRequest(const TransportAddress &remote,
         return;
     }
 
-    UnloggedReplyMessage reply;
+    ToClientMessage m;
+    UnloggedReplyMessage *reply = m.mutable_unlogged_reply();
 
     Debug("Received unlogged request %s", (char *)msg.req().op().c_str());
 
-    ExecuteUnlogged(msg.req(), reply);
+    ExecuteUnlogged(msg.req(), *reply);
 
-    if (!(transport->SendMessage(this, remote, reply)))
+    if (!(transport->SendMessage(this, remote, PBMessage(m))))
         Warning("Failed to send reply message");
 }
 
@@ -445,15 +450,16 @@ FastPaxosReplica::HandlePrepare(const TransportAddress &remote,
     if (msg.opnum() <= this->lastSlowPath) {
         RDebug("Ignoring PREPARE; already prepared that operation");
         // Resend the prepareOK message
-        PrepareOKMessage reply;
-        reply.set_view(msg.view());
-        reply.set_opnum(msg.opnum());
-        reply.set_replicaidx(this->replicaIdx);
-        reply.set_slowpath(1);
-        *(reply.mutable_req()) = msg.req();
+        ToReplicaMessage m;
+        PrepareOKMessage *reply = m.mutable_prepare_ok();
+        reply->set_view(msg.view());
+        reply->set_opnum(msg.opnum());
+        reply->set_replicaidx(this->replicaIdx);
+        reply->set_slowpath(1);
+        *(reply->mutable_req()) = msg.req();
         if (!(transport->SendMessageToReplica(this,
                                               configuration.GetLeaderIndex(view),
-                                              reply))) {
+                                              PBMessage(m)))) {
             RWarning("Failed to send PrepareOK message to leader");
         }
         return;
@@ -470,7 +476,7 @@ FastPaxosReplica::HandlePrepare(const TransportAddress &remote,
         ASSERT(msg.opnum() == lastFastPath+1);
         ++lastFastPath;
         ++lastSlowPath;
-        log.Append(LogEntry(viewstamp_t(msg.view(), msg.opnum()),
+        log.Append(new LogEntry(viewstamp_t(msg.view(), msg.opnum()),
                    LOG_STATE_PREPARED, msg.req()));
     } else {
         ASSERT(msg.opnum() == lastSlowPath+1);
@@ -484,16 +490,17 @@ FastPaxosReplica::HandlePrepare(const TransportAddress &remote,
     UpdateClientTable(msg.req());
 
     /* Build reply and send it to the leader */
-    PrepareOKMessage reply;
-    reply.set_view(msg.view());
-    reply.set_opnum(msg.opnum());
-    reply.set_replicaidx(this->replicaIdx);
-    reply.set_slowpath(1);
-    *(reply.mutable_req()) = msg.req();
+    ToReplicaMessage m;
+    PrepareOKMessage *reply = m.mutable_prepare_ok();
+    reply->set_view(msg.view());
+    reply->set_opnum(msg.opnum());
+    reply->set_replicaidx(this->replicaIdx);
+    reply->set_slowpath(1);
+    *(reply->mutable_req()) = msg.req();
 
     if (!(transport->SendMessageToReplica(this,
                                           configuration.GetLeaderIndex(view),
-                                          reply))) {
+                                          PBMessage(m)))) {
         RWarning("Failed to send PrepareOK message to leader");
     }
 }
@@ -593,12 +600,13 @@ FastPaxosReplica::HandlePrepareOK(const TransportAddress &remote,
          * This can be done asynchronously, so it really ought to be
          * piggybacked on the next PREPARE or something.
          */
-        CommitMessage cm;
-        cm.set_view(view);
-        cm.set_opnum(lastCommitted);
-        *(cm.mutable_req()) = entry->request;
+        ToReplicaMessage m;
+        CommitMessage *cm = m.mutable_commit();
+        cm->set_view(view);
+        cm->set_opnum(lastCommitted);
+        *(cm->mutable_req()) = entry->request;
 
-        if (!(transport->SendMessageToAll(this, cm))) {
+        if (!(transport->SendMessageToAll(this, PBMessage(m)))) {
             RWarning("Failed to send COMMIT message to all replicas");
         }
     }
@@ -682,15 +690,16 @@ FastPaxosReplica::HandleRequestStateTransfer(const TransportAddress &remote,
             FMT_VIEWSTAMP,
             msg.view(), msg.opnum(), view, lastCommitted);
 
-    StateTransferMessage reply;
-    reply.set_view(view);
-    reply.set_opnum(lastCommitted);
-    reply.set_lastop(lastSlowPath);
+    ToReplicaMessage m;
+    StateTransferMessage *reply = m.mutable_state_transfer();
+    reply->set_view(view);
+    reply->set_opnum(lastCommitted);
+    reply->set_lastop(lastSlowPath);
     ASSERT(lastSlowPath == lastFastPath);
 
-    log.Dump(msg.opnum()+1, reply.mutable_entries());
+    log.Dump(msg.opnum()+1, reply->mutable_entries());
 
-    transport->SendMessage(this, remote, reply);
+    transport->SendMessage(this, remote, PBMessage(m));
 }
 
 void
@@ -740,7 +749,7 @@ FastPaxosReplica::HandleStateTransfer(const TransportAddress &remote,
                 oldLastSlowPath = lastSlowPath;
 
                 viewstamp_t vs = { newEntry.view(), newEntry.opnum() };
-                log.Append(LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
+                log.Append(new LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
             }
         } else if (newEntry.opnum() <= lastFastPath) {
             // This is a new slow-path operation, but we already have
@@ -757,7 +766,7 @@ FastPaxosReplica::HandleStateTransfer(const TransportAddress &remote,
             lastSlowPath++;
             lastFastPath++;
             viewstamp_t vs = { newEntry.view(), newEntry.opnum() };
-            log.Append(LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
+            log.Append(new LogEntry(vs, LOG_STATE_PREPARED, newEntry.request()));
         }
     }
 

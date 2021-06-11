@@ -61,11 +61,8 @@ public:
     ~TapirServer();
 
     void ReceiveMessage(const TransportAddress &remote,
-                        const std::string &type, const std::string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
-    void HandleMessage(const TransportAddress &remote,
-                       const std::string &type, const std::string &data);
     void HandleProposeInconsistent(const TransportAddress &remote,
                                    const proto::ProposeInconsistentMessage &msg);
     void HandleFinalizeInconsistent(const TransportAddress &remote,

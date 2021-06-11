@@ -28,6 +28,7 @@
  *
  **********************************************************************/
 
+#include "common/pbmessage.h"
 #include "transaction/unreplicated/client.h"
 
 namespace dsnet {
@@ -38,9 +39,10 @@ using namespace std;
 using namespace proto;
 
 UnreplicatedClient::UnreplicatedClient(const Configuration &config,
+                                       const ReplicaAddress &addr,
                                        Transport *transport,
                                        uint64_t clientid)
-    : Client(config, transport, clientid),
+    : Client(config, addr, transport, clientid),
     replySet(1)
 {
     this->txnid = (this->clientid / 10000) * 10000;
@@ -121,18 +123,13 @@ UnreplicatedClient::InvokeUnlogged(int replicaIdx, const string &request,
 
 void
 UnreplicatedClient::ReceiveMessage(const TransportAddress &remote,
-                                   const string &type,
-                                   const string &data,
-                                   void *meta_data)
+                                   void *buf, size_t size)
 {
     static proto::ReplyMessage reply;
+    static PBMessage m(reply);
 
-    if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, meta_data);
-    }
+    m.Parse(buf, size);
+    HandleReply(remote, reply);
 }
 
 void
@@ -212,7 +209,7 @@ UnreplicatedClient::SendRequest()
         *(msg.mutable_request()) = request;
         if (!this->transport->SendMessageToGroup(this,
                                                  kv.first,
-                                                 msg)) {
+                                                 PBMessage(msg))) {
             Warning("Failed to send request to group %u", kv.first);
         }
     }

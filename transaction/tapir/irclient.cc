@@ -30,8 +30,10 @@
  *
  **********************************************************************/
 
-#include "transaction/tapir/irclient.h"
 #include <math.h>
+
+#include "common/pbmessage.h"
+#include "transaction/tapir/irclient.h"
 
 namespace dsnet {
 namespace transaction {
@@ -41,10 +43,11 @@ using namespace std;
 using namespace proto;
 
 IRClient::IRClient(const Configuration &config,
+                   const ReplicaAddress &addr,
                    Transport *transport,
                    shardnum_t shard,
                    uint64_t clientid)
-    : Client(config, transport, clientid),
+    : Client(config, addr, transport, clientid),
       myShard(shard),
       view(0),
       lastReqId(0),
@@ -168,12 +171,13 @@ void
 IRClient::SendInconsistent(const PendingInconsistentRequest *req)
 {
 
-    proto::ProposeInconsistentMessage reqMsg;
-    reqMsg.mutable_req()->set_op(req->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(req->clientReqId);
+    proto::ToServerMessage m;
+    proto::ProposeInconsistentMessage *propose = m.mutable_propose_inconsistent();
+    propose->mutable_req()->set_op(req->request);
+    propose->mutable_req()->set_clientid(clientid);
+    propose->mutable_req()->set_clientreqid(req->clientReqId);
 
-    if (transport->SendMessageToGroup(this, this->myShard, reqMsg)) {
+    if (transport->SendMessageToGroup(this, this->myShard, PBMessage(m))) {
         req->timer->Reset();
     } else {
         Warning("Could not send inconsistent request to replicas");
@@ -202,17 +206,18 @@ IRClient::InvokeConsensus(const string &request,
 				    config.QuorumSize() + ceil(0.5 * config.QuorumSize()),
 				    decide);
 
-    proto::ProposeConsensusMessage reqMsg;
-    reqMsg.mutable_req()->set_op(request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(reqId);
+    proto::ToServerMessage m;
+    proto::ProposeConsensusMessage *propose = m.mutable_propose_consensus();
+    propose->mutable_req()->set_op(request);
+    propose->mutable_req()->set_clientid(clientid);
+    propose->mutable_req()->set_clientreqid(reqId);
 
-    if (transport->SendMessageToGroup(this, this->myShard, reqMsg)) {
+    if (transport->SendMessageToGroup(this, this->myShard, PBMessage(m))) {
         req->timer->Start();
-	pendingReqs[reqId] = req;
+        pendingReqs[reqId] = req;
     } else {
         Warning("Could not send consensus request to replicas");
-	delete req;
+        delete req;
     }
 }
 
@@ -238,11 +243,12 @@ IRClient::ConsensusSlowPath(const uint64_t reqId)
     req->timer = new Timeout(transport, 50, [this, reqId, req]() {
         // In case less than majority replicas received
         // the operation, resend the request too.
-        proto::ProposeConsensusMessage reqMsg;
-        reqMsg.mutable_req()->set_op(req->request);
-        reqMsg.mutable_req()->set_clientid(this->clientid);
-        reqMsg.mutable_req()->set_clientreqid(req->clientReqId);
-        if (!transport->SendMessageToGroup(this, this->myShard, reqMsg)) {
+        proto::ToServerMessage m;
+        proto::ProposeConsensusMessage *propose = m.mutable_propose_consensus();
+        propose->mutable_req()->set_op(req->request);
+        propose->mutable_req()->set_clientid(this->clientid);
+        propose->mutable_req()->set_clientreqid(req->clientReqId);
+        if (!transport->SendMessageToGroup(this, this->myShard, PBMessage(m))) {
             Warning("Could not send consensus request to replicas");
         }
         ResendConfirmation(reqId, true);
@@ -269,17 +275,18 @@ IRClient::ConsensusSlowPath(const uint64_t reqId)
     req->decideResult = result;
 
     // Send finalize message
-    proto::FinalizeConsensusMessage response;
-    response.mutable_opid()->set_clientid(clientid);
-    response.mutable_opid()->set_clientreqid(req->clientReqId);
-    response.set_result(result);
+    proto::ToServerMessage m;
+    proto::FinalizeConsensusMessage *finalize = m.mutable_finalize_consensus();
+    finalize->mutable_opid()->set_clientid(clientid);
+    finalize->mutable_opid()->set_clientreqid(req->clientReqId);
+    finalize->set_result(result);
 
-    if(transport->SendMessageToGroup(this, this->myShard, response)) {
+    if (transport->SendMessageToGroup(this, this->myShard, PBMessage(m))) {
         req->timer->Start();
     } else {
         Warning("Could not send finalize message to replicas");
-	pendingReqs.erase(reqId);
-	delete req;
+        pendingReqs.erase(reqId);
+        delete req;
     }
 }
 
@@ -292,63 +299,64 @@ IRClient::ResendConfirmation(const uint64_t reqId, bool isConsensus)
     }
 
     if (isConsensus) {
-	PendingConsensusRequest *req = static_cast<PendingConsensusRequest *>(pendingReqs[reqId]);
-	ASSERT(req != NULL);
+        PendingConsensusRequest *req = static_cast<PendingConsensusRequest *>(pendingReqs[reqId]);
+        ASSERT(req != NULL);
 
-        proto::FinalizeConsensusMessage response;
-        response.mutable_opid()->set_clientid(clientid);
-        response.mutable_opid()->set_clientreqid(req->clientReqId);
-        response.set_result(req->decideResult);
+        proto::ToServerMessage m;
+        proto::FinalizeConsensusMessage *finalize = m.mutable_finalize_consensus();
+        finalize->mutable_opid()->set_clientid(clientid);
+        finalize->mutable_opid()->set_clientreqid(req->clientReqId);
+        finalize->set_result(req->decideResult);
 
-        if(transport->SendMessageToGroup(this, this->myShard, response)) {
+        if (transport->SendMessageToGroup(this, this->myShard, PBMessage(m))) {
             req->timer->Reset();
         } else {
             Warning("Could not send finalize message to replicas");
-	    // give up and clean up
-	    pendingReqs.erase(reqId);
-	    delete req;
+            // give up and clean up
+            pendingReqs.erase(reqId);
+            delete req;
         }
     } else {
-	PendingInconsistentRequest *req = static_cast<PendingInconsistentRequest *>(pendingReqs[reqId]);
-	ASSERT(req != NULL);
+        PendingInconsistentRequest *req = static_cast<PendingInconsistentRequest *>(pendingReqs[reqId]);
+        ASSERT(req != NULL);
 
-	proto::FinalizeInconsistentMessage response;
-        response.mutable_opid()->set_clientid(clientid);
-        response.mutable_opid()->set_clientreqid(req->clientReqId);
+        proto::ToServerMessage m;
+        proto::FinalizeInconsistentMessage *finalize = m.mutable_finalize_inconsistent();
+        finalize->mutable_opid()->set_clientid(clientid);
+        finalize->mutable_opid()->set_clientreqid(req->clientReqId);
 
-        if (transport->SendMessageToGroup(this, this->myShard, response)) {
-	    req->timer->Reset();
-	} else {
+        if (transport->SendMessageToGroup(this, this->myShard, PBMessage(m))) {
+            req->timer->Reset();
+        } else {
             Warning("Could not send finalize message to replicas");
-	    pendingReqs.erase(reqId);
-	    delete req;
+            pendingReqs.erase(reqId);
+            delete req;
         }
-
     }
-
 }
 
 void
 IRClient::ReceiveMessage(const TransportAddress &remote,
-                         const string &type,
-                         const string &data,
-                         void *meta_data)
+                         void *buf, size_t size)
 {
-    proto::ReplyInconsistentMessage replyInconsistent;
-    proto::ReplyConsensusMessage replyConsensus;
-    proto::ConfirmMessage confirm;
+    static proto::ToClientMessage reply;
+    static PBMessage m(reply);
 
-    if (type == replyInconsistent.GetTypeName()) {
-        replyInconsistent.ParseFromString(data);
-        HandleInconsistentReply(remote, replyInconsistent);
-    } else if (type == replyConsensus.GetTypeName()) {
-        replyConsensus.ParseFromString(data);
-        HandleConsensusReply(remote, replyConsensus);
-    } else if (type == confirm.GetTypeName()) {
-        confirm.ParseFromString(data);
-        HandleConfirm(remote, confirm);
-    } else {
-        Client::ReceiveMessage(remote, type, data, meta_data);
+    m.Parse(buf, size);
+
+    switch (reply.msg_case()) {
+        case ToClientMessage::MsgCase::kInconsistentReply:
+            HandleInconsistentReply(remote, reply.inconsistent_reply());
+            break;
+        case ToClientMessage::MsgCase::kConsensusReply:
+            HandleConsensusReply(remote, reply.consensus_reply());
+            break;
+        case ToClientMessage::MsgCase::kConfirm:
+            HandleConfirm(remote, reply.confirm());
+            break;
+        default:
+            Panic("Message type not set or not handled");
+            break;
     }
 }
 
@@ -381,13 +389,14 @@ IRClient::HandleInconsistentReply(const TransportAddress &remote,
             delete req->timer;
             req->timer = new Timeout(transport, 50, [this, reqId]() {
                     ResendConfirmation(reqId, false);
-                });
+            });
 
             // asynchronously send the finalize message
-            proto::FinalizeInconsistentMessage response;
-            *(response.mutable_opid()) = msg.opid();
+            proto::ToServerMessage m;
+            proto::FinalizeInconsistentMessage *finalize = m.mutable_finalize_inconsistent();
+            *(finalize->mutable_opid()) = msg.opid();
 
-            if (transport->SendMessageToGroup(this, this->myShard, response)) {
+            if (transport->SendMessageToGroup(this, this->myShard, PBMessage(m))) {
                 req->timer->Start();
             } else {
                 Warning("Could not send finalize message to replicas");
@@ -442,13 +451,14 @@ IRClient::HandleConsensusReply(const TransportAddress &remote,
                             });
 
                 // asynchronously send the finalize message
-                proto::FinalizeConsensusMessage response;
-                *response.mutable_opid() = msg.opid();
-                response.set_result(result.first);
+                proto::ToServerMessage m;
+                proto::FinalizeConsensusMessage *finalize = m.mutable_finalize_consensus();
+                *finalize->mutable_opid() = msg.opid();
+                finalize->set_result(result.first);
 
                 req->decideResult = result.first;
 
-                if(transport->SendMessageToGroup(this, this->myShard, response)) {
+                if (transport->SendMessageToGroup(this, this->myShard, PBMessage(m))) {
                     // Start the timer
                     req->timer->Start();
                 } else {

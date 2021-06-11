@@ -54,8 +54,7 @@ public:
     ~VRReplica();
 
     void ReceiveMessage(const TransportAddress &remote,
-                        const string &type, const string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
 private:
     view_t view;
@@ -66,7 +65,7 @@ private:
     uint64_t recoveryNonce;
     std::list<std::pair<TransportAddress *,
                         proto::PrepareMessage> > pendingPrepares;
-    proto::PrepareMessage lastPrepare;
+    proto::ToReplicaMessage lastPrepare;
     int batchSize;
     opnum_t lastBatchEnd;
     bool batchComplete;
@@ -77,7 +76,7 @@ private:
     {
         uint64_t lastReqId;
         bool replied;
-        proto::ReplyMessage reply;
+        proto::ToClientMessage reply;
     };
     std::map<uint64_t, ClientTableEntry> clientTable;
 

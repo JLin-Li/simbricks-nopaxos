@@ -6,26 +6,32 @@
 
 namespace dsnet {
 
-typedef uint64_t SeqId;
-typedef uint32_t GroupId;
-typedef uint64_t SeqNum;
+typedef uint16_t SessNum;
+typedef uint64_t MsgNum;
+
+class BufferMessage : public Message {
+public:
+    BufferMessage(const void *buf, size_t size);
+    ~BufferMessage();
+
+    virtual std::string Type() const override;
+    virtual size_t SerializedSize() const override;
+    virtual void Parse(const void *buf, size_t size) override;
+    virtual void Serialize(void *buf) const override;
+
+private:
+    const void *buf_;
+    size_t size_;
+};
 
 class Sequencer : public TransportReceiver {
 public:
-    Sequencer(const Configuration &config, Transport *transport, SeqId id);
-    ~Sequencer();
+    Sequencer(const Configuration &config, Transport *transport, int id);
+    virtual ~Sequencer();
 
-    virtual ReceiveMode GetReceiveMode() override;
-    virtual void ReceiveBuffer(const TransportAddress &remote,
-                               void *buf, size_t len) override;
-
-private:
-    SeqNum Increment(GroupId id);
-
+protected:
     const Configuration &config_;
     Transport *transport_;
-    std::map<GroupId, SeqNum> seq_nums_;
-    SeqId seq_id_;
 };
 
 } // namespace dsnet

@@ -30,6 +30,7 @@
  *
  **********************************************************************/
 
+#include "common/pbmessage.h"
 #include "transaction/tapir/server.h"
 
 #define RDebug(fmt, ...) Debug("[%d, %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
@@ -53,36 +54,29 @@ TapirServer::~TapirServer() { }
 
 void
 TapirServer::ReceiveMessage(const TransportAddress &remote,
-                            const string &type, const string &data,
-                            void *meta_data)
+                            void *buf, size_t size)
 {
-    HandleMessage(remote, type, data);
-}
+    static ToServerMessage server_msg;
+    static PBMessage m(server_msg);
 
-void
-TapirServer::HandleMessage(const TransportAddress &remote,
-                           const string &type, const string &data)
-{
-    ProposeInconsistentMessage proposeInconsistent;
-    FinalizeInconsistentMessage finalizeInconsistent;
-    ProposeConsensusMessage proposeConsensus;
-    FinalizeConsensusMessage finalizeConsensus;
+    m.Parse(buf, size);
 
-    if (type == proposeInconsistent.GetTypeName()) {
-        proposeInconsistent.ParseFromString(data);
-        HandleProposeInconsistent(remote, proposeInconsistent);
-    } else if (type == finalizeInconsistent.GetTypeName()) {
-        finalizeInconsistent.ParseFromString(data);
-        HandleFinalizeInconsistent(remote, finalizeInconsistent);
-    } else if (type == proposeConsensus.GetTypeName()) {
-        proposeConsensus.ParseFromString(data);
-        HandleProposeConsensus(remote, proposeConsensus);
-    } else if (type == finalizeConsensus.GetTypeName()) {
-        finalizeConsensus.ParseFromString(data);
-        HandleFinalizeConsensus(remote, finalizeConsensus);
-    } else {
-        Panic("Received unexpected message type in IR proto: %s",
-              type.c_str());
+    switch (server_msg.msg_case()) {
+        case ToServerMessage::MsgCase::kProposeInconsistent:
+            HandleProposeInconsistent(remote, server_msg.propose_inconsistent());
+            break;
+        case ToServerMessage::MsgCase::kFinalizeInconsistent:
+            HandleFinalizeInconsistent(remote, server_msg.finalize_inconsistent());
+            break;
+        case ToServerMessage::MsgCase::kProposeConsensus:
+            HandleProposeConsensus(remote, server_msg.propose_consensus());
+            break;
+        case ToServerMessage::MsgCase::kFinalizeConsensus:
+            HandleFinalizeConsensus(remote, server_msg.finalize_consensus());
+            break;
+        default:
+            Panic("Received unexpected message type %u",
+                    server_msg.msg_case());
     }
 }
 
@@ -99,26 +93,27 @@ TapirServer::HandleProposeInconsistent(const TransportAddress &remote,
 
     // Check record if we've already handled this request
     RecordEntry *entry = record.Find(opid);
-    ReplyInconsistentMessage reply;
+    ToClientMessage m;
+    ReplyInconsistentMessage *reply = m.mutable_inconsistent_reply();
     if (entry != NULL) {
         // If we already have this op in our record, then just return it
-        reply.set_view(entry->view);
-        reply.set_replicaidx(this->replicaIdx);
-        reply.mutable_opid()->set_clientid(clientid);
-        reply.mutable_opid()->set_clientreqid(clientreqid);
+        reply->set_view(entry->view);
+        reply->set_replicaidx(this->replicaIdx);
+        reply->mutable_opid()->set_clientid(clientid);
+        reply->mutable_opid()->set_clientreqid(clientreqid);
     } else {
         // Otherwise, put it in our record as tentative
         record.Add(view, opid, msg.req(), RECORD_STATE_TENTATIVE);
 
         // 3. Return Reply
-        reply.set_view(view);
-        reply.set_replicaidx(this->replicaIdx);
-        reply.mutable_opid()->set_clientid(clientid);
-        reply.mutable_opid()->set_clientreqid(clientreqid);
+        reply->set_view(view);
+        reply->set_replicaidx(this->replicaIdx);
+        reply->mutable_opid()->set_clientid(clientid);
+        reply->mutable_opid()->set_clientreqid(clientreqid);
     }
 
     // Send the reply
-    transport->SendMessage(this, remote, reply);
+    transport->SendMessage(this, remote, PBMessage(m));
 
 }
 
@@ -156,12 +151,13 @@ TapirServer::HandleFinalizeInconsistent(const TransportAddress &remote,
         ASSERT(ret.commit);
 
         // Send the reply
-        ConfirmMessage reply;
-        reply.set_view(view);
-        reply.set_replicaidx(this->replicaIdx);
-        *reply.mutable_opid() = msg.opid();
+        ToClientMessage m;
+        ConfirmMessage *reply = m.mutable_confirm();
+        reply->set_view(view);
+        reply->set_replicaidx(this->replicaIdx);
+        *reply->mutable_opid() = msg.opid();
 
-        transport->SendMessage(this, remote, reply);
+        transport->SendMessage(this, remote, PBMessage(m));
     } else {
         // Ignore?
     }
@@ -180,14 +176,15 @@ TapirServer::HandleProposeConsensus(const TransportAddress &remote,
 
     // Check record if we've already handled this request
     RecordEntry *entry = record.Find(opid);
-    ReplyConsensusMessage reply;
+    ToClientMessage m;
+    ReplyConsensusMessage *reply = m.mutable_consensus_reply();
     if (entry != NULL) {
         // If we already have this op in our record, then just return it
-        reply.set_view(entry->view);
-        reply.set_replicaidx(this->replicaIdx);
-        reply.mutable_opid()->set_clientid(clientid);
-        reply.mutable_opid()->set_clientreqid(clientreqid);
-        reply.set_result(entry->result);
+        reply->set_view(entry->view);
+        reply->set_replicaidx(this->replicaIdx);
+        reply->mutable_opid()->set_clientid(clientid);
+        reply->mutable_opid()->set_clientreqid(clientreqid);
+        reply->set_result(entry->result);
     } else {
         // Execute op
         Transaction t;
@@ -213,15 +210,15 @@ TapirServer::HandleProposeConsensus(const TransportAddress &remote,
 
 
         // 3. Return Reply
-        reply.set_view(view);
-        reply.set_replicaidx(this->replicaIdx);
-        reply.mutable_opid()->set_clientid(clientid);
-        reply.mutable_opid()->set_clientreqid(clientreqid);
-        reply.set_result(s);
+        reply->set_view(view);
+        reply->set_replicaidx(this->replicaIdx);
+        reply->mutable_opid()->set_clientid(clientid);
+        reply->mutable_opid()->set_clientreqid(clientreqid);
+        reply->set_result(s);
     }
 
     // Send the reply
-    transport->SendMessage(this, remote, reply);
+    transport->SendMessage(this, remote, PBMessage(m));
 }
 
 void
@@ -247,12 +244,13 @@ TapirServer::HandleFinalizeConsensus(const TransportAddress &remote,
         }
 
         // Send the reply
-        ConfirmMessage reply;
-        reply.set_view(view);
-        reply.set_replicaidx(this->replicaIdx);
-        *reply.mutable_opid() = msg.opid();
+        ToClientMessage m;
+        ConfirmMessage *reply = m.mutable_confirm();
+        reply->set_view(view);
+        reply->set_replicaidx(this->replicaIdx);
+        *reply->mutable_opid() = msg.opid();
 
-        if (!transport->SendMessage(this, remote, reply)) {
+        if (!transport->SendMessage(this, remote, PBMessage(m))) {
             Warning("Failed to send reply message");
         }
     } else {

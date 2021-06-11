@@ -49,7 +49,8 @@ KVClient::KVClient(TxnClient *txn_client,
 	: txnClient(txn_client), nshards(nshards), transport(nullptr), protoClient(nullptr) { }
 
 // Used by YCSB
-KVClient::KVClient(string configPath, int nshards, int mode)
+KVClient::KVClient(const string configPath, const ReplicaAddress &addr,
+                   int nshards, int mode)
     : nshards(nshards)
 {
     ifstream configStream(configPath);
@@ -61,19 +62,22 @@ KVClient::KVClient(string configPath, int nshards, int mode)
     this->transport = new UDPTransport();
     switch (mode) {
     case 1: {
-        this->protoClient = new eris::ErisClient(config, this->transport);
+        this->protoClient = new eris::ErisClient(config, addr, this->transport);
         break;
     }
     case 2: {
-        this->protoClient = new granola::GranolaClient(config, this->transport);
+        this->protoClient = new granola::GranolaClient(config, addr, this->transport);
         break;
     }
     case 3: {
-        this->protoClient = new transaction::unreplicated::UnreplicatedClient(config, this->transport);
+        this->protoClient =
+            new transaction::unreplicated::UnreplicatedClient(config,
+                                                              addr,
+                                                              this->transport);
         break;
     }
     case 4: {
-        this->protoClient = new spanner::SpannerClient(config, this->transport);
+        this->protoClient = new spanner::SpannerClient(config, addr, this->transport);
         break;
     }
     case 5: {
@@ -84,7 +88,7 @@ KVClient::KVClient(string configPath, int nshards, int mode)
     }
 
     if (mode == 5) {
-        this->txnClient = new tapir::TapirClient(config, this->transport);
+        this->txnClient = new tapir::TapirClient(config, addr, this->transport);
     } else {
         this->txnClient = new TxnClientCommon(transport, this->protoClient);
     }

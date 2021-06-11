@@ -14,6 +14,7 @@ message Request {
      required uint64 clientreqid = 3;
      repeated ShardOp ops = 4;
      optional uint64 sessnum = 5;
+     optional bytes clientaddr = 6;
 }
 
 message UnloggedRequest {

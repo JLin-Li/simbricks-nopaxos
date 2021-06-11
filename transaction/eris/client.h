@@ -47,6 +47,7 @@ class ErisClient : public Client
 {
 public:
     ErisClient(const Configuration &config,
+               const ReplicaAddress &addr,
                Transport *transport,
                uint64_t clientid = 0);
     ~ErisClient();
@@ -59,9 +60,7 @@ public:
 			timeout_continuation_t timeoutContinuation = nullptr,
 			uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
     void ReceiveMessage(const TransportAddress &remote,
-			const string &type,
-			const string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 
     void Invoke(const std::map<shardnum_t, std::string> &requests,
 		g_continuation_t continuation,
@@ -70,25 +69,25 @@ public:
 private:
     struct PendingRequest
     {
-        proto::RequestMessage request_msg;
+        proto::ToServerMessage msg;
         opnum_t client_req_id;
         proto::RequestType txn_type;
         bool commit;
         std::map<shardnum_t, std::string> requests;
         std::map<shardnum_t, std::string> replies;
         std::map<shardnum_t, bool> has_replies;
-        std::vector<int> shards;
+        std::vector<int> groups;
         g_continuation_t continuation;
-        inline PendingRequest(const proto::RequestMessage &request_msg,
+        inline PendingRequest(const proto::ToServerMessage &msg,
                 opnum_t client_req_id,
                 proto::RequestType txn_type,
                 const std::map<shardnum_t, std::string> &requests,
                 const std::map<shardnum_t, std::string> &replies,
-                const std::vector<int> &shards,
+                const std::vector<int> &groups,
                 g_continuation_t continuation)
-            : request_msg(request_msg), client_req_id(client_req_id),
+            : msg(msg), client_req_id(client_req_id),
             txn_type(txn_type), commit(true), requests(requests),
-            replies(replies), shards(shards), continuation(continuation) {
+            replies(replies), groups(groups), continuation(continuation) {
                 for (const auto &kv : replies) {
                     has_replies[kv.first] = false;
                 }

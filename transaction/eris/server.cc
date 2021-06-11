@@ -61,7 +61,9 @@ ErisServer::ErisServer(const Configuration &config, int myShard, int myIdx,
     this->lastCommittedOp = 0;
     this->lastExecutedOp = 0;
 
-    this->fcorClient = new dsnet::vr::VRClient(fcorConfig, transport);
+    ReplicaAddress fcor_addr = config.replica(myShard, myIdx);
+    fcor_addr.port = string("0");
+    this->fcorClient = new dsnet::vr::VRClient(fcorConfig, fcor_addr, transport);
     InitShardMsgNum();
 
     this->gapRequestTimeout = new Timeout(transport,
@@ -154,6 +156,8 @@ ErisServer::ErisServer(const Configuration &config, int myShard, int myIdx,
     } else {
         this->leaderSyncHeardTimeout->Start();
     }
+
+    client_addr_ = myAddress->clone();
 }
 
 ErisServer::~ErisServer()
@@ -171,93 +175,72 @@ ErisServer::~ErisServer()
     delete this->epochChangeAckTimeout;
     delete this->ecStateTransferTimeout;
     delete this->ecStateTransferAckTimeout;
+    delete client_addr_;
 }
 
 void
 ErisServer::ReceiveMessage(const TransportAddress &remote,
-                           const string &type, const string &data,
-                           void *meta_data)
+                           void *buf, size_t size)
 {
-    static RequestMessage requestMessage;
-    static GapRequestMessage gapRequestMessage;
-    static GapReplyMessage gapReplyMessage;
-    static FCToErisMessage fcToErisMessage;
-    static SyncPrepareMessage syncPrepareMessage;
-    static ViewChangeRequestMessage viewChangeRequestMessage;
-    static ViewChangeMessage viewChangeMessage;
-    static StartViewMessage startViewMessage;
-    static StateTransferRequestMessage stateTransferRequestMessage;
-    static StateTransferReplyMessage stateTransferReplyMessage;
-    static EpochChangeStateTransferRequest epochChangeStateTransferRequest;
-    static EpochChangeStateTransferReply epochChangeStateTransferReply;
+    static ToServerMessage server_msg;
+    static ErisMessage m(server_msg);
 
-    if (type == requestMessage.GetTypeName()) {
-        requestMessage.ParseFromString(data);
-        HandleClientRequest(remote, requestMessage, *(multistamp_t *)meta_data);
-    } else if (type == gapRequestMessage.GetTypeName()) {
-        gapRequestMessage.ParseFromString(data);
-        HandleGapRequest(remote, gapRequestMessage);
-    } else if (type == gapReplyMessage.GetTypeName()) {
-        gapReplyMessage.ParseFromString(data);
-        HandleGapReply(remote, gapReplyMessage);
-    } else if (type == fcToErisMessage.GetTypeName()) {
-        fcToErisMessage.ParseFromString(data);
-        HandleFCToErisMessage(remote, fcToErisMessage);
-    } else if (type == syncPrepareMessage.GetTypeName()) {
-        syncPrepareMessage.ParseFromString(data);
-        HandleSyncPrepare(remote, syncPrepareMessage);
-    } else if (type == viewChangeRequestMessage.GetTypeName()) {
-        viewChangeRequestMessage.ParseFromString(data);
-        HandleViewChangeRequest(remote, viewChangeRequestMessage);
-    } else if (type == viewChangeMessage.GetTypeName()) {
-        viewChangeMessage.ParseFromString(data);
-        HandleViewChange(remote, viewChangeMessage);
-    } else if (type == startViewMessage.GetTypeName()) {
-        startViewMessage.ParseFromString(data);
-        HandleStartView(remote, startViewMessage);
-    } else if (type == stateTransferRequestMessage.GetTypeName()) {
-        stateTransferRequestMessage.ParseFromString(data);
-        HandleStateTransferRequest(remote, stateTransferRequestMessage);
-    } else if (type == stateTransferReplyMessage.GetTypeName()) {
-        stateTransferReplyMessage.ParseFromString(data);
-        HandleStateTransferReply(remote, stateTransferReplyMessage);
-    } else if (type == epochChangeStateTransferRequest.GetTypeName()) {
-        epochChangeStateTransferRequest.ParseFromString(data);
-        HandleEpochChangeStateTransferRequest(remote, epochChangeStateTransferRequest);
-    } else if (type == epochChangeStateTransferReply.GetTypeName()) {
-        epochChangeStateTransferReply.ParseFromString(data);
-        HandleEpochChangeStateTransferReply(remote, epochChangeStateTransferReply);
-    } else {
-        Panic("Received unexpected message type in ErisServer proto: %s",
-              type.c_str());
+    m.Parse(buf, size);
+
+    switch (server_msg.msg_case()) {
+        case ToServerMessage::MsgCase::kRequest:
+            HandleClientRequest(remote, server_msg.request(), m.GetStamp());
+            break;
+        case ToServerMessage::MsgCase::kGapRequest:
+            HandleGapRequest(remote, server_msg.gap_request());
+            break;
+        case ToServerMessage::MsgCase::kGapReply:
+            HandleGapReply(remote, server_msg.gap_reply());
+            break;
+        case ToServerMessage::MsgCase::kFc:
+            HandleFCToErisMessage(remote, server_msg.fc());
+            break;
+        case ToServerMessage::MsgCase::kSyncPrepare:
+            HandleSyncPrepare(remote, server_msg.sync_prepare());
+            break;
+        case ToServerMessage::MsgCase::kViewChangeRequest:
+            HandleViewChangeRequest(remote, server_msg.view_change_request());
+            break;
+        case ToServerMessage::MsgCase::kViewChange:
+            HandleViewChange(remote, server_msg.view_change());
+            break;
+        case ToServerMessage::MsgCase::kStartView:
+            HandleStartView(remote, server_msg.start_view());
+            break;
+        case ToServerMessage::MsgCase::kStateTransferRequest:
+            HandleStateTransferRequest(remote, server_msg.state_transfer_request());
+            break;
+        case ToServerMessage::MsgCase::kStateTransferReply:
+            HandleStateTransferReply(remote, server_msg.state_transfer_reply());
+            break;
+        case ToServerMessage::MsgCase::kEpochChangeStateTransferRequest:
+            HandleEpochChangeStateTransferRequest(remote,
+                    server_msg.epoch_change_state_transfer_request());
+            break;
+        case ToServerMessage::MsgCase::kEpochChangeStateTransferReply:
+            HandleEpochChangeStateTransferReply(remote,
+                    server_msg.epoch_change_state_transfer_reply());
+            break;
+        default:
+            Panic("Received unexpected message type in ErisServer proto: %d",
+                    server_msg.msg_case());
     }
     ProcessPendingRequests();
 }
 
 void
 ErisServer::HandleClientRequest(const TransportAddress &remote,
-                                RequestMessage &msg,
-                                const multistamp_t &stamp)
+                                const RequestMessage &msg,
+                                const Multistamp &stamp)
 {
-    // Save client's address if not exist. Assume client
-    // addresses never change.
-    if (this->clientAddresses.find(msg.request().clientid()) == this->clientAddresses.end()) {
-        this->clientAddresses.insert(std::pair<uint64_t, std::unique_ptr<TransportAddress> >(msg.request().clientid(), std::unique_ptr<TransportAddress>(remote.clone())));
-    }
-    if (stamp.seqnums.find(this->groupIdx) == stamp.seqnums.end()) {
-        return;
-    }
-
-    // Install sessnum and msgnum into request
-    msg.mutable_request()->set_sessnum(stamp.sessnum);
-    for (auto it = msg.mutable_request()->mutable_ops()->begin();
-         it != msg.mutable_request()->mutable_ops()->end();
-         it++) {
-        it->set_msgnum(stamp.seqnums.at(it->shard()));
-    }
-    msgnum_t msgnum = stamp.seqnums.at(this->groupIdx);
-    if (!TryProcessClientRequest(msg, stamp.sessnum, msgnum)) {
-        AddPendingRequest(msg, stamp.sessnum, msgnum);
+    msgnum_t msg_num = stamp.msg_nums.at(this->groupIdx);
+    if (!TryProcessClientRequest(msg, stamp.sess_num, msg_num)) {
+        AddPendingRequest(msg, stamp.sess_num, msg_num);
     }
 }
 
@@ -269,30 +252,31 @@ ErisServer::HandleGapRequest(const TransportAddress &remote,
         return;
     }
 
-    GapReplyMessage reply;
-    reply.mutable_view()->set_view_num(this->view);
-    reply.mutable_view()->set_sess_num(this->sessnum);
-    reply.set_op_num(msg.op_num());
-    reply.set_replica_num(this->replicaIdx);
+    ToServerMessage m;
+    GapReplyMessage *reply = m.mutable_gap_reply();
+    reply->mutable_view()->set_view_num(this->view);
+    reply->mutable_view()->set_sess_num(this->sessnum);
+    reply->set_op_num(msg.op_num());
+    reply->set_replica_num(this->replicaIdx);
 
     ErisLogEntry *entry = (ErisLogEntry *)log.Find(msg.op_num());
 
     if (entry) {
         if (entry->state == LOG_STATE_RECEIVED) {
-            reply.set_isfound(true);
-            reply.set_isgap(false);
-            reply.mutable_req()->set_txnid(entry->txnData.txnid);
-            reply.mutable_req()->set_type(entry->txnData.type);
-            *(reply.mutable_req()->mutable_request()) = entry->request;
+            reply->set_isfound(true);
+            reply->set_isgap(false);
+            reply->mutable_req()->set_txnid(entry->txnData.txnid);
+            reply->mutable_req()->set_type(entry->txnData.type);
+            *(reply->mutable_req()->mutable_request()) = entry->request;
             RDebug("Replying log entry %lu to the gap requester", msg.op_num());
         } else if (entry->state == LOG_STATE_NOOP) {
-            reply.set_isfound(true);
-            reply.set_isgap(true);
-            reply.mutable_req()->set_txnid(0);
-            reply.mutable_req()->set_type(proto::UNKNOWN);
-            reply.mutable_req()->mutable_request()->set_op("");
-            reply.mutable_req()->mutable_request()->set_clientid(0);
-            reply.mutable_req()->mutable_request()->set_clientreqid(0);
+            reply->set_isfound(true);
+            reply->set_isgap(true);
+            reply->mutable_req()->set_txnid(0);
+            reply->mutable_req()->set_type(proto::UNKNOWN);
+            reply->mutable_req()->mutable_request()->set_op("");
+            reply->mutable_req()->mutable_request()->set_clientid(0);
+            reply->mutable_req()->mutable_request()->set_clientreqid(0);
             RDebug("Replying log entry (gap) %lu to the gap requester", msg.op_num());
         } else {
             NOT_REACHABLE();
@@ -302,14 +286,14 @@ ErisServer::HandleGapRequest(const TransportAddress &remote,
         // actually missing the message (i.e. when we are also
         // requesting GapRequest for this message).
         if (this->gapRequestTimeout->Active() && this->lastOp+1 == msg.op_num()) {
-            reply.set_isfound(false);
-            reply.set_isgap(false);
+            reply->set_isfound(false);
+            reply->set_isgap(false);
             RDebug("Replica also has not received log entry %lu", msg.op_num());
         } else {
             return;
         }
     }
-    if (!(transport->SendMessage(this, remote, reply))) {
+    if (!(transport->SendMessage(this, remote, ErisMessage(m)))) {
         RWarning("Failed to send GapReplyMessage");
     }
 }
@@ -666,13 +650,14 @@ ErisServer::HandleViewChange(const TransportAddress &remote,
         // Already entered the new view, potentially the
         // requesting replica has not received the
         // StartViewMessage. Resend StartViewMessage.
-        StartViewMessage startViewMessage;
-        startViewMessage.mutable_view()->set_sess_num(this->sessnum);
-        startViewMessage.mutable_view()->set_view_num(this->view);
-        startViewMessage.set_op_num(this->lastOp);
-        BuildDropTxns(*startViewMessage.mutable_drops());
+        ToServerMessage m;
+        StartViewMessage *startViewMessage = m.mutable_start_view();
+        startViewMessage->mutable_view()->set_sess_num(this->sessnum);
+        startViewMessage->mutable_view()->set_view_num(this->view);
+        startViewMessage->set_op_num(this->lastOp);
+        BuildDropTxns(*startViewMessage->mutable_drops());
 
-        if (!this->transport->SendMessage(this, remote, startViewMessage)) {
+        if (!this->transport->SendMessage(this, remote, ErisMessage(m))) {
             RWarning("Failed to send StartViewMessage");
         }
         return;
@@ -809,17 +794,18 @@ ErisServer::HandleStateTransferRequest(const TransportAddress &remote,
         return;
     }
 
-    StateTransferReplyMessage reply;
-    reply.mutable_view()->set_sess_num(this->sessnum);
-    reply.mutable_view()->set_view_num(this->view);
-    reply.set_begin(msg.begin());
-    reply.set_end(msg.end());
+    ToServerMessage m;
+    StateTransferReplyMessage *reply = m.mutable_state_transfer_reply();
+    reply->mutable_view()->set_sess_num(this->sessnum);
+    reply->mutable_view()->set_view_num(this->view);
+    reply->set_begin(msg.begin());
+    reply->set_end(msg.end());
 
     // Dump log entries
     for (uint64_t i = msg.begin(); i < msg.end(); i++) {
         ErisLogEntry *log_entry = (ErisLogEntry *)log.Find(i);
         ASSERT(log_entry != nullptr);
-        StateTransferReplyMessage_MsgLogEntry *msg_entry = reply.add_entries();
+        StateTransferReplyMessage_MsgLogEntry *msg_entry = reply->add_entries();
         msg_entry->set_view(log_entry->viewstamp.view);
         msg_entry->set_op_num(log_entry->viewstamp.opnum);
         msg_entry->set_sess_num(log_entry->viewstamp.sessnum);
@@ -838,7 +824,7 @@ ErisServer::HandleStateTransferRequest(const TransportAddress &remote,
         }
     }
 
-    if (!(transport->SendMessage(this, remote, reply))) {
+    if (!(transport->SendMessage(this, remote, ErisMessage(m)))) {
         RWarning("Failed to send StateTransferReplyMessage");
     }
 }
@@ -896,17 +882,18 @@ ErisServer::HandleEpochChangeStateTransferRequest(const TransportAddress &remote
     ASSERT(this->txnLookup.find(MsgStamp(msg.shard_num(), msg.end()-1, msg.state_transfer_sess_num()))
            != this->txnLookup.end());
 
-    EpochChangeStateTransferReply reply;
-    reply.set_sess_num(msg.sess_num());
-    reply.set_state_transfer_sess_num(msg.state_transfer_sess_num());
-    reply.set_shard_num(this->groupIdx);
+    ToServerMessage m;
+    EpochChangeStateTransferReply *reply = m.mutable_epoch_change_state_transfer_reply();
+    reply->set_sess_num(msg.sess_num());
+    reply->set_state_transfer_sess_num(msg.state_transfer_sess_num());
+    reply->set_shard_num(this->groupIdx);
 
     for (uint64_t i = msg.begin(); i < msg.end(); i++) {
         auto it = this->txnLookup.find(MsgStamp(msg.shard_num(), i, msg.state_transfer_sess_num()));
         if (it != this->txnLookup.end()) {
             ErisLogEntry *log_entry = (ErisLogEntry *)this->log.Find(it->second);
             ASSERT(log_entry != nullptr);
-            EpochChangeStateTransferReply_MsgEntry *msg_entry = reply.add_entries();
+            EpochChangeStateTransferReply_MsgEntry *msg_entry = reply->add_entries();
             msg_entry->set_msg_num(i);
             msg_entry->mutable_request()->set_txnid(log_entry->txnData.txnid);
             msg_entry->mutable_request()->set_type(log_entry->txnData.type);
@@ -914,7 +901,7 @@ ErisServer::HandleEpochChangeStateTransferRequest(const TransportAddress &remote
         }
     }
 
-    if (!this->transport->SendMessage(this, remote, reply)) {
+    if (!this->transport->SendMessage(this, remote, ErisMessage(m))) {
         RWarning("Failed to send EpochChangeStateTransferReply");
     }
 }
@@ -968,14 +955,14 @@ ErisServer::HandleEpochChangeStateTransferReply(const TransportAddress &remote,
                 this->nextMsgnum += 1;
                 viewstamp_t vs(this->view, this->lastOp, this->lastNormalSessnum, i, this->groupIdx);
                 if (i < it->msg_num()) {
-                    this->log.Append(ErisLogEntry(vs, LOG_STATE_NOOP, Request()));
+                    this->log.Append(new ErisLogEntry(vs, LOG_STATE_NOOP, Request()));
                     // Temporarily add it to the set of drops that we are sending to FC.
                     // (FC might have already dropped these txns, but thats fine)
                     this->pendingECStateTransfer.drops.insert(MsgStamp(this->groupIdx,
                                                                        i,
                                                                        this->lastNormalSessnum));
                 } else {
-                    this->log.Append(ErisLogEntry(vs,
+                    this->log.Append(new ErisLogEntry(vs,
                                 LOG_STATE_RECEIVED,
                                 it->request().request(),
                                 TxnData(it->request().txnid(), it->request().type())));
@@ -1101,19 +1088,18 @@ ErisServer::ProcessNextOperation(const RequestMessage &msg,
         } else {
             // Non-leader replica simply reply without execution.
             ReplyMessage reply;
-            auto addr = this->clientAddresses.find(msg.request().clientid());
-            if (addr != this->clientAddresses.end()) {
-                reply.set_clientid(msg.request().clientid());
-                reply.set_clientreqid(msg.request().clientreqid());
-                reply.set_shard_num(this->groupIdx);
-                reply.set_replica_num(this->replicaIdx);
-                reply.mutable_view()->set_view_num(vs.view);
-                reply.mutable_view()->set_sess_num(vs.sessnum);
-                reply.set_op_num(vs.opnum);
+            reply.set_clientid(msg.request().clientid());
+            reply.set_clientreqid(msg.request().clientreqid());
+            reply.set_shard_num(this->groupIdx);
+            reply.set_replica_num(this->replicaIdx);
+            reply.mutable_view()->set_view_num(vs.view);
+            reply.mutable_view()->set_sess_num(vs.sessnum);
+            reply.set_op_num(vs.opnum);
 
-                if (!this->transport->SendMessage(this, *(addr->second), reply)) {
-                    RWarning("Failed to send reply to client");
-                }
+            client_addr_->Parse(msg.request().clientaddr());
+            if (!this->transport->SendMessage(this, *client_addr_,
+                        ErisMessage(reply))) {
+                RWarning("Failed to send reply to client");
             }
         }
     }
@@ -1218,11 +1204,11 @@ ErisServer::ExecuteUptoOp(opnum_t opnum) {
                         entry.reply.mutable_view()->set_view_num(this->view);
                         entry.reply.mutable_view()->set_sess_num(this->sessnum);
                         entry.reply.set_op_num(op);
-                        auto addr = this->clientAddresses.find(logEntry->request.clientid());
-                        if (addr != this->clientAddresses.end()) {
-                            if (!this->transport->SendMessage(this, *(addr->second), entry.reply)) {
+
+                        client_addr_->Parse(logEntry->request.clientaddr());
+                        if (!this->transport->SendMessage(this, *client_addr_,
+                                        ErisMessage(entry.reply))) {
                                 RWarning("Failed to send reply to client");
-                            }
                         }
                     }
                     continue;
@@ -1311,11 +1297,10 @@ ErisServer::ExecuteTxn(opnum_t opnum) {
         cte.replied = true;
         cte.reply = reply;
 
-        auto addr = this->clientAddresses.find(logEntry->request.clientid());
-        if (addr != this->clientAddresses.end()) {
-            if (!this->transport->SendMessage(this, *(addr->second), reply)) {
-                RWarning("Failed to send reply to client");
-            }
+        client_addr_->Parse(logEntry->request.clientaddr());
+        if (!this->transport->SendMessage(this, *client_addr_,
+                    ErisMessage(reply))) {
+            RWarning("Failed to send reply to client");
         }
     }
 }
@@ -1375,13 +1360,14 @@ ErisServer::EnterView(view_t new_view)
         // All log entries are committed
         this->lastCommittedOp = this->lastOp;
         // Send StartViewMessage to all replicas
-        StartViewMessage startViewMessage;
-        startViewMessage.mutable_view()->set_sess_num(this->sessnum);
-        startViewMessage.mutable_view()->set_view_num(this->view);
-        startViewMessage.set_op_num(this->lastOp);
-        BuildDropTxns(*startViewMessage.mutable_drops());
+        ToServerMessage m;
+        StartViewMessage *startViewMessage = m.mutable_start_view();
+        startViewMessage->mutable_view()->set_sess_num(this->sessnum);
+        startViewMessage->mutable_view()->set_view_num(this->view);
+        startViewMessage->set_op_num(this->lastOp);
+        BuildDropTxns(*startViewMessage->mutable_drops());
 
-        if (!this->transport->SendMessageToAll(this, startViewMessage)) {
+        if (!this->transport->SendMessageToAll(this, ErisMessage(m))) {
             RWarning("Failed to broadcast StartViewMessage");
         }
         this->syncTimeout->Start();
@@ -1441,20 +1427,21 @@ ErisServer::EnterEpoch(sessnum_t new_sessnum)
 void
 ErisServer::SendGapRequest()
 {
-    GapRequestMessage gapRequestMessage;
-    gapRequestMessage.mutable_view()->set_view_num(this->view);
-    gapRequestMessage.mutable_view()->set_sess_num(this->sessnum);
-    gapRequestMessage.set_op_num(this->lastOp+1);
+    ToServerMessage m;
+    GapRequestMessage *gapRequestMessage = m.mutable_gap_request();
+    gapRequestMessage->mutable_view()->set_view_num(this->view);
+    gapRequestMessage->mutable_view()->set_sess_num(this->sessnum);
+    gapRequestMessage->set_op_num(this->lastOp+1);
 
     RDebug("Sending GapRequestMessage with opnum %lu", this->lastOp+1);
     if (!AmLeader()) {
         if (!(transport->SendMessageToReplica(this,
                                               configuration.GetLeaderIndex(this->view),
-                                              gapRequestMessage))) {
+                                              ErisMessage(m)))) {
             RWarning("Failed to send GapRequestMessage to leader");
         }
     } else {
-        if (!(transport->SendMessageToAll(this, gapRequestMessage))) {
+        if (!(transport->SendMessageToAll(this, ErisMessage(m)))) {
             RWarning("Failed to send GapRequestMessage to replicas");
         }
     }
@@ -1479,11 +1466,12 @@ void
 ErisServer::SendSyncPrepare()
 {
     ASSERT(AmLeader());
-    SyncPrepareMessage syncPrepareMessage;
-    syncPrepareMessage.mutable_view()->set_view_num(this->view);
-    syncPrepareMessage.mutable_view()->set_sess_num(this->sessnum);
+    ToServerMessage m;
+    SyncPrepareMessage *syncPrepareMessage = m.mutable_sync_prepare();
+    syncPrepareMessage->mutable_view()->set_view_num(this->view);
+    syncPrepareMessage->mutable_view()->set_sess_num(this->sessnum);
 
-    if (!this->transport->SendMessageToAll(this, syncPrepareMessage)) {
+    if (!this->transport->SendMessageToAll(this, ErisMessage(m))) {
         RWarning("Failed to send SyncPrepareMessage");
     }
 }
@@ -1491,26 +1479,28 @@ ErisServer::SendSyncPrepare()
 void
 ErisServer::SendViewChange()
 {
-    ViewChangeRequestMessage viewChangeRequestMessage;
-    viewChangeRequestMessage.mutable_view()->set_view_num(this->view);
-    viewChangeRequestMessage.mutable_view()->set_sess_num(this->sessnum);
+    ToServerMessage m;
+    ViewChangeRequestMessage *viewChangeRequestMessage = m.mutable_view_change_request();
+    viewChangeRequestMessage->mutable_view()->set_view_num(this->view);
+    viewChangeRequestMessage->mutable_view()->set_sess_num(this->sessnum);
 
-    if (!transport->SendMessageToAll(this, viewChangeRequestMessage)) {
+    if (!transport->SendMessageToAll(this, ErisMessage(m))) {
         RWarning("Failed to send ViewChangeRequestMessage to all replicas");
     }
 
     // Leader does not send ViewChangeMessage to itself
     if (!AmLeader()) {
-        ViewChangeMessage viewChangeMessage;
-        viewChangeMessage.mutable_view()->set_view_num(this->view);
-        viewChangeMessage.mutable_view()->set_sess_num(this->sessnum);
-        viewChangeMessage.set_replica_num(this->replicaIdx);
-        viewChangeMessage.set_op_num(this->lastOp);
-        BuildDropTxns(*viewChangeMessage.mutable_drops());
+        ToServerMessage m;
+        ViewChangeMessage *viewChangeMessage = m.mutable_view_change();
+        viewChangeMessage->mutable_view()->set_view_num(this->view);
+        viewChangeMessage->mutable_view()->set_sess_num(this->sessnum);
+        viewChangeMessage->set_replica_num(this->replicaIdx);
+        viewChangeMessage->set_op_num(this->lastOp);
+        BuildDropTxns(*viewChangeMessage->mutable_drops());
 
         if (!this->transport->SendMessageToReplica(this,
                                                    this->configuration.GetLeaderIndex(this->view),
-                                                   viewChangeMessage)) {
+                                                   ErisMessage(m))) {
             RWarning("Failed to send ViewChangeMessage to leader");
         }
     }
@@ -1520,15 +1510,16 @@ ErisServer::SendViewChange()
 void
 ErisServer::SendStateTransferRequest()
 {
-    StateTransferRequestMessage request;
-    request.mutable_view()->set_sess_num(this->sessnum);
-    request.mutable_view()->set_view_num(this->view);
-    request.set_begin(this->pendingStateTransfer.begin);
-    request.set_end(this->pendingStateTransfer.end);
+    ToServerMessage m;
+    StateTransferRequestMessage *request = m.mutable_state_transfer_request();
+    request->mutable_view()->set_sess_num(this->sessnum);
+    request->mutable_view()->set_view_num(this->view);
+    request->set_begin(this->pendingStateTransfer.begin);
+    request->set_end(this->pendingStateTransfer.end);
 
     if (!(this->transport->SendMessageToReplica(this,
                                                 this->pendingStateTransfer.replica_idx,
-                                                request))) {
+                                                ErisMessage(m)))) {
         RWarning("Failed to send StateTransferRequestMessage");
     }
     this->stateTransferTimeout->Reset();
@@ -1594,7 +1585,10 @@ ErisServer::SendEpochChangeStateTransfer()
     }
 
     for (const auto &kv : this->pendingECStateTransfer.requests) {
-        if (!this->transport->SendMessageToReplica(this, kv.first, kv.second.first, kv.second.second)) {
+        ToServerMessage m;
+        *m.mutable_epoch_change_state_transfer_request() = kv.second.second;
+        if (!this->transport->SendMessageToReplica(this, kv.first, kv.second.first,
+                    ErisMessage(m))) {
             RWarning("Failed to send EpochChangeStateTransferRequest");
         }
     }
@@ -1665,7 +1659,7 @@ ErisServer::InstallLogEntry(const viewstamp_t &vs,
 {
     this->lastOp = vs.opnum;
     this->nextMsgnum = vs.msgnum+1;
-    this->log.Append(ErisLogEntry(vs,
+    this->log.Append(new ErisLogEntry(vs,
                 state, msg.request(),
                 TxnData(msg.txnid(), msg.type())));
     if (state == LOG_STATE_RECEIVED) {

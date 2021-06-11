@@ -28,6 +28,7 @@
  *
  **********************************************************************/
 
+#include "common/pbmessage.h"
 #include "transaction/granola/server.h"
 
 #define RDebug(fmt, ...) Debug("[%d, %d] " fmt, this->groupIdx, this->replicaIdx, ##__VA_ARGS__)
@@ -46,11 +47,11 @@ GranolaLog::GranolaLog()
     : Log(false) { }
 
 LogEntry &
-GranolaLog::Append(const LogEntry &entry)
+GranolaLog::Append(LogEntry *entry)
 {
-    this->clientReqMap[std::make_pair(entry.request.clientid(),
-                                      entry.request.clientreqid())] =
-        entry.viewstamp.opnum;
+    this->clientReqMap[std::make_pair(entry->request.clientid(),
+                                      entry->request.clientreqid())] =
+        entry->viewstamp.opnum;
     return Log::Append(entry);
 }
 
@@ -92,41 +93,38 @@ GranolaServer::~GranolaServer()
 
 void
 GranolaServer::ReceiveMessage(const TransportAddress &remote,
-                              const string &type, const string &data,
-                              void *meta_data)
+                              void *buf, size_t size)
 {
-    static RequestMessage requestMessage;
-    static PrepareMessage prepareMessage;
-    static PrepareOKMessage prepareOKMessage;
-    static CommitMessage commitMessage;
-    static VoteMessage voteMessage;
-    static VoteRequestMessage voteRequestMessage;
-    static FinalTimestampMessage finalTimestampMessage;
+    static ToServerMessage server_msg;
+    static PBMessage m(server_msg);
 
-    if (type == requestMessage.GetTypeName()) {
-        requestMessage.ParseFromString(data);
-        HandleClientRequest(remote, requestMessage);
-    } else if (type == prepareMessage.GetTypeName()) {
-        prepareMessage.ParseFromString(data);
-        HandlePrepare(remote, prepareMessage);
-    } else if (type == prepareOKMessage.GetTypeName()) {
-        prepareOKMessage.ParseFromString(data);
-        HandlePrepareOK(remote, prepareOKMessage);
-    } else if (type == commitMessage.GetTypeName()) {
-        commitMessage.ParseFromString(data);
-        HandleCommit(remote, commitMessage);
-    } else if (type == voteMessage.GetTypeName()) {
-        voteMessage.ParseFromString(data);
-        HandleVote(remote, voteMessage);
-    } else if (type == voteRequestMessage.GetTypeName()) {
-        voteRequestMessage.ParseFromString(data);
-        HandleVoteRequest(remote, voteRequestMessage);
-    } else if (type == finalTimestampMessage.GetTypeName()) {
-        finalTimestampMessage.ParseFromString(data);
-        HandleFinalTimestamp(remote, finalTimestampMessage);
-    } else {
-        Panic("Received unexpected message type in GranolaServer proto: %s",
-              type.c_str());
+    m.Parse(buf, size);
+
+    switch (server_msg.msg_case()) {
+        case ToServerMessage::MsgCase::kRequest:
+            HandleClientRequest(remote, server_msg.request());
+            break;
+        case ToServerMessage::MsgCase::kPrepare:
+            HandlePrepare(remote, server_msg.prepare());
+            break;
+        case ToServerMessage::MsgCase::kPrepareOk:
+            HandlePrepareOK(remote, server_msg.prepare_ok());
+            break;
+        case ToServerMessage::MsgCase::kCommit:
+            HandleCommit(remote, server_msg.commit());
+            break;
+        case ToServerMessage::MsgCase::kVote:
+            HandleVote(remote, server_msg.vote());
+            break;
+        case ToServerMessage::MsgCase::kVoteRequest:
+            HandleVoteRequest(remote, server_msg.vote_request());
+            break;
+        case ToServerMessage::MsgCase::kFinalTimestamp:
+            HandleFinalTimestamp(remote, server_msg.final_timestamp());
+            break;
+        default:
+            Panic("Received unexpected message type :%u",
+              server_msg.msg_case());
     }
 }
 
@@ -148,7 +146,7 @@ GranolaServer::HandleClientRequest(const TransportAddress &remote,
     // Check the client table to see if this is a duplicate request
     auto kv = this->clientTable.find(msg.request().clientid());
     if (kv != this->clientTable.end()) {
-        const ClientTableEntry &entry = kv->second;
+        ClientTableEntry &entry = kv->second;
         if (msg.request().clientreqid() < entry.lastReqId) {
             RDebug("Ignoring stale request");
             return;
@@ -160,7 +158,7 @@ GranolaServer::HandleClientRequest(const TransportAddress &remote,
             // discard the request.
             if (entry.replied) {
                 if (!(this->transport->SendMessage(this, remote,
-                                                   entry.reply))) {
+                                                   PBMessage(entry.reply)))) {
                     RWarning("Failed to resend reply to client");
                 }
                 return;
@@ -201,7 +199,7 @@ GranolaServer::HandleClientRequest(const TransportAddress &remote,
         this->pendingTransactions.insert(make_pair(v.opnum, txnData.proposed_ts));
     }
 
-    this->log.Append(GranolaLogEntry(v, LOG_STATE_PREPARED, msg.request(), txnData));
+    this->log.Append(new GranolaLogEntry(v, LOG_STATE_PREPARED, msg.request(), txnData));
 
     // Set vote quorum size (only for multi-shard transactions)
     if (msg.request().ops_size() > 1) {
@@ -220,13 +218,14 @@ GranolaServer::HandlePrepare(const TransportAddress &remote,
 
     if (msg.opnum() <= this->lastOp) {
         // Resend the prepareOK message
-        PrepareOKMessage prepareOKMessage;
-        prepareOKMessage.set_view(msg.view());
-        prepareOKMessage.set_opnum(msg.opnum());
-        prepareOKMessage.set_replica_num(this->replicaIdx);
+        ToServerMessage m;
+        PrepareOKMessage *prepareOKMessage = m.mutable_prepare_ok();
+        prepareOKMessage->set_view(msg.view());
+        prepareOKMessage->set_opnum(msg.opnum());
+        prepareOKMessage->set_replica_num(this->replicaIdx);
         if (!(transport->SendMessageToReplica(this,
                                               configuration.GetLeaderIndex(view),
-                                              prepareOKMessage))) {
+                                              PBMessage(m)))) {
             RWarning("Failed to send PrepareOK message to leader");
         }
         return;
@@ -242,7 +241,7 @@ GranolaServer::HandlePrepare(const TransportAddress &remote,
     // XXX Hack here to get around state transfer
     while (this->lastOp + 1 < msg.opnum()) {
         this->lastOp++;
-        this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+        this->log.Append(new GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
                     LOG_STATE_EXECUTED,
                     Request()));
     }
@@ -262,19 +261,20 @@ GranolaServer::HandlePrepare(const TransportAddress &remote,
     if (!this->locking) {
         this->pendingTransactions.insert(make_pair(this->lastOp, txnData.proposed_ts));
     }
-    this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+    this->log.Append(new GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
                 LOG_STATE_PREPARED,
                 msg.request(),
                 txnData));
     UpdateClientTable(msg.request());
 
-    PrepareOKMessage prepareOKMessage;
-    prepareOKMessage.set_view(msg.view());
-    prepareOKMessage.set_opnum(msg.opnum());
-    prepareOKMessage.set_replica_num(this->replicaIdx);
+    ToServerMessage m;
+    PrepareOKMessage *prepareOKMessage = m.mutable_prepare_ok();
+    prepareOKMessage->set_view(msg.view());
+    prepareOKMessage->set_opnum(msg.opnum());
+    prepareOKMessage->set_replica_num(this->replicaIdx);
     if (!this->transport->SendMessageToReplica(this,
                                                this->configuration.GetLeaderIndex(view),
-                                               prepareOKMessage)) {
+                                               PBMessage(m))) {
         RWarning("Failed to send PrepareOK message to leader");
     }
 }
@@ -362,14 +362,15 @@ GranolaServer::HandleVoteRequest(const TransportAddress &remote,
         return;
     }
     if (entry->state == LOG_STATE_COMMITTED || entry->state == LOG_STATE_EXECUTED) {
-        VoteMessage voteMessage;
-        voteMessage.set_clientid(entry->request.clientid());
-        voteMessage.set_clientreqid(entry->request.clientreqid());
-        voteMessage.set_shard_num(this->groupIdx);
-        voteMessage.set_nshards(entry->request.ops_size());
-        voteMessage.set_status(entry->txnData.status);
+        ToServerMessage m;
+        VoteMessage *voteMessage = m.mutable_vote();
+        voteMessage->set_clientid(entry->request.clientid());
+        voteMessage->set_clientreqid(entry->request.clientreqid());
+        voteMessage->set_shard_num(this->groupIdx);
+        voteMessage->set_nshards(entry->request.ops_size());
+        voteMessage->set_status(entry->txnData.status);
 
-        if (!this->transport->SendMessage(this, remote, voteMessage)) {
+        if (!this->transport->SendMessage(this, remote, PBMessage(m))) {
             RWarning("Failed to send VoteMessage to requester");
         }
     }
@@ -386,7 +387,7 @@ GranolaServer::HandleFinalTimestamp(const TransportAddress &remote,
         // XXX Hack here to work around state transfer
         while (this->lastOp < msg.opnum()) {
             this->lastOp++;
-            this->log.Append(GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
+            this->log.Append(new GranolaLogEntry(viewstamp_t(msg.view(), this->lastOp),
                         LOG_STATE_EXECUTED,
                         Request()));
         }
@@ -416,12 +417,13 @@ GranolaServer::CommitUpTo(opnum_t opnum)
 {
     if (this->lastCommitted < opnum && AmLeader()) {
         /* Leader send Commit message */
-        CommitMessage commitMessage;
-        commitMessage.set_view(this->view);
-        commitMessage.set_opnum(opnum);
+        ToServerMessage m;
+        CommitMessage *commitMessage = m.mutable_commit();
+        commitMessage->set_view(this->view);
+        commitMessage->set_opnum(opnum);
 
         if (!this->transport->SendMessageToAll(this,
-                                               commitMessage)) {
+                                               PBMessage(m))) {
             RWarning("Failed to send COMMIT message to all replicas");
         }
     }
@@ -476,12 +478,13 @@ GranolaServer::CommitUpTo(opnum_t opnum)
          * is multi-shard.
          */
         if (AmLeader() && entry->request.ops_size() > 1) {
-            VoteMessage voteMessage;
-            voteMessage.set_clientid(entry->request.clientid());
-            voteMessage.set_clientreqid(entry->request.clientreqid());
-            voteMessage.set_shard_num(this->groupIdx);
-            voteMessage.set_nshards(entry->request.ops_size());
-            voteMessage.set_status(entry->txnData.status);
+            ToServerMessage m;
+            VoteMessage *voteMessage = m.mutable_vote();
+            voteMessage->set_clientid(entry->request.clientid());
+            voteMessage->set_clientreqid(entry->request.clientreqid());
+            voteMessage->set_shard_num(this->groupIdx);
+            voteMessage->set_nshards(entry->request.ops_size());
+            voteMessage->set_status(entry->txnData.status);
 
             vector<int> shards;
             for (int i = 0; i < entry->request.ops_size(); i++) {
@@ -493,7 +496,7 @@ GranolaServer::CommitUpTo(opnum_t opnum)
 
             if (!this->transport->SendMessageToGroups(this,
                                                       shards,
-                                                      voteMessage)) {
+                                                      PBMessage(m))) {
                 RWarning("Failed to send VoteMessage for request clientid %lu clientreqid %lu",
                          entry->request.clientid(), entry->request.clientreqid());
             }
@@ -572,14 +575,15 @@ GranolaServer::CheckVoteQuorum(GranolaLogEntry *entry)
             this->voteQuorum.Remove(make_pair(entry->request.clientid(),
                                               entry->request.clientreqid()));
             /* Send the final timestamp to other replicas. */
-            FinalTimestampMessage finalTimestampMessage;
-            finalTimestampMessage.set_view(this->view);
-            finalTimestampMessage.set_opnum(entry->viewstamp.opnum);
-            finalTimestampMessage.set_timestamp(entry->txnData.final_ts);
-            finalTimestampMessage.set_status(entry->txnData.status);
+            ToServerMessage m;
+            FinalTimestampMessage *finalTimestampMessage = m.mutable_final_timestamp();
+            finalTimestampMessage->set_view(this->view);
+            finalTimestampMessage->set_opnum(entry->viewstamp.opnum);
+            finalTimestampMessage->set_timestamp(entry->txnData.final_ts);
+            finalTimestampMessage->set_status(entry->txnData.status);
 
             if (!this->transport->SendMessageToAll(this,
-                                                   finalTimestampMessage)) {
+                                                   PBMessage(m))) {
                 RWarning("Failed to send FinalTimestampMessage");
             }
         }
@@ -633,7 +637,9 @@ GranolaServer::ExecuteTxn(GranolaLogEntry *entry)
         if (this->configuration.GetLeaderIndex(entry->viewstamp.view) == this->replicaIdx) {
             auto it = this->clientAddresses.find(entry->request.clientid());
             if (it != this->clientAddresses.end()) {
-                if (!this->transport->SendMessage(this, *it->second, cte.reply)) {
+                if (!this->transport->SendMessage(this,
+                            *it->second,
+                            PBMessage(cte.reply))) {
                     RWarning("Failed to send ReplyMessage to client");
                 }
             }
@@ -685,7 +691,9 @@ GranolaServer::ExecuteTxns()
             if (this->configuration.GetLeaderIndex(entry->viewstamp.view) == this->replicaIdx) {
                 auto iter2 = this->clientAddresses.find(entry->request.clientid());
                 if (iter2 != this->clientAddresses.end()) {
-                    if (!this->transport->SendMessage(this, *iter2->second, reply)) {
+                    if (!this->transport->SendMessage(this,
+                                *iter2->second,
+                                PBMessage(reply))) {
                         RWarning("Failed to send ReplyMessage to client");
                     }
                 }
@@ -723,17 +731,18 @@ GranolaServer::SendPrepare()
 {
     GranolaLogEntry *entry = (GranolaLogEntry *)this->log.Log::Find(this->lastOp);
     ASSERT(entry != nullptr);
-    PrepareMessage prepareMessage;
-    prepareMessage.set_view(entry->viewstamp.view);
-    prepareMessage.set_opnum(entry->viewstamp.opnum);
-    prepareMessage.set_txnid(entry->txnData.txnid);
-    prepareMessage.set_indep(entry->txnData.indep);
-    prepareMessage.set_ro(entry->txnData.ro);
-    prepareMessage.set_timestamp(entry->txnData.proposed_ts);
-    *(prepareMessage.mutable_request()) = entry->request;
+    ToServerMessage m;
+    PrepareMessage *prepareMessage = m.mutable_prepare();
+    prepareMessage->set_view(entry->viewstamp.view);
+    prepareMessage->set_opnum(entry->viewstamp.opnum);
+    prepareMessage->set_txnid(entry->txnData.txnid);
+    prepareMessage->set_indep(entry->txnData.indep);
+    prepareMessage->set_ro(entry->txnData.ro);
+    prepareMessage->set_timestamp(entry->txnData.proposed_ts);
+    *(prepareMessage->mutable_request()) = entry->request;
 
     if (!this->transport->SendMessageToAll(this,
-                                           prepareMessage)) {
+                                           PBMessage(m))) {
         RWarning("Failed to send Prepare message");
     }
     this->resendPrepareTimeout->Reset();
@@ -748,9 +757,10 @@ GranolaServer::SendVoteRequest(LogEntry *entry)
         RWarning("All votes already received");
         return;
     }
-    VoteRequestMessage voteRequestMessage;
-    voteRequestMessage.set_clientid(entry->request.clientid());
-    voteRequestMessage.set_clientreqid(entry->request.clientreqid());
+    ToServerMessage m;
+    VoteRequestMessage *voteRequestMessage = m.mutable_vote_request();
+    voteRequestMessage->set_clientid(entry->request.clientid());
+    voteRequestMessage->set_clientreqid(entry->request.clientreqid());
 
     vector<int> shards;
     for (auto it = entry->request.ops().begin();
@@ -771,7 +781,7 @@ GranolaServer::SendVoteRequest(LogEntry *entry)
 
     if (!this->transport->SendMessageToGroups(this,
                                               shards,
-                                              voteRequestMessage)) {
+                                              PBMessage(m))) {
         RWarning("Failed to send VoteMessage for request clientid %lu clientreqid %lu",
                  entry->request.clientid(), entry->request.clientreqid());
     }

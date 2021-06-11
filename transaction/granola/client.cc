@@ -28,6 +28,7 @@
  *
  **********************************************************************/
 
+#include "common/pbmessage.h"
 #include "transaction/granola/client.h"
 
 namespace dsnet {
@@ -38,9 +39,10 @@ using namespace std;
 using namespace proto;
 
 GranolaClient::GranolaClient(const Configuration &config,
+                             const ReplicaAddress &addr,
                              Transport *transport,
                              uint64_t clientid)
-    : Client(config, transport, clientid),
+    : Client(config, addr, transport, clientid),
     replySet(1)
 {
     this->txnid = (this->clientid / 10000) * 10000;
@@ -99,18 +101,13 @@ GranolaClient::InvokeUnlogged(int replicaIdx, const string &request,
 
 void
 GranolaClient::ReceiveMessage(const TransportAddress &remote,
-                              const string &type,
-                              const string &data,
-                              void *meta_data)
+                              void *buf, size_t size)
 {
     static proto::ReplyMessage reply;
+    static PBMessage m(reply);
 
-    if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, meta_data);
-    }
+    m.Parse(buf, size);
+    HandleReply(remote, reply);
 }
 
 void
@@ -190,28 +187,28 @@ GranolaClient::RetryTransaction()
 void
 GranolaClient::SendRequest()
 {
-    RequestMessage msg;
-    msg.set_txnid(this->pendingRequest->txnid);
-    msg.set_indep(this->pendingRequest->arg.indep);
-    msg.set_ro(this->pendingRequest->arg.ro);
-    Request request;
-    request.set_clientid(this->clientid);
-    request.set_clientreqid(this->pendingRequest->client_req_id);
+    ToServerMessage m;
+    RequestMessage *request = m.mutable_request();
+    request->set_txnid(this->pendingRequest->txnid);
+    request->set_indep(this->pendingRequest->arg.indep);
+    request->set_ro(this->pendingRequest->arg.ro);
+    Request *r = request->mutable_request();
+    r->set_clientid(this->clientid);
+    r->set_clientreqid(this->pendingRequest->client_req_id);
 
     for (auto &kv : this->pendingRequest->requests) {
         ShardOp shardOp;
         shardOp.set_shard(kv.first);
         // We will set op for each shard in the sending loop
         shardOp.set_op("");
-        *(request.add_ops()) = shardOp;
+        *(r->add_ops()) = shardOp;
     }
 
     for (auto &kv : this->pendingRequest->requests) {
-        request.set_op(kv.second);
-        *(msg.mutable_request()) = request;
+        r->set_op(kv.second);
         if (!this->transport->SendMessageToGroup(this,
                                                  kv.first,
-                                                 msg)) {
+                                                 PBMessage(m))) {
             Warning("Failed to send request to group %u", kv.first);
         }
     }

@@ -54,8 +54,7 @@ public:
     ~UnreplicatedServer();
 
     void ReceiveMessage(const TransportAddress &remote,
-                        const std::string &type, const std::string &data,
-                        void *meta_data) override;
+                        void *buf, size_t size) override;
 public:
     Log log;
 
@@ -67,8 +66,8 @@ private:
     std::map<uint64_t, std::unique_ptr<TransportAddress> > clientAddresses;
     struct ClientTableEntry
     {
-	uint64_t lastReqId;
-	proto::ReplyMessage reply;
+        uint64_t lastReqId;
+        proto::ReplyMessage reply;
     };
     std::map<uint64_t, ClientTableEntry> clientTable;
 

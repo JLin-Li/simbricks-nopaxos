@@ -4,10 +4,15 @@ import "common/request.proto";
 
 package dsnet.pbft.proto;
 
-message RequestMessage {
-    // op, timpstamp, client inside
-    required dsnet.Request req = 1;
-    required bytes sig = 2;
+message ToClientMessage {
+    oneof msg {
+        ReplyMessage reply = 1;
+        UnloggedReplyMessage unlogged_reply = 2;
+    }
+}
+
+message UnloggedReplyMessage {
+    required bytes reply = 1;
 }
 
 message ReplyMessage {
@@ -19,12 +24,21 @@ message ReplyMessage {
     required bytes sig = 5;
 }
 
-message UnloggedRequestMessage {
-    required dsnet.UnloggedRequest req = 1;
+message ToReplicaMessage {
+    oneof msg {
+        RequestMessage request = 1;
+        UnloggedRequestMessage unlogged_request = 2;
+    }
 }
 
-message UnloggedReplyMessage {
-    required bytes reply = 1;
+message RequestMessage {
+    // op, timpstamp, client inside
+    required dsnet.Request req = 1;
+    required bytes sig = 2;    
+}
+
+message UnloggedRequestMessage {
+    required dsnet.UnloggedRequest req = 1;
 }
 
 message Common {

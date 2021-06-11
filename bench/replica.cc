@@ -48,8 +48,8 @@
 static void
 Usage(const char *progName)
 {
-        fprintf(stderr, "usage: %s -c conf-file [-R] -i replica-index -m unreplicated|vr|fastpaxos|nopaxos [-b batch-size] [-d packet-drop-rate] [-r packet-reorder-rate] [-q dscp]\n",
-                progName);
+    fprintf(stderr, "usage: %s -c conf-file [-R] -i replica-index -m unreplicated|vr|fastpaxos|nopaxos [-b batch-size] [-d packet-drop-rate] [-r packet-reorder-rate]\n",
+            progName);
         exit(1);
 }
 
@@ -61,7 +61,6 @@ main(int argc, char **argv)
     const char *configPath = NULL;
     double dropRate = 0.0;
     double reorderRate = 0.0;
-    int dscp = 0;
     int batchSize = 1;
     bool recover = false;
 
@@ -74,12 +73,12 @@ main(int argc, char **argv)
         PROTO_VR,
         PROTO_FASTPAXOS,
         PROTO_SPEC,
-	PROTO_NOPAXOS
+        PROTO_NOPAXOS
     } proto = PROTO_UNKNOWN;
 
     // Parse arguments
     int opt;
-    while ((opt = getopt(argc, argv, "b:c:d:i:m:q:r:R:tw:")) != -1) {
+    while ((opt = getopt(argc, argv, "b:c:d:i:m:r:R:tw:")) != -1) {
         switch (opt) {
         case 'b':
         {
@@ -132,27 +131,13 @@ main(int argc, char **argv)
                 proto = PROTO_VR;
             } else if (strcasecmp(optarg, "fastpaxos") == 0) {
                 proto = PROTO_FASTPAXOS;
-	    } else if (strcasecmp(optarg, "nopaxos") == 0) {
-		proto = PROTO_NOPAXOS;
+            } else if (strcasecmp(optarg, "nopaxos") == 0) {
+                proto = PROTO_NOPAXOS;
             } else {
                 fprintf(stderr, "unknown mode '%s'\n", optarg);
                 Usage(argv[0]);
             }
             break;
-
-        case 'q':
-        {
-            char *strtolPtr;
-            dscp = strtoul(optarg, &strtolPtr, 10);
-            if ((*optarg == '\0') || (*strtolPtr != '\0') ||
-                (dscp < 0))
-            {
-                fprintf(stderr,
-                        "option -q requires a numeric arg\n");
-                Usage(argv[0]);
-            }
-            break;
-        }
 
         case 'r':
         {
@@ -209,7 +194,7 @@ main(int argc, char **argv)
         Usage(argv[0]);
     }
 
-    dsnet::UDPTransport transport(dropRate, reorderRate, dscp, nullptr);
+    dsnet::UDPTransport transport(dropRate, reorderRate, nullptr);
 
     dsnet::Replica *replica;
     switch (proto) {

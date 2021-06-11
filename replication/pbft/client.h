@@ -16,8 +16,8 @@ namespace pbft {
 
 class PbftClient : public Client {
  public:
-  PbftClient(const Configuration &config, Transport *transport,
-             std::uint64_t clientid = 0);
+  PbftClient(const Configuration &config, const ReplicaAddress &addr,
+             Transport *transport, uint64_t clientid = 0);
   virtual ~PbftClient();
   virtual void Invoke(const string &request,
                       continuation_t continuation) override;
@@ -26,8 +26,7 @@ class PbftClient : public Client {
       timeout_continuation_t timeoutContinuation = nullptr,
       uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
   virtual void ReceiveMessage(const TransportAddress &remote,
-                              const string &type, const string &data,
-                              void *meta_data) override;
+                              void *buf, size_t size) override;
 
  private:
   Signer signer;

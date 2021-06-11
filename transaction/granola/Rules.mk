@@ -5,9 +5,8 @@ SRCS += $(addprefix $(d), \
 
 PROTOS += $(addprefix $(d), granola-proto.proto)
 
-OBJS-granola-client := $(o)client.o $(o)granola-proto.o \
-    $(OBJS-client) $(LIB-message) $(LIB-configuration)
+OBJS-common := $(o)granola-proto.o $(LIB-message) $(LIB-configuration) $(LIB-pbmessage)
 
-OBJS-granola-server := $(o)server.o $(o)granola-proto.o \
-    $(OBJS-replica) $(LIB-message) \
-    $(LIB-configuration) $(LIB-latency)
+OBJS-granola-client := $(o)client.o $(OBJS-client) $(OBJS-common)
+
+OBJS-granola-server := $(o)server.o $(OBJS-replica) $(LIB-latency) $(OBJS-common)

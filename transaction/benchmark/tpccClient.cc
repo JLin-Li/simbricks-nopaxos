@@ -44,15 +44,16 @@ main(int argc, char **argv) {
 	struct Latency_t latency;
 	vector<uint64_t> latencies;
 	phase_t phase = WARMUP;
+    string host;
 
-        Client *protoClient = nullptr;
-        TxnClient *txnClient;
-	ClientThread *tpccClient;
+    Client *protoClient = nullptr;
+    TxnClient *txnClient;
+    ClientThread *tpccClient;
 
-        protomode_t mode = PROTO_UNKNOWN;
+    protomode_t mode = PROTO_UNKNOWN;
 
 	int opt;
-	while ((opt = getopt(argc, argv, "c:d:s:w:p:i:r:o:m:")) != -1) {
+	while ((opt = getopt(argc, argv, "c:h:d:s:w:p:i:r:o:m:")) != -1) {
 		switch (opt) {
 		case 'c':
 		{
@@ -68,6 +69,11 @@ main(int argc, char **argv) {
 			}
 			break;
 		}
+
+        case 'h':
+            host = string(optarg);
+            break;
+
 		case 's':
 		{
 			char *strtolPtr;
@@ -122,23 +128,21 @@ main(int argc, char **argv) {
 			}
 			break;
 		}
-                case 'm':
-                {
-                    if (strcasecmp(optarg, "eris") == 0) {
-                        mode = PROTO_ERIS;
-                    } else if (strcasecmp(optarg, "granola") == 0) {
-                        mode = PROTO_GRANOLA;
-                    } else if (strcasecmp(optarg, "unreplicated") == 0) {
-                        mode = PROTO_UNREPLICATED;
-                    } else if (strcasecmp(optarg, "spanner") == 0) {
-                        mode = PROTO_SPANNER;
-                    } else if (strcasecmp(optarg, "tapir") == 0) {
-                        mode = PROTO_TAPIR;
-                    } else {
-                        fprintf(stderr, "Unknown protocol mode %s\n", optarg);
-                    }
-                    break;
-                }
+        case 'm':
+            if (strcasecmp(optarg, "eris") == 0) {
+                mode = PROTO_ERIS;
+            } else if (strcasecmp(optarg, "granola") == 0) {
+                mode = PROTO_GRANOLA;
+            } else if (strcasecmp(optarg, "unreplicated") == 0) {
+                mode = PROTO_UNREPLICATED;
+            } else if (strcasecmp(optarg, "spanner") == 0) {
+                mode = PROTO_SPANNER;
+            } else if (strcasecmp(optarg, "tapir") == 0) {
+                mode = PROTO_TAPIR;
+            } else {
+                fprintf(stderr, "Unknown protocol mode %s\n", optarg);
+            }
+            break;
 
 		default:
 			fprintf(stderr, "Unkown argument %s\n", argv[optind]);
@@ -146,125 +150,126 @@ main(int argc, char **argv) {
 		}
 	}
 
-	if (configPath == nullptr) {
-		Panic("tpccClient requires -c option\n");
-	}
+    if (configPath == nullptr) {
+        Panic("tpccClient requires -c option\n");
+    }
 
-        if (mode == PROTO_UNKNOWN) {
-            Panic("tpccClient requires -m option\n");
-        }
+    if (host.empty()) {
+        Panic("tpccClient requires -h option\n");
+    }
 
-        ifstream configStream(configPath);
-        if (configStream.fail()) {
-            Panic("unable to read configuration file: %s", configPath);
-        }
+    if (mode == PROTO_UNKNOWN) {
+        Panic("tpccClient requires -m option\n");
+    }
 
-        dsnet::Configuration config(configStream);
+    ifstream configStream(configPath);
+    if (configStream.fail()) {
+        Panic("unable to read configuration file: %s", configPath);
+    }
 
-	total_warehouses = nshards * warehouse_per_shard;
-	UDPTransport *transport = new UDPTransport();
+    dsnet::Configuration config(configStream);
 
-        switch (mode) {
-        case PROTO_ERIS: {
-            protoClient = new eris::ErisClient(config, transport);
+    total_warehouses = nshards * warehouse_per_shard;
+    UDPTransport *transport = new UDPTransport();
+    ReplicaAddress addr(host, "0");
+
+    switch (mode) {
+        case PROTO_ERIS:
+            protoClient = new eris::ErisClient(config, addr, transport);
             break;
-        }
-        case PROTO_GRANOLA: {
-            protoClient = new granola::GranolaClient(config, transport);
+        case PROTO_GRANOLA:
+            protoClient = new granola::GranolaClient(config, addr, transport);
             break;
-        }
-        case PROTO_UNREPLICATED: {
-            protoClient = new transaction::unreplicated::UnreplicatedClient(config, transport);
+        case PROTO_UNREPLICATED:
+            protoClient =
+                new transaction::unreplicated::UnreplicatedClient(config, addr, transport);
             break;
-        }
-        case PROTO_SPANNER: {
-            protoClient = new spanner::SpannerClient(config, transport);
+        case PROTO_SPANNER:
+            protoClient = new spanner::SpannerClient(config, addr, transport);
             break;
-        }
-        case PROTO_TAPIR: {
+        case PROTO_TAPIR:
             break;
-        }
         default:
             Panic("Unknown protocol mode");
-        }
-        if (mode == PROTO_TAPIR) {
-            txnClient = new tapir::TapirClient(config, transport);
-        } else {
-            txnClient = new TxnClientCommon(transport, protoClient);
-        }
-	tpccClient = new ClientThread(total_warehouses,
+    }
+    if (mode == PROTO_TAPIR) {
+        txnClient = new tapir::TapirClient(config, addr, transport);
+    } else {
+        txnClient = new TxnClientCommon(transport, protoClient);
+    }
+    tpccClient = new ClientThread(total_warehouses,
 	                          warehouse_per_shard,
 	                          clients_per_warehouse,
 	                          client_id,
 	                          remote_item_milli_p,
-                                  txnClient);
+                              txnClient);
 
-	latencies.reserve(duration * 10000);
-	_Latency_Init(&latency, "op");
+    latencies.reserve(duration * 10000);
+    _Latency_Init(&latency, "op");
 
 
 	gettimeofday(&initialTime, NULL);
-	while (true) {
-		gettimeofday(&currTime, NULL);
-		uint64_t time_elapsed = currTime.tv_sec - initialTime.tv_sec;
+    while (true) {
+        gettimeofday(&currTime, NULL);
+        uint64_t time_elapsed = currTime.tv_sec - initialTime.tv_sec;
 
-		if (phase == WARMUP) {
-			if (time_elapsed >= (uint64_t)duration / 3) {
-				phase = MEASURE;
-				startTime = currTime;
-			}
-		} else if (phase == MEASURE) {
-			if (time_elapsed >= (uint64_t)duration * 2 / 3) {
-				phase = COOLDOWN;
-				endTime = currTime;
-			}
-		} else if (phase == COOLDOWN) {
-			if (time_elapsed >= (uint64_t)duration) {
-				break;
-			}
-		}
-
-		Latency_Start(&latency);
-		int num_new_orders = tpccClient->doOps(ops_per_iteration);
-		uint64_t ns = Latency_End(&latency);
-
-		if (phase == MEASURE) {
-                    if (num_new_orders > 0) {
-                        // Only report new order txns
-			latencies.push_back(ns);
-                    }
-		}
-	}
-        txnClient->Done();
-
-	struct timeval diff = timeval_sub(endTime, startTime);
-
-	Notice("Completed %lu transactions in " FMT_TIMEVAL_DIFF " seconds",
-	       latencies.size(), VA_TIMEVAL_DIFF(diff));
-
-	char buf[1024];
-	std::sort(latencies.begin(), latencies.end());
-
-	uint64_t ns  = latencies[latencies.size() / 2];
-	LatencyFmtNS(ns, buf);
-	Notice("Median latency is %ld ns (%s)", ns, buf);
-
-	ns = latencies[latencies.size() * 90 / 100];
-	LatencyFmtNS(ns, buf);
-	Notice("90th percentile latency is %ld ns (%s)", ns, buf);
-
-	ns = latencies[latencies.size() * 95 / 100];
-	LatencyFmtNS(ns, buf);
-	Notice("95th percentile latency is %ld ns (%s)", ns, buf);
-
-	ns = latencies[latencies.size() * 99 / 100];
-	LatencyFmtNS(ns, buf);
-	Notice("99th percentile latency is %ld ns (%s)", ns, buf);
-
-        delete tpccClient;
-        delete txnClient;
-        if (protoClient) {
-            delete protoClient;
+        if (phase == WARMUP) {
+            if (time_elapsed >= (uint64_t)duration / 3) {
+                phase = MEASURE;
+                startTime = currTime;
+            }
+        } else if (phase == MEASURE) {
+            if (time_elapsed >= (uint64_t)duration * 2 / 3) {
+                phase = COOLDOWN;
+                endTime = currTime;
+            }
+        } else if (phase == COOLDOWN) {
+            if (time_elapsed >= (uint64_t)duration) {
+                break;
+            }
         }
-	return 0;
+
+        Latency_Start(&latency);
+        int num_new_orders = tpccClient->doOps(ops_per_iteration);
+        uint64_t ns = Latency_End(&latency);
+
+        if (phase == MEASURE) {
+            if (num_new_orders > 0) {
+                // Only report new order txns
+                latencies.push_back(ns);
+            }
+        }
+    }
+    txnClient->Done();
+
+    struct timeval diff = timeval_sub(endTime, startTime);
+
+    Notice("Completed %lu transactions in " FMT_TIMEVAL_DIFF " seconds",
+            latencies.size(), VA_TIMEVAL_DIFF(diff));
+
+    char buf[1024];
+    std::sort(latencies.begin(), latencies.end());
+
+    uint64_t ns  = latencies[latencies.size() / 2];
+    LatencyFmtNS(ns, buf);
+    Notice("Median latency is %ld ns (%s)", ns, buf);
+
+    ns = latencies[latencies.size() * 90 / 100];
+    LatencyFmtNS(ns, buf);
+    Notice("90th percentile latency is %ld ns (%s)", ns, buf);
+
+    ns = latencies[latencies.size() * 95 / 100];
+    LatencyFmtNS(ns, buf);
+    Notice("95th percentile latency is %ld ns (%s)", ns, buf);
+
+    ns = latencies[latencies.size() * 99 / 100];
+    LatencyFmtNS(ns, buf);
+    Notice("99th percentile latency is %ld ns (%s)", ns, buf);
+
+    delete tpccClient;
+    delete txnClient;
+    if (protoClient) {
+        delete protoClient;
+    }
+    return 0;
 }

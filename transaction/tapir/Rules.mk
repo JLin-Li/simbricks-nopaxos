@@ -5,8 +5,8 @@ SRCS += $(addprefix $(d), \
 
 PROTOS += $(addprefix $(d), tapir-proto.proto)
 
-OBJS-tapir-client := $(o)tapir-proto.o $(o)irclient.o $(o)client.o \
-    $(OBJS-client) $(LIB-message) $(LIB-configuration)
+OBJS-common := $(o)tapir-proto.o $(LIB-message) $(LIB-configuration) $(LIB-pbmessage)
 
-OBJS-tapir-server := $(o)tapir-proto.o $(o)record.o $(o)server.o \
-    $(OBJS-replica) $(LIB-message) $(LIB-configuration)
+OBJS-tapir-client := $(o)irclient.o $(o)client.o $(OBJS-client) $(OBJS-common)
+
+OBJS-tapir-server := $(o)record.o $(o)server.o $(OBJS-replica) $(OBJS-common)

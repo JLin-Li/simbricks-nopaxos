@@ -54,8 +54,8 @@ public:
 
     static const uint32_t DEFAULT_UNLOGGED_OP_TIMEOUT = 1000; // milliseconds
 
-    Client(const Configuration &config, Transport *transport,
-           uint64_t clientid = 0);
+    Client(const Configuration &config, const ReplicaAddress &addr,
+           Transport *transport, uint64_t clientid = 0);
     virtual ~Client();
     virtual void Invoke(const string &request,
                         continuation_t continuation) = 0; // Request goes to the default group (0)
@@ -69,9 +69,7 @@ public:
                                 uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) = 0;
     virtual void InvokeAsync(const string &request); // Asynchronous invoke (do not wait for reply)
     virtual void ReceiveMessage(const TransportAddress &remote,
-                                const string &type,
-                                const string &data,
-                                void *meta_data) override;
+                                void *buf, size_t size) override;
 
 protected:
     Configuration config;

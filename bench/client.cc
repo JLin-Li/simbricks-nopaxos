@@ -47,8 +47,8 @@
 static void
 Usage(const char *progName)
 {
-        fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-q dscp] [-d delay-ms] [-u duration-sec] -c conf-file -m unreplicated|vr|fastpaxos|nopaxos\n",
-                progName);
+    fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-d delay-ms] [-u duration-sec] -c conf-file -h address -m unreplicated|vr|fastpaxos|nopaxos\n",
+            progName);
         exit(1);
 }
 
@@ -63,9 +63,9 @@ int main(int argc, char **argv)
     const char *configPath = NULL;
     int numClients = 1;
     int duration = 1;
-    int dscp = 0;
     uint64_t delay = 0;
     int tputInterval = 0;
+    std::string host;
 
     enum
     {
@@ -74,14 +74,14 @@ int main(int argc, char **argv)
         PROTO_VR,
         PROTO_FASTPAXOS,
         PROTO_SPEC,
-	PROTO_NOPAXOS
+        PROTO_NOPAXOS
     } proto = PROTO_UNKNOWN;
 
     string statsFile;
 
     // Parse arguments
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:q:s:m:t:i:u:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:h:s:m:t:i:u:")) != -1) {
         switch (opt) {
         case 'c':
             configPath = optarg;
@@ -100,19 +100,9 @@ int main(int argc, char **argv)
             break;
         }
 
-        case 'q':
-        {
-            char *strtolPtr;
-            dscp = strtoul(optarg, &strtolPtr, 10);
-            if ((*optarg == '\0') || (*strtolPtr != '\0') ||
-                (dscp < 0))
-            {
-                fprintf(stderr,
-                        "option -q requires a numeric arg\n");
-                Usage(argv[0]);
-            }
+        case 'h':
+            host = std::string(optarg);
             break;
-        }
 
         case 's':
             statsFile = string(optarg);
@@ -186,6 +176,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "option -c is required\n");
         Usage(argv[0]);
     }
+    if (host.empty()) {
+        fprintf(stderr, "option -h is required\n");
+        Usage(argv[0]);
+    }
     if (proto == PROTO_UNKNOWN) {
         fprintf(stderr, "option -m is required\n");
         Usage(argv[0]);
@@ -200,9 +194,10 @@ int main(int argc, char **argv)
     }
     dsnet::Configuration config(configStream);
 
-    dsnet::UDPTransport transport(0, 0, dscp);
+    dsnet::UDPTransport transport(0, 0);
     std::vector<dsnet::Client *> clients;
     std::vector<dsnet::BenchmarkClient *> benchClients;
+    dsnet::ReplicaAddress addr(host, "0");
 
     for (int i = 0; i < numClients; i++) {
         dsnet::Client *client;
@@ -210,21 +205,25 @@ int main(int argc, char **argv)
         case PROTO_UNREPLICATED:
             client =
                 new dsnet::unreplicated::UnreplicatedClient(config,
-                                                                &transport);
+                                                            addr,
+                                                            &transport);
             break;
 
         case PROTO_VR:
-            client = new dsnet::vr::VRClient(config, &transport);
+            client = new dsnet::vr::VRClient(config, addr, &transport);
             break;
 
         case PROTO_FASTPAXOS:
             client = new dsnet::fastpaxos::FastPaxosClient(config,
-                                                               &transport);
+                                                           addr,
+                                                           &transport);
             break;
 
-	case PROTO_NOPAXOS:
-	    client = new dsnet::nopaxos::NOPaxosClient(config, &transport);
-	    break;
+        case PROTO_NOPAXOS:
+            client = new dsnet::nopaxos::NOPaxosClient(config,
+                                                       addr,
+                                                       &transport);
+            break;
 
         default:
             NOT_REACHABLE();

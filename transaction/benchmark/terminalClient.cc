@@ -30,17 +30,22 @@ main(int argc, char **argv)
     KVClient *kvClient;
     TxnClient *txnClient;
     Client *protoClient;
+    string host;
 
     protomode_t mode = PROTO_UNKNOWN;
 
     int opt;
-    while ((opt = getopt(argc, argv, "c:N:m:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:h:N:m:")) != -1) {
         switch (opt) {
         case 'c': // Configuration path
         {
             configPath = optarg;
             break;
         }
+
+        case 'h': // client host address
+            host = string(optarg);
+            break;
 
         case 'N': // Number of shards.
         {
@@ -77,6 +82,10 @@ main(int argc, char **argv)
         fprintf(stderr, "option -c required\n");
         exit(1);
     }
+    if (host.empty()) {
+        fprintf(stderr, "option -h required\n");
+        exit(1);
+    }
     // Load configuration
     ifstream configStream(configPath);
     if (configStream.fail()) {
@@ -85,17 +94,19 @@ main(int argc, char **argv)
     }
     Configuration config(configStream);
     UDPTransport *transport = new UDPTransport();
+    ReplicaAddress addr(host, "0");
+
     switch (mode) {
     case PROTO_ERIS: {
-        protoClient = new eris::ErisClient(config, transport);
+        protoClient = new eris::ErisClient(config, addr, transport);
         break;
     }
     case PROTO_GRANOLA: {
-        protoClient = new granola::GranolaClient(config, transport);
+        protoClient = new granola::GranolaClient(config, addr, transport);
         break;
     }
     case PROTO_UNREPLICATED: {
-        protoClient = new unreplicated::UnreplicatedClient(config, transport);
+        protoClient = new unreplicated::UnreplicatedClient(config, addr, transport);
         break;
     }
     default:

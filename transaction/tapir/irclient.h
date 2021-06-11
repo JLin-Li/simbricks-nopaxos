@@ -58,6 +58,7 @@ public:
     typedef std::function<string (const std::set<string> &)> decide_t;
 
     IRClient(const Configuration &config,
+             const ReplicaAddress &addr,
              Transport *transport,
              shardnum_t shard,
              uint64_t clientid = 0);
@@ -74,13 +75,11 @@ public:
                                 continuation_t continuation,
                                 timeout_continuation_t timeoutContinuation = nullptr,
                                 uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT);
-    virtual void ReceiveMessage(const TransportAddress &remote,
-                                const string &type, const string &data,
-                                void *meta_data) override;
-
     virtual void Invoke(const std::map<shardnum_t, std::string> &requests,
                         g_continuation_t continuation,
                         void *arg = nullptr) override;
+    virtual void ReceiveMessage(const TransportAddress &remote,
+                                void *buf, size_t size) override;
 
     virtual void Done();
 

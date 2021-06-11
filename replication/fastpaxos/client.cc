@@ -30,6 +30,7 @@
 
 #include "common/client.h"
 #include "common/request.pb.h"
+#include "common/pbmessage.h"
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/transport.h"
@@ -38,10 +39,13 @@
 namespace dsnet {
 namespace fastpaxos {
 
+using namespace proto;
+
 FastPaxosClient::FastPaxosClient(const Configuration &config,
-                   Transport *transport,
-                   uint64_t clientid)
-    : Client(config, transport, clientid)
+                                 const ReplicaAddress &addr,
+                                 Transport *transport,
+                                 uint64_t clientid)
+    : Client(config, addr, transport, clientid)
 {
     pendingRequest = NULL;
     pendingUnloggedRequest = NULL;
@@ -101,28 +105,31 @@ FastPaxosClient::InvokeUnlogged(int replicaIdx,
     pendingUnloggedRequest = new PendingRequest(request, reqId, continuation);
     pendingUnloggedRequest->timeoutContinuation = timeoutContinuation;
 
-    proto::UnloggedRequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingUnloggedRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(pendingUnloggedRequest->clientReqId);
+
+    ToReplicaMessage m;
+    UnloggedRequestMessage *reqMsg = m.mutable_unlogged_request();
+    reqMsg->mutable_req()->set_op(pendingUnloggedRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(pendingUnloggedRequest->clientReqId);
 
     ASSERT(!unloggedRequestTimeout->Active());
     unloggedRequestTimeout->SetTimeout(timeout);
     unloggedRequestTimeout->Start();
 
-    transport->SendMessageToReplica(this, replicaIdx, reqMsg);
+    transport->SendMessageToReplica(this, replicaIdx, PBMessage(m));
 }
 
 void
 FastPaxosClient::SendRequest()
 {
-    proto::RequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(pendingRequest->clientReqId);
+    ToReplicaMessage m;
+    RequestMessage *reqMsg = m.mutable_request();
+    reqMsg->mutable_req()->set_op(pendingRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(pendingRequest->clientReqId);
 
     // XXX Try sending only to (what we think is) the leader first
-    transport->SendMessageToAll(this, reqMsg);
+    transport->SendMessageToAll(this, PBMessage(m));
 
     requestTimeout->Reset();
 }
@@ -137,21 +144,22 @@ FastPaxosClient::ResendRequest()
 
 void
 FastPaxosClient::ReceiveMessage(const TransportAddress &remote,
-                         const string &type,
-                         const string &data,
-                         void *meta_data)
+                                void *buf, size_t size)
 {
-    static proto::ReplyMessage reply;
-    static proto::UnloggedReplyMessage unloggedReply;
+    static ToClientMessage client_msg;
+    static PBMessage m(client_msg);
 
-    if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else if (type == unloggedReply.GetTypeName()) {
-        unloggedReply.ParseFromString(data);
-        HandleUnloggedReply(remote, unloggedReply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, meta_data);
+    m.Parse(buf, size);
+
+    switch (client_msg.msg_case()) {
+        case ToClientMessage::MsgCase::kReply:
+            HandleReply(remote, client_msg.reply());
+            break;
+        case ToClientMessage::MsgCase::kUnloggedReply:
+            HandleUnloggedReply(remote, client_msg.unlogged_reply());
+        default:
+            Panic("Received unexpected message type %u",
+                    client_msg.msg_case());
     }
 }
 

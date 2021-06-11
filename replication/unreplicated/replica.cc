@@ -30,6 +30,7 @@
  **********************************************************************/
 
 #include "common/replica.h"
+#include "common/pbmessage.h"
 #include "replication/unreplicated/replica.h"
 
 #include "lib/message.h"
@@ -44,22 +45,21 @@ void
 UnreplicatedReplica::HandleRequest(const TransportAddress &remote,
                                    const proto::RequestMessage &msg)
 {
-    proto::ReplyMessage reply;
+    ToClientMessage m;
+    ReplyMessage *reply = m.mutable_reply();
 
     auto kv = clientTable.find(msg.req().clientid());
     if (kv != clientTable.end()) {
-	const ClientTableEntry &entry = kv->second;
-	if (msg.req().clientreqid() < entry.lastReqId) {
-	    Notice("Ignoring stale request");
-	    return;
-	}
-	if (msg.req().clientreqid() == entry.lastReqId) {
-	    Notice("Received duplicate request; resending reply");
-	    if (!(transport->SendMessage(this, remote, entry.reply))) {
-		Warning("Failed to resend reply to client");
-	    }
-	    return;
-	}
+        ClientTableEntry &entry = kv->second;
+        if (msg.req().clientreqid() < entry.lastReqId) {
+            return;
+        }
+        if (msg.req().clientreqid() == entry.lastReqId) {
+            if (!(transport->SendMessage(this, remote, PBMessage(entry.reply)))) {
+                Warning("Failed to resend reply to client");
+            }
+            return;
+        }
     }
 
     ++last_op_;
@@ -68,35 +68,32 @@ UnreplicatedReplica::HandleRequest(const TransportAddress &remote,
     v.opnum = last_op_;
     v.sessnum = 0;
     v.msgnum = 0;
-    log.Append(LogEntry(v, LOG_STATE_RECEIVED, msg.req()));
+    log.Append(new LogEntry(v, LOG_STATE_RECEIVED, msg.req()));
 
-    Debug("Received request %s", (char *)msg.req().op().c_str());
-
-    Execute(0, msg.req(), reply);
+    Execute(0, msg.req(), *reply);
 
     // The protocol defines these as required, even if they're not
     // meaningful.
-    reply.set_view(0);
-    reply.set_opnum(0);
-    *(reply.mutable_req()) = msg.req();
+    reply->set_view(0);
+    reply->set_opnum(0);
+    *(reply->mutable_req()) = msg.req();
 
-    if (!(transport->SendMessage(this, remote, reply)))
+    if (!(transport->SendMessage(this, remote, PBMessage(m))))
         Warning("Failed to send reply message");
 
-    UpdateClientTable(msg.req(), reply);
+    UpdateClientTable(msg.req(), m);
 }
 
 void
 UnreplicatedReplica::HandleUnloggedRequest(const TransportAddress &remote,
-                                           const proto::UnloggedRequestMessage &msg)
+                                           const UnloggedRequestMessage &msg)
 {
-    proto::UnloggedReplyMessage reply;
+    ToClientMessage m;
+    UnloggedReplyMessage *reply = m.mutable_unlogged_reply();
 
-    Debug("Received unlogged request %s", (char *)msg.req().op().c_str());
+    ExecuteUnlogged(msg.req(), *reply);
 
-    ExecuteUnlogged(msg.req(), reply);
-
-    if (!(transport->SendMessage(this, remote, reply)))
+    if (!(transport->SendMessage(this, remote, PBMessage(m))))
         Warning("Failed to send reply message");
 }
 
@@ -118,35 +115,36 @@ UnreplicatedReplica::UnreplicatedReplica(Configuration config,
 
 void
 UnreplicatedReplica::ReceiveMessage(const TransportAddress &remote,
-                                    const string &type, const string &data,
-                                    void *meta_data)
+                                    void *buf, size_t size)
 {
-    static proto::RequestMessage request;
-    static proto::UnloggedRequestMessage unloggedRequest;
+    static ToReplicaMessage replica_msg;
+    static PBMessage m(replica_msg);
 
-    if (type == request.GetTypeName()) {
-        request.ParseFromString(data);
-        HandleRequest(remote, request);
-    } else if (type == unloggedRequest.GetTypeName()) {
-        unloggedRequest.ParseFromString(data);
-        HandleUnloggedRequest(remote, unloggedRequest);
-    } else {
-        Panic("Received unexpected message type in unreplicated proto: %s",
-              type.c_str());
+    m.Parse(buf, size);
+
+    switch (replica_msg.msg_case()) {
+        case ToReplicaMessage::MsgCase::kRequest:
+            HandleRequest(remote, replica_msg.request());
+            break;
+        case ToReplicaMessage::MsgCase::kUnloggedRequest:
+            HandleUnloggedRequest(remote, replica_msg.unlogged_request());
+            break;
+        default:
+            Panic("Received unexpected message type: %u", replica_msg.msg_case());
     }
 }
 
 void
 UnreplicatedReplica::UpdateClientTable(const Request &req,
-				       const proto::ReplyMessage &reply)
+				       const ToClientMessage &reply)
 {
     ClientTableEntry &entry = clientTable[req.clientid()];
 
     ASSERT(entry.lastReqId <= req.clientreqid());
 
     if (entry.lastReqId == req.clientreqid()) {
-	// Duplicate request
-	return;
+        // Duplicate request
+        return;
     }
 
     entry.lastReqId = req.clientreqid();

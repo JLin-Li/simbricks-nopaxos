@@ -30,6 +30,7 @@
 
 #include "common/client.h"
 #include "common/request.pb.h"
+#include "common/pbmessage.h"
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/transport.h"
@@ -39,9 +40,10 @@ namespace dsnet {
 namespace vr {
 
 VRClient::VRClient(const Configuration &config,
+                   const ReplicaAddress &addr,
                    Transport *transport,
                    uint64_t clientid)
-    : Client(config, transport, clientid)
+    : Client(config, addr, transport, clientid)
 {
     pendingRequest = NULL;
     pendingUnloggedRequest = NULL;
@@ -101,16 +103,17 @@ VRClient::InvokeUnlogged(int replicaIdx,
     pendingUnloggedRequest = new PendingRequest(request, reqId, continuation);
     pendingUnloggedRequest->timeoutContinuation = timeoutContinuation;
 
-    proto::UnloggedRequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingUnloggedRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(pendingUnloggedRequest->clientReqId);
+    proto::ToReplicaMessage m;
+    proto::UnloggedRequestMessage *reqMsg = m.mutable_unlogged_request();
+    reqMsg->mutable_req()->set_op(pendingUnloggedRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(pendingUnloggedRequest->clientReqId);
 
     ASSERT(!unloggedRequestTimeout->Active());
     unloggedRequestTimeout->SetTimeout(timeout);
     unloggedRequestTimeout->Start();
 
-    transport->SendMessageToReplica(this, replicaIdx, reqMsg);
+    transport->SendMessageToReplica(this, replicaIdx, PBMessage(m));
 }
 
 void
@@ -121,24 +124,26 @@ VRClient::InvokeAsync(const string &request)
     }
 
     ++lastReqId;
-    proto::RequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(request);
-    reqMsg.mutable_req()->set_clientid(this->clientid);
-    reqMsg.mutable_req()->set_clientreqid(this->lastReqId);
+    proto::ToReplicaMessage m;
+    proto::RequestMessage *reqMsg = m.mutable_request();
+    reqMsg->mutable_req()->set_op(request);
+    reqMsg->mutable_req()->set_clientid(this->clientid);
+    reqMsg->mutable_req()->set_clientreqid(this->lastReqId);
 
-    transport->SendMessageToAll(this, reqMsg);
+    transport->SendMessageToAll(this, PBMessage(m));
 }
 
 void
 VRClient::SendRequest()
 {
-    proto::RequestMessage reqMsg;
-    reqMsg.mutable_req()->set_op(pendingRequest->request);
-    reqMsg.mutable_req()->set_clientid(clientid);
-    reqMsg.mutable_req()->set_clientreqid(pendingRequest->clientReqId);
+    proto::ToReplicaMessage m;
+    proto::RequestMessage *reqMsg = m.mutable_request();
+    reqMsg->mutable_req()->set_op(pendingRequest->request);
+    reqMsg->mutable_req()->set_clientid(clientid);
+    reqMsg->mutable_req()->set_clientreqid(pendingRequest->clientReqId);
 
     // XXX Try sending only to (what we think is) the leader first
-    transport->SendMessageToAll(this, reqMsg);
+    transport->SendMessageToAll(this, PBMessage(m));
 
     requestTimeout->Reset();
 }
@@ -153,21 +158,22 @@ VRClient::ResendRequest()
 
 void
 VRClient::ReceiveMessage(const TransportAddress &remote,
-                         const string &type,
-                         const string &data,
-                         void *meta_data)
+                         void *buf, size_t size)
 {
-    static proto::ReplyMessage reply;
-    static proto::UnloggedReplyMessage unloggedReply;
+    static proto::ToClientMessage client_msg;
+    static PBMessage m(client_msg);
 
-    if (type == reply.GetTypeName()) {
-        reply.ParseFromString(data);
-        HandleReply(remote, reply);
-    } else if (type == unloggedReply.GetTypeName()) {
-        unloggedReply.ParseFromString(data);
-        HandleUnloggedReply(remote, unloggedReply);
-    } else {
-        Client::ReceiveMessage(remote, type, data, NULL);
+    m.Parse(buf, size);
+
+    switch (client_msg.msg_case()) {
+        case proto::ToClientMessage::MsgCase::kReply:
+            HandleReply(remote, client_msg.reply());
+            break;
+        case proto::ToClientMessage::MsgCase::kUnloggedReply:
+            HandleUnloggedReply(remote, client_msg.unlogged_reply());
+            break;
+        default:
+            Panic("Received unexpected message type: %u", client_msg.msg_case());
     }
 }
 

@@ -49,9 +49,7 @@ public:
     TransportSender() { }
     ~TransportSender() { }
     void ReceiveMessage(const TransportAddress &remote,
-                        const string &type,
-                        const string &data,
-                        void *meta_data) override
+                        void *buf, size_t size) override
     {
         // Sender ignores all incoming messages
     }
@@ -160,7 +158,7 @@ private:
     std::map<int /* shard num */, LatestMsgRecord> latestMsgNums;
     std::map<int /* shard num */, int /* view num */> latestViewNums;
 
-    std::map<std::pair<int /* shard num */, int /* replica num */>, proto::FCToErisMessage> pendingStateTransfers;
+    std::map<std::pair<int /* shard num */, int /* replica num */>, proto::ToServerMessage> pendingStateTransfers;
 
     std::map<int /* shard num */, proto::StartEpoch> lastStartEpochs;
 

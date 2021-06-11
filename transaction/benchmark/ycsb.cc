@@ -64,6 +64,7 @@ main(int argc, char **argv)
     phase_t phase = WARMUP;
     int tputInterval = 0;
     bool indep = true;
+    string host;
 
     KVClient *kvClient;
     TxnClient *txnClient;
@@ -72,7 +73,7 @@ main(int argc, char **argv)
     protomode_t mode = PROTO_UNKNOWN;
 
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:N:k:f:v:m:z:i:r:u:w:g")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:h:N:k:f:v:m:z:i:r:u:w:g")) != -1) {
         switch (opt) {
         case 'c': // Configuration path
         {
@@ -90,6 +91,10 @@ main(int argc, char **argv)
             }
             break;
         }
+
+        case 'h':
+            host = string(optarg);
+            break;
 
         case 'N': // Number of shards.
         {
@@ -219,6 +224,10 @@ main(int argc, char **argv)
         Panic("option -c required");
     }
 
+    if (host.empty()) {
+        Panic("tpccClient requires -h option\n");
+    }
+
     if (mode == PROTO_UNKNOWN) {
         Panic("option -m required");
     }
@@ -242,21 +251,24 @@ main(int argc, char **argv)
 
     Configuration config(configStream);
     UDPTransport *transport = new UDPTransport();
+    ReplicaAddress addr(host, "0");
+
     switch (mode) {
     case PROTO_ERIS: {
-        protoClient = new eris::ErisClient(config, transport);
+        protoClient = new eris::ErisClient(config, addr, transport);
         break;
     }
     case PROTO_GRANOLA: {
-        protoClient = new granola::GranolaClient(config, transport);
+        protoClient = new granola::GranolaClient(config, addr, transport);
         break;
     }
     case PROTO_UNREPLICATED: {
-        protoClient = new transaction::unreplicated::UnreplicatedClient(config, transport);
+        protoClient =
+            new transaction::unreplicated::UnreplicatedClient(config, addr, transport);
         break;
     }
     case PROTO_SPANNER: {
-        protoClient = new spanner::SpannerClient(config, transport);
+        protoClient = new spanner::SpannerClient(config, addr, transport);
         break;
     }
     case PROTO_TAPIR: {
@@ -266,7 +278,7 @@ main(int argc, char **argv)
         Panic("Unknown protocol mode");
     }
     if (mode == PROTO_TAPIR) {
-        txnClient = new tapir::TapirClient(config, transport);
+        txnClient = new tapir::TapirClient(config, addr, transport);
     } else {
         txnClient = new TxnClientCommon(transport, protoClient);
     }

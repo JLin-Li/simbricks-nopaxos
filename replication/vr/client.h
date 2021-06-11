@@ -43,6 +43,7 @@ class VRClient : public Client
 {
 public:
     VRClient(const Configuration &config,
+             const ReplicaAddress &addr,
              Transport *transport,
              uint64_t clientid = 0);
     virtual ~VRClient();
@@ -55,8 +56,7 @@ public:
                                 uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
     virtual void InvokeAsync(const string &request) override;
     virtual void ReceiveMessage(const TransportAddress &remote,
-                                const string &type, const string &data,
-                                void *meta_data) override;
+                                void *buf, size_t size) override;
 
 protected:
     int view;

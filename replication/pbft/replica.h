@@ -47,8 +47,8 @@ class PbftReplica : public Replica {
  public:
   PbftReplica(Configuration config, int myIdx, bool initialize,
               Transport *transport, AppReplica *app);
-  void ReceiveMessage(const TransportAddress &remote, const string &type,
-                      const string &data, void *meta_data) override;
+  void ReceiveMessage(const TransportAddress &remote,
+                      void *buf, size_t size) override;
 
  private:
   // fundamental
@@ -107,7 +107,7 @@ class PbftReplica : public Replica {
 
   struct ClientTableEntry {
     uint64_t lastReqId;
-    proto::ReplyMessage reply;
+    proto::ToClientMessage reply;
   };
   std::map<uint64_t, ClientTableEntry> clientTable;
   std::unordered_map<uint64_t, std::unique_ptr<TransportAddress>>

@@ -2,6 +2,7 @@
 
 #include "common/client.h"
 #include "common/request.pb.h"
+#include "common/pbmessage.h"
 #include "lib/message.h"
 #include "lib/rsakeys.h"
 #include "lib/transport.h"
@@ -10,9 +11,11 @@
 namespace dsnet {
 namespace pbft {
 
-PbftClient::PbftClient(const Configuration &config, Transport *transport,
-                       uint64_t clientid)
-    : Client(config, transport, clientid) {
+using namespace proto;
+
+PbftClient::PbftClient(const Configuration &config, const ReplicaAddress &addr,
+                       Transport *transport, uint64_t clientid)
+    : Client(config, addr, transport, clientid) {
   lastReqId = 0;
   pendingRequest = nullptr;
   requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
@@ -65,21 +68,27 @@ void PbftClient::InvokeUnlogged(int replicaIdx, const string &request,
                                 continuation_t continuation,
                                 timeout_continuation_t timeoutContinuation,
                                 uint32_t timeout) {
-  NOT_IMPLEMENTED();
+   NOT_IMPLEMENTED();
 }
 
 void PbftClient::ReceiveMessage(const TransportAddress &remote,
-                                const string &type, const string &data,
-                                void *meta_data) {
-  static proto::ReplyMessage reply;
-  // static proto::UnloggedReplyMessage unloggedReply;
+                                void *buf, size_t size) {
 
-  if (type == reply.GetTypeName()) {
-    reply.ParseFromString(data);
-    HandleReply(remote, reply);
-  } else {
-    Client::ReceiveMessage(remote, type, data, NULL);
-  }
+    static ToClientMessage client_msg;
+    static PBMessage m(client_msg);
+
+    m.Parse(buf, size);
+
+    switch (client_msg.msg_case()) {
+        case ToClientMessage::MsgCase::kReply:
+            HandleReply(remote, client_msg.reply());
+            break;
+        case ToClientMessage::MsgCase::kUnloggedReply:
+            HandleUnloggedReply(remote, client_msg.unlogged_reply());
+            break;
+        default:
+            Panic("Received unexpected message type %u", client_msg.msg_case());
+    }
 }
 
 void PbftClient::HandleReply(const TransportAddress &remote,

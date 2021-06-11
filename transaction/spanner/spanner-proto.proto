@@ -4,19 +4,6 @@ import "common/request.proto";
 
 package dsnet.transaction.spanner.proto;
 
-enum RequestType {
-    UNKNOWN = 0;
-    PREPARE = 1;
-    COMMIT = 2;
-    ABORT = 3;
-}
-
-message RequestMessage {
-    required uint64 txnid = 1;
-    required RequestType type = 2;
-    required Request request = 3;
-}
-
 enum ReplyType {
     OK = 0;
     FAIL = 1;
@@ -29,6 +16,19 @@ message ReplyMessage {
   required uint32 shard_num = 2;
   required ReplyType type = 3;
   optional bytes reply = 4;
+}
+
+enum RequestType {
+    UNKNOWN = 0;
+    PREPARE = 1;
+    COMMIT = 2;
+    ABORT = 3;
+}
+
+message RequestMessage {
+    required uint64 txnid = 1;
+    required RequestType type = 2;
+    required Request request = 3;
 }
 
 message PrepareMessage {
@@ -48,4 +48,13 @@ message PrepareOKMessage {
 message CommitMessage {
     required uint64 view = 1;
     required uint64 opnum = 2;
+}
+
+message ToServerMessage {
+    oneof msg {
+        RequestMessage request = 1;
+        PrepareMessage prepare = 2;
+        PrepareOKMessage prepare_ok = 3;
+        CommitMessage commit = 4;
+    }
 }
