@@ -35,6 +35,7 @@
 
 #include "common/client.h"
 #include "common/replica.h"
+#include "common/pbmessage.h"
 #include "replication/fastpaxos/client.h"
 #include "replication/fastpaxos/replica.h"
 
@@ -48,7 +49,6 @@ static string replicaLastOp;
 static string clientLastOp;
 static string clientLastReply;
 
-using google::protobuf::Message;
 using namespace dsnet;
 using namespace dsnet::fastpaxos;
 using namespace dsnet::fastpaxos::proto;
@@ -104,7 +104,9 @@ protected:
             replicas.push_back(new FastPaxosReplica(*config, i, true, transport, apps[i]));
         }
 
-        client = new FastPaxosClient(*config, transport);
+        client = new FastPaxosClient(*config,
+                                     ReplicaAddress("localhost", "0"),
+                                     transport);
         requestNum = -1;
 
         // Only let tests run for a simulated minute. This prevents
@@ -212,8 +214,7 @@ TEST_F(FastPaxosTest, UnloggedTimeout)
     // Drop messages to or from replica 1
     transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
                                  return false;
                              }
@@ -270,13 +271,14 @@ TEST_F(FastPaxosTest, Conflict)
     };
 
     // This one needs two clients. Set up a second one.
-    FastPaxosClient otherClient(*config, transport);
+    FastPaxosClient otherClient(*config,
+                                ReplicaAddress("localhost", "0"),
+                                transport);
 
     // Delay messages from the first client to two of the replicas
     transport->AddFilter(10, [=](TransportReceiver *src, std::pair<int, int> srcIdx,
                                  TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                 Message &m, uint64_t &delay,
-                                 const multistamp_t &stamp) {
+                                 Message &m, uint64_t &delay) {
                              if ((src == client) &&
                                  (dstIdx.second < 2)) {
                                  delay = 100;
@@ -330,8 +332,7 @@ TEST_F(FastPaxosTest, FailedReplica)
     // Drop messages to or from replica 1
     transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
                                  return false;
                              }
@@ -379,8 +380,7 @@ TEST_F(FastPaxosTest, StateTransfer)
     // Drop messages to or from replica 1
     transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
                                  return false;
                              }
@@ -413,13 +413,16 @@ TEST_F(FastPaxosTest, DroppedReply)
     bool dropped = false;
     transport->AddFilter(10, [&dropped](TransportReceiver *src, std::pair<int, int> srcIdx,
                                         TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                        Message &m, uint64_t &delay,
-                                        const multistamp_t &stamp) {
-                             ReplyMessage r;
-                             if (m.GetTypeName() == r.GetTypeName()) {
-                                 if (!dropped) {
-                                     dropped = true;
-                                     return false;
+                                        Message &m, uint64_t &delay) {
+                             ToClientMessage r;
+                             PBMessage &pbm = (PBMessage &)m;
+                             if (pbm.Type() == r.GetTypeName()) {
+                                 if (((ToClientMessage &)pbm.Message()).msg_case() ==
+                                         ToClientMessage::MsgCase::kReply) {
+                                     if (!dropped) {
+                                         dropped = true;
+                                         return false;
+                                     }
                                  }
                              }
                              return true;
@@ -447,7 +450,9 @@ TEST_F(FastPaxosTest, Stress)
     std::vector<int> lastReq;
     std::vector<Client::continuation_t> upcalls;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        clients.push_back(new FastPaxosClient(*config, transport));
+        clients.push_back(new FastPaxosClient(*config,
+                                              ReplicaAddress("localhost", "0"),
+                                              transport));
         lastReq.push_back(0);
         upcalls.push_back([&, i](const string &req, const string &reply) {
                 EXPECT_EQ("reply: "+RequestOp(lastReq[i]), reply);
@@ -467,8 +472,7 @@ TEST_F(FastPaxosTest, Stress)
     // eventually be delivered.
     transport->AddFilter(10, [=](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              delay = rand() % MAX_DELAY;
                              return ((rand() % DROP_PROBABILITY) != 0);
                          });
