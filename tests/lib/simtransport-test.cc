@@ -31,13 +31,13 @@
 #include "lib/configuration.h"
 #include "lib/message.h"
 #include "lib/simtransport.h"
+#include "common/pbmessage.h"
 #include "tests/lib/simtransport-testmessage.pb.h"
 
 #include <gtest/gtest.h>
 
 using namespace dsnet::test;
 using namespace dsnet;
-using ::google::protobuf::Message;
 using std::vector;
 using std::map;
 using std::pair;
@@ -47,7 +47,7 @@ class TestReceiver : public TransportReceiver
 public:
     TestReceiver();
     void ReceiveMessage(const TransportAddress &src,
-                        const string &type, const string &data, void *meta_data) override;
+                        void *buf, size_t size) override;
 
     int numReceived;
     TestMessage lastMsg;
@@ -60,10 +60,10 @@ TestReceiver::TestReceiver()
 
 void
 TestReceiver::ReceiveMessage(const TransportAddress &src,
-                             const string &type, const string &data, void *meta_data)
+                             void *buf, size_t size)
 {
-    ASSERT_EQ(type, lastMsg.GetTypeName());
-    lastMsg.ParseFromString(data);
+    PBMessage m(lastMsg);
+    m.Parse(buf, size);
     numReceived++;
 }
 
@@ -108,8 +108,9 @@ TEST_F(SimTransportTest, Basic)
 {
     TestMessage msg;
     msg.set_test("foo");
+    PBMessage m(msg);
 
-    transport->SendMessageToReplica(receiver0, 1, msg);
+    transport->SendMessageToReplica(receiver0, 1, m);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -119,8 +120,9 @@ TEST_F(SimTransportTest, Basic)
 
     TestMessage msg2;
     msg2.set_test("bar");
+    PBMessage m2(msg2);
 
-    transport->SendMessageToAll(receiver0, msg2);
+    transport->SendMessageToAll(receiver0, m2);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -135,8 +137,7 @@ TEST_F(SimTransportTest, Filter)
 {
     transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                 TransportReceiver *dst, pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
         if (dstIdx.second == 1) {
             return false;
         }
@@ -145,8 +146,9 @@ TEST_F(SimTransportTest, Filter)
 
     TestMessage msg;
     msg.set_test("foo");
+    PBMessage m(msg);
 
-    transport->SendMessageToReplica(receiver0, 1, msg);
+    transport->SendMessageToReplica(receiver0, 1, m);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -155,8 +157,9 @@ TEST_F(SimTransportTest, Filter)
 
     TestMessage msg2;
     msg2.set_test("bar");
+    PBMessage m2(msg2);
 
-    transport->SendMessageToAll(receiver0, msg2);
+    transport->SendMessageToAll(receiver0, m2);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -166,7 +169,7 @@ TEST_F(SimTransportTest, Filter)
 
     transport->RemoveFilter(10);
 
-    transport->SendMessageToReplica(receiver0, 1, msg);
+    transport->SendMessageToReplica(receiver0, 1, m);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -180,17 +183,17 @@ TEST_F(SimTransportTest, FilterModify)
 {
     transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                 TransportReceiver *dst, pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
-        TestMessage &tm = dynamic_cast<TestMessage &>(m);
+                                Message &m, uint64_t &delay) {
+        TestMessage &tm = (TestMessage &)((PBMessage &)m).Message();
         tm.set_test("baz");
         return true;
     });
 
     TestMessage msg;
     msg.set_test("foo");
+    PBMessage m(msg);
 
-    transport->SendMessageToReplica(receiver0, 1, msg);
+    transport->SendMessageToReplica(receiver0, 1, m);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -200,8 +203,9 @@ TEST_F(SimTransportTest, FilterModify)
 
     TestMessage msg2;
     msg2.set_test("bar");
+    PBMessage m2(msg2);
 
-    transport->SendMessageToAll(receiver0, msg2);
+    transport->SendMessageToAll(receiver0, m2);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -216,9 +220,8 @@ TEST_F(SimTransportTest, FilterDelay)
 {
     transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                 TransportReceiver *dst, pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
-        TestMessage &tm = dynamic_cast<TestMessage &>(m);
+                                Message &m, uint64_t &delay) {
+        TestMessage &tm = (TestMessage &)((PBMessage &)m).Message();
         if (tm.test() == "foo") {
             delay = 1000;
         }
@@ -227,13 +230,15 @@ TEST_F(SimTransportTest, FilterDelay)
 
     TestMessage msg;
     msg.set_test("foo");
+    PBMessage m(msg);
 
-    transport->SendMessageToAll(receiver0, msg);
+    transport->SendMessageToAll(receiver0, m);
 
     TestMessage msg2;
     msg2.set_test("bar");
+    PBMessage m2(msg2);
 
-    transport->SendMessageToAll(receiver0, msg2);
+    transport->SendMessageToAll(receiver0, m2);
 
     transport->Run();
 
@@ -251,9 +256,8 @@ TEST_F(SimTransportTest, FilterPriority)
 {
     transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                 TransportReceiver *dst, pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
-        TestMessage &tm = dynamic_cast<TestMessage &>(m);
+                                Message &m, uint64_t &delay) {
+        TestMessage &tm = (TestMessage &)((PBMessage &)m).Message();
         if (tm.test() == "foo") {
             return false;
         }
@@ -262,17 +266,17 @@ TEST_F(SimTransportTest, FilterPriority)
 
     transport->AddFilter(20, [](TransportReceiver *src, pair<int, int> srcIdx,
                                 TransportReceiver *dst, pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
-        TestMessage &tm = dynamic_cast<TestMessage &>(m);
+                                Message &m, uint64_t &delay) {
+        TestMessage &tm = (TestMessage &)((PBMessage &)m).Message();
         tm.set_test("baz");
         return true;
     });
 
     TestMessage msg;
     msg.set_test("foo");
+    PBMessage m(msg);
 
-    transport->SendMessageToReplica(receiver0, 1, msg);
+    transport->SendMessageToReplica(receiver0, 1, m);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -281,8 +285,9 @@ TEST_F(SimTransportTest, FilterPriority)
 
     TestMessage msg2;
     msg2.set_test("bar");
+    PBMessage m2(msg2);
 
-    transport->SendMessageToAll(receiver0, msg2);
+    transport->SendMessageToAll(receiver0, m2);
     transport->Run();
 
     EXPECT_EQ(receiver0->numReceived, 0);
@@ -297,10 +302,11 @@ TEST_F(SimTransportTest, Timer)
 {
     TestMessage msg;
     msg.set_test("foo");
+    PBMessage m(msg);
     bool firstTimerCalled = false;
     bool secondTimerCalled = false;
 
-    transport->SendMessageToReplica(receiver0, 1, msg);
+    transport->SendMessageToReplica(receiver0, 1, m);
     transport->Timer(20, [&]() {
             EXPECT_TRUE(firstTimerCalled);
             EXPECT_FALSE(secondTimerCalled);
@@ -331,11 +337,12 @@ TEST_F(SimTransportTest, TimerCancel)
 {
     TestMessage msg;
     msg.set_test("foo");
+    PBMessage m(msg);
     bool firstTimerCalled = false;
     bool secondTimerCalled = false;
     int id2;
 
-    transport->SendMessageToReplica(receiver0, 1, msg);
+    transport->SendMessageToReplica(receiver0, 1, m);
     id2 = transport->Timer(20, [&]() {
             secondTimerCalled = true;
         });

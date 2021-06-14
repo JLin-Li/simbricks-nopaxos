@@ -15,6 +15,12 @@ BufferMessage::BufferMessage(const void *buf, size_t size)
 
 BufferMessage::~BufferMessage() { }
 
+BufferMessage *
+BufferMessage::Clone() const
+{
+    return new BufferMessage(buf_, size_);
+}
+
 std::string
 BufferMessage::Type() const
 {

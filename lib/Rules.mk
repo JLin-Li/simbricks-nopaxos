@@ -21,7 +21,7 @@ LIB-configuration := $(o)configuration.o $(LIB-message)
 
 LIB-transport := $(o)transport.o $(LIB-message) $(LIB-configuration)
 
-LIB-simtransport := $(o)simtransport.o $(LIB-transport) $(LIB-request) $(LIB-no-proto) $(LIB-mcast-proto)
+LIB-simtransport := $(o)simtransport.o $(LIB-transport)
 
 LIB-udptransport := $(o)udptransport.o $(LIB-transport)
 

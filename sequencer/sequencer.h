@@ -14,6 +14,7 @@ public:
     BufferMessage(const void *buf, size_t size);
     ~BufferMessage();
 
+    virtual BufferMessage *Clone() const override;
     virtual std::string Type() const override;
     virtual size_t SerializedSize() const override;
     virtual void Parse(const void *buf, size_t size) override;

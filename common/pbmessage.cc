@@ -7,6 +7,12 @@ PBMessage::PBMessage(::google::protobuf::Message &msg)
 
 PBMessage::~PBMessage() { }
 
+PBMessage *
+PBMessage::Clone() const
+{
+    return new PBMessage(*msg_);
+}
+
 std::string
 PBMessage::Type() const
 {

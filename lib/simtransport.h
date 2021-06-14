@@ -47,6 +47,7 @@ class SimulatedTransportAddress : public TransportAddress
 public:
     virtual SimulatedTransportAddress * clone() const override;
     virtual std::string Serialize() const override;
+    virtual void Parse(const std::string &s) override;
     int GetAddr() const;
     bool operator==(const SimulatedTransportAddress &other) const;
     inline bool operator!=(const SimulatedTransportAddress &other) const
@@ -65,8 +66,7 @@ class SimulatedTransport :
 {
     typedef std::function<bool (TransportReceiver*, std::pair<int, int>,
                                 TransportReceiver*, std::pair<int, int>,
-                                Message &, uint64_t &delay,
-                                const multistamp_t &stamp)> filter_t;
+                                Message &, uint64_t &delay)> filter_t;
 public:
     SimulatedTransport(bool continuous = false);
     ~SimulatedTransport();
@@ -80,25 +80,16 @@ public:
     int Timer(uint64_t ms, timer_callback_t cb) override;
     bool CancelTimer(int id) override;
     void CancelAllTimers() override;
-    bool OrderedMulticast(TransportReceiver *src,
-                          const std::vector<int> &groups,
-                          const Message &m) override;
 
     // Returns if simtransport still have timers
     bool HasTimers() {
         return !timers.empty();
     }
 
-    // Increment session number. (for testing only)
-    void SessionChange();
-
 protected:
     bool SendMessageInternal(TransportReceiver *src,
                              const SimulatedTransportAddress &dstAddr,
                              const Message &m) override;
-    bool SendBuffer(TransportReceiver *src,
-                    const TransportAddress &dst,
-                    const void *buf, size_t len) override;
 
     SimulatedTransportAddress
     LookupAddress(const dsnet::ReplicaAddress &addr) override;
@@ -107,12 +98,10 @@ private:
     struct QueuedMessage {
         int dst;
         int src;
-        string type;
         string msg;
-        multistamp_t stamp;
         inline QueuedMessage(int dst, int src,
-                             const string &type, const string &msg, const multistamp_t &stamp) :
-            dst(dst), src(src), type(type), msg(msg), stamp(stamp) { }
+                             const string &msg) :
+            dst(dst), src(src), msg(msg) { }
     };
     struct PendingTimer {
         uint64_t when;
@@ -125,8 +114,6 @@ private:
     int lastAddr;
     std::map<int, std::pair<int, int> > replicaIdxs; // address to <groupIdx, replicaIdx>
     std::unordered_map<dsnet::ReplicaAddress, SimulatedTransportAddress> addrLookupMap;
-    std::vector<int> sequencerAddresses;
-    int fcAddress;
     std::multimap<int, filter_t> filters;
     std::multimap<uint64_t, PendingTimer> timers;
     std::mutex timersLock;
@@ -135,17 +122,6 @@ private:
     bool processTimers;
     bool running;
     bool continuous;
-
-    // Network-Ordered packet counters
-    std::map<int, uint64_t> noCounters; // (64bit) counter for each (32bit) group
-    uint64_t sequencerID; // current sequencer ID
-
-    bool _SendMessageInternal(TransportReceiver *src,
-                              const SimulatedTransportAddress &dstAddr,
-                              const Message &m,
-                              const multistamp_t &stamp);
-    void RegisterEndpoint(TransportReceiver *receiver, int groupIdx, int replicaIdx);
-    void RegisterFC();
 };
 
 } // namespace dsnet

@@ -12,12 +12,13 @@ public:
     PBMessage(::google::protobuf::Message &msg);
     ~PBMessage();
 
+    virtual PBMessage *Clone() const override;
     virtual std::string Type() const override;
     virtual size_t SerializedSize() const override;
     virtual void Parse(const void *buf, size_t size) override;
     virtual void Serialize(void *buf) const override;
 
-    const ::google::protobuf::Message &Message() { return *msg_; };
+    ::google::protobuf::Message &Message() { return *msg_; };
 
 protected:
     ::google::protobuf::Message *msg_;
