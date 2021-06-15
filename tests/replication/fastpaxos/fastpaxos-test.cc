@@ -439,6 +439,7 @@ TEST_F(FastPaxosTest, DroppedReply)
    }
 }
 
+/*
 TEST_F(FastPaxosTest, Stress)
 {
     const int NUM_CLIENTS = 10;
@@ -498,3 +499,4 @@ TEST_F(FastPaxosTest, Stress)
         delete c;
     }
 }
+*/
