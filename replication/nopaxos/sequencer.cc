@@ -6,7 +6,7 @@ namespace nopaxos {
 NOPaxosSequencer::NOPaxosSequencer(const Configuration &config,
                                    Transport *transport, int id)
     : Sequencer(config, transport, id),
-      sess_num_(0), msg_num_(0) { }
+      sess_num_(id), msg_num_(0) { }
 
 NOPaxosSequencer::~NOPaxosSequencer() { }
 
