@@ -131,7 +131,11 @@ SpecClient::SendRequest()
     reqMsg->mutable_req()->set_clientid(clientid);
     reqMsg->mutable_req()->set_clientreqid(pendingRequest->clientReqId);
 
-    transport->SendMessageToMulticast(this, PBMessage(m));
+    if (config.multicast() != nullptr) {
+        transport->SendMessageToMulticast(this, PBMessage(m));
+    } else {
+        transport->SendMessageToAll(this, PBMessage(m));
+    }
 
     requestTimeout->Reset();
 }
@@ -231,23 +235,23 @@ SpecClient::HandleReply(const TransportAddress &remote,
             }
         }
 
-	if (matching >= config.FastQuorumSize()) {
-	    CompleteOperation(msg);
-	} else {
-	    // XXX This gets triggered if there are n-e responses and
-	    // they don't all match.
-	    Warning("Non-matching quorum in view %ld; requesting view change",
-		    msg.view());
-	    for (auto &kv : *msgs) {
-		Warning("  replica %d: " FMT_VIEWSTAMP, kv.first,
-			kv.second.view(), kv.second.opnum());
-	    }
+        if (matching >= config.FastQuorumSize()) {
+            CompleteOperation(msg);
+        } else {
+            // XXX This gets triggered if there are n-e responses and
+            // they don't all match.
+            Warning("Non-matching quorum in view %ld; requesting view change",
+                    msg.view());
+            for (auto &kv : *msgs) {
+                Warning("  replica %d: " FMT_VIEWSTAMP, kv.first,
+                        kv.second.view(), kv.second.opnum());
+            }
 
-        ToReplicaMessage m;
-	    RequestViewChangeMessage *rvc = m.mutable_request_view_change();
-	    rvc->set_view(msg.view());
-	    transport->SendMessageToAll(this, PBMessage(m));
-	}
+            ToReplicaMessage m;
+            RequestViewChangeMessage *rvc = m.mutable_request_view_change();
+            rvc->set_view(msg.view());
+            transport->SendMessageToAll(this, PBMessage(m));
+        }
     }
 }
 
