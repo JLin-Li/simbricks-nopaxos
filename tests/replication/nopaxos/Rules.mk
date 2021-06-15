@@ -4,6 +4,7 @@ GTEST_SRCS += $(d)nopaxos-test.cc
 
 $(d)nopaxos-test: $(o)nopaxos-test.o \
                   $(OBJS-nopaxos-replica) $(OBJS-nopaxos-client) \
+                  $(OBJS-nopaxos-sequencer) $(OBJS-sequencer) \
                   $(LIB-simtransport) \
                   $(GTEST_MAIN)
 
