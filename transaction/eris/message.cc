@@ -11,14 +11,6 @@ namespace eris {
  * sequencer header size  + sess num + number of groups + each (group id + msg num)
  */
 
-ErisMessage *
-ErisMessage::Clone() const
-{
-    ErisMessage *m = (ErisMessage *)PBMessage::Clone();
-    m->stamp_ = stamp_;
-    return m;
-}
-
 size_t
 Multistamp::SerializedSize() const
 {
@@ -38,6 +30,14 @@ ErisMessage::ErisMessage(::google::protobuf::Message &msg, const std::vector<int
 }
 
 ErisMessage::~ErisMessage() { }
+
+ErisMessage *
+ErisMessage::Clone() const
+{
+    ErisMessage *m = new ErisMessage(*msg_);
+    m->stamp_ = stamp_;
+    return m;
+}
 
 size_t
 ErisMessage::SerializedSize() const

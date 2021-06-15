@@ -20,9 +20,7 @@ NOPaxosMessage::~NOPaxosMessage() { }
 NOPaxosMessage *
 NOPaxosMessage::Clone() const
 {
-    NOPaxosMessage *m = (NOPaxosMessage *)PBMessage::Clone();
-    m->sequencing_ = sequencing_;
-    return m;
+    return new NOPaxosMessage(*msg_, sequencing_);
 }
 
 size_t
