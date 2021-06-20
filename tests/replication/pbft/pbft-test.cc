@@ -44,7 +44,6 @@
 using namespace dsnet;
 using namespace dsnet::pbft;
 using namespace dsnet::pbft::proto;
-using namespace google::protobuf;
 using std::map;
 using std::vector;
 
@@ -83,7 +82,7 @@ TEST(Pbft, OneOp) {
   SimulatedTransport transport;
   PbftTestApp app;
   PbftReplica replica(c, 0, true, &transport, &app);
-  PbftClient client(c, &transport);
+  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
 
   client.Invoke(string("test"), ClientUpcallHandler);
   transport.Run();
@@ -100,7 +99,7 @@ TEST(Pbft, Unlogged) {
   SimulatedTransport transport;
   PbftTestApp app;
   PbftReplica replica(c, 0, true, &transport, &app);
-  PbftClient client(c, &transport);
+  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
 
   client.InvokeUnlogged(0, string("test2"), ClientUpcallHandler);
   transport.Run();
@@ -117,12 +116,11 @@ TEST(Pbft, UnloggedTimeout) {
   SimulatedTransport transport;
   PbftTestApp app;
   PbftReplica replica(c, 0, true, &transport, &app);
-  PbftClient client(c, &transport);
+  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
 
   transport.AddFilter(
       0, [](TransportReceiver *, std::pair<int, int>, TransportReceiver *,
-            std::pair<int, int>, Message &, uint64_t &delay,
-            const multistamp_t &stamp) { return false; });
+            std::pair<int, int>, Message &, uint64_t &delay) { return false; });
   bool finished = true;
   client.InvokeUnlogged(0, string("willdrop"), ClientUpcallHandler,
                         [&](const std::string &) { finished = false; });
@@ -143,7 +141,7 @@ TEST(Pbft, OneOpFourServers) {
   PbftReplica replica1(c, 1, true, &transport, &app);
   PbftReplica replica2(c, 2, true, &transport, &app);
   PbftReplica replica3(c, 3, true, &transport, &app);
-  PbftClient client(c, &transport);
+  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
 
   client.Invoke(string("test3"), ClientUpcallHandler);
   transport.Timer(3000, [&]() {
