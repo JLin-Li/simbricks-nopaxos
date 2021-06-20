@@ -37,6 +37,7 @@
 #include "transaction/apps/kvstore/client.h"
 #include "transaction/eris/server.h"
 #include "transaction/apps/kvstore/txnserver.h"
+#include "transaction/eris/sequencer.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,6 +59,7 @@ protected:
     std::map<int, std::vector<Replica *> > protoServers; // Sharded servers. Each shard has 3 replicas.
     std::map<TransportReceiver *, int> serverToShard; // Server to shard index map
     std::vector<AppReplica *> appReplicas;
+    std::vector<ErisSequencer *> sequencers;
     KVClient *kvClient;
     TxnClient *txnClient;
     Client *protoClient;
@@ -108,8 +110,16 @@ protected:
             }
         };
         nShards = nodeAddrs.size();
+        std::vector<ReplicaAddress> sequencerAddrs =
+        {
+            {"localhost", "54321"},
+            {"localhost", "54322"},
+            {"localhost", "54323"},
+        };
 
-        this->config = new Configuration(nShards, 3, 1, nodeAddrs);
+        this->config = new Configuration(nShards, 3, 1,
+                                         nodeAddrs, nullptr,
+                                         sequencerAddrs);
         this->fcorConfig = new Configuration(1, 3, 1, fcorAddrs);
 
         this->transport = new SimulatedTransport(true);
@@ -141,9 +151,16 @@ protected:
             client_id = dis(gen);
         }
 
-        this->protoClient = new ErisClient(*config, transport, client_id);
+        this->protoClient = new ErisClient(*config,
+                                           ReplicaAddress("localhost", "0"),
+                                           transport, client_id);
         this->txnClient = new TxnClientCommon(transport, protoClient);
         this->kvClient = new KVClient(txnClient, nShards);
+
+        // Create sequencers
+        for (int i = 0; i < config->NumSequencers(); i++) {
+            sequencers.push_back(new ErisSequencer(*config, transport, i));
+        }
     }
 
     virtual void TearDown() {
@@ -163,6 +180,11 @@ protected:
             }
         }
         protoServers.clear();
+        for (auto x : sequencers) {
+            delete x;
+        }
+        sequencers.clear();
+
         delete transport;
         delete config;
     }

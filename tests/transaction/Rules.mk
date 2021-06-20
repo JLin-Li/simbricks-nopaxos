@@ -9,12 +9,14 @@ COMMON-OBJS := $(OBJS-kvstore-client) $(OBJS-kvstore-txnserver) $(LIB-simtranspo
 
 $(d)eris-protocol-test: $(o)eris-protocol-test.o \
     $(OBJS-eris-client) $(OBJS-eris-server) $(OBJS-eris-fcor) \
-    $(OBJS-vr-replica) $(LIB-simtransport) $(GTEST_MAIN)
+    $(OBJS-vr-replica) $(OBJS-eris-sequencer) $(OBJS-sequencer) \
+	$(LIB-simtransport) $(GTEST_MAIN)
 
 $(d)eris-test: $(o)eris-test.o \
     $(COMMON-OBJS) \
     $(OBJS-eris-client) \
-    $(OBJS-eris-server)
+    $(OBJS-eris-server) \
+	$(OBJS-eris-sequencer) $(OBJS-sequencer)
 
 $(d)granola-test: $(o)granola-test.o \
     $(COMMON-OBJS) \
