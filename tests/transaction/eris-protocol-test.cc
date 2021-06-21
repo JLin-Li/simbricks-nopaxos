@@ -212,7 +212,7 @@ protected:
             this->clients.push_back(
                     TestClient(new ErisClient(*this->config,
                                               ReplicaAddress("localhost", "0"),
-                                              this->transport, i+1), i));
+                                              this->transport), i));
         }
 
         for (int i = 0; i < config->NumSequencers(); i++) {
@@ -244,6 +244,16 @@ protected:
         delete this->transport;
         delete this->config;
         delete this->fcorConfig;
+    }
+
+    bool IsSequencer(const TransportReceiver *r)
+    {
+        for (const auto s : sequencers) {
+            if (s == r) {
+                return true;
+            }
+        }
+        return false;
     }
 
     void SetupClientCalls(map<int, vector<set<shardnum_t> > > &clientRequests,
@@ -317,6 +327,29 @@ protected:
         }
     }
 };
+
+static proto::RequestMessage
+GetRequest(const Message &m)
+{
+    const void *buf = ((BufferMessage &)m).GetBuffer();
+    size_t buf_size = ((BufferMessage &)m).GetBufferSize();
+    proto::ToServerMessage s;
+    ErisMessage em(s);
+    em.Parse(buf, buf_size);
+    ASSERT(s.msg_case() == ToServerMessage::MsgCase::kRequest);
+    return s.request();
+}
+
+static bool
+CheckMessageType(const Message &m, int type)
+{
+    ErisMessage &em = (ErisMessage &)m;
+    ToServerMessage s;
+    if (em.Type() != s.GetTypeName()) {
+        return false;
+    }
+    return ((ToServerMessage &)em.Message()).msg_case() == type;
+}
 
 // Auxiliary checking functions
 static void
@@ -565,15 +598,14 @@ TEST_F(ErisTest, ManyOps)
     CheckConsistency(clientRequests, servers, config);
 }
 
-/*
 TEST_F(ErisTest, ReplicaGap)
 {
     const int NUM_PACKETS = 10;
     int numUpcalls = 0;
     vector<Client::g_continuation_t> upcalls;
     map<int, vector<set<shardnum_t> > > clientRequests;
-    map<pair<shardnum_t, msgnum_t>, int> stamps;
-    int msg_counter = 0;
+    map<uint64_t, int> txns;
+    int txn_counter = 0;
 
     unsigned int seed = time(NULL);
     Notice("Seed is %u", seed);
@@ -586,19 +618,12 @@ TEST_F(ErisTest, ReplicaGap)
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (srcIdx.second == -1 &&
-            CheckMessageType(m, ToServerMessage::MsgCase::kRequest)) {
-            auto seqnum = stamp.seqnums.begin();
-            if (stamps.find(make_pair(seqnum->first, seqnum->second)) == stamps.end()) {
-                msg_counter++;
-                for (auto it = stamp.seqnums.begin();
-                     it != stamp.seqnums.end();
-                     ++it) {
-                    stamps[make_pair(it->first, it->second)] = msg_counter;
-                }
+        if (IsSequencer(src)) {
+            uint64_t txnid = GetRequest(m).txnid();
+            if (txns.find(txnid) == txns.end()) {
+                txns[txnid] = ++txn_counter;
             }
-            if (drops.find(stamps[make_pair(seqnum->first, seqnum->second)]) != drops.end() &&
-                dstIdx.second != 1) {
+            if (drops.find(txns.at(txnid)) != drops.end() && dstIdx.second != 1) {
                 return false;
             }
         }
@@ -624,8 +649,8 @@ TEST_F(ErisTest, FCFoundTxnLocal)
     int numUpcalls = 0;
     vector<Client::g_continuation_t> upcalls;
     map<int, vector<set<shardnum_t> > > clientRequests;
-    map<pair<shardnum_t, msgnum_t>, int> stamps;
-    int msg_counter = 0;
+    map<uint64_t, int> txns;
+    int txn_counter = 0;
 
     unsigned int seed = time(NULL);
     Notice("Seed is %u", seed);
@@ -638,27 +663,19 @@ TEST_F(ErisTest, FCFoundTxnLocal)
     // the same group.
     set<int> drops = {10};
     GapRequestMessage gapRequestMessage;
-    eris::proto::RequestMessage requestMessage;
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (srcIdx.second == -1 &&
-            m.GetTypeName() == requestMessage.GetTypeName()) {
-            auto seqnum = stamp.seqnums.begin();
-            if (stamps.find(make_pair(seqnum->first, seqnum->second)) == stamps.end()) {
-                msg_counter++;
-                for (auto it = stamp.seqnums.begin();
-                     it != stamp.seqnums.end();
-                     ++it) {
-                    stamps[make_pair(it->first, it->second)] = msg_counter;
-                }
+        if (IsSequencer(src)) {
+            uint64_t txnid = GetRequest(m).txnid();
+            if (txns.find(txnid) == txns.end()) {
+                txns[txnid] = ++txn_counter;
             }
-            if (drops.find(stamps[make_pair(seqnum->first, seqnum->second)]) != drops.end() &&
-                dstIdx.second == 0) {
+            if (drops.find(txns.at(txnid)) != drops.end() && dstIdx.second == 0) {
                 return false;
             }
         } else if (srcIdx.second == 0 && dstIdx.second > 0 &&
-                   m.GetTypeName() == gapRequestMessage.GetTypeName()) {
+                   CheckMessageType(m, ToServerMessage::MsgCase::kGapRequest)) {
             return false;
         }
         return true;
@@ -684,8 +701,8 @@ TEST_F(ErisTest, FCFoundTxnRemote)
     int numUpcalls = 0;
     vector<Client::g_continuation_t> upcalls;
     map<int, vector<set<shardnum_t> > > clientRequests; // clientid -> [participant shards]
-    map<pair<shardnum_t, msgnum_t>, int> stamps;
-    int multishard_counter = 0;
+    map<uint64_t, int> txns;
+    int txn_counter = 0;
 
     unsigned int seed = time(NULL);
     Notice("Seed is %u", seed);
@@ -696,28 +713,20 @@ TEST_F(ErisTest, FCFoundTxnRemote)
     // the FC, which will find the txn from some other
     // shards.
     set<int> drops = {8};
-    eris::proto::RequestMessage requestMessage;
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (srcIdx.second == -1 &&
-            m.GetTypeName() == requestMessage.GetTypeName()) {
-            if (stamp.seqnums.size() > 1) {
-                // multi-shard request
-                auto seqnum = stamp.seqnums.begin();
-                if (stamps.find(make_pair(seqnum->first, seqnum->second)) == stamps.end()) {
-                    multishard_counter++;
-                    for (auto it = stamp.seqnums.begin();
-                         it != stamp.seqnums.end();
-                         ++it) {
-                        stamps[make_pair(it->first, it->second)] = multishard_counter;
-                    }
-                }
-                if (drops.find(stamps[make_pair(seqnum->first, seqnum->second)]) != drops.end() &&
-                    dstIdx.first == (int)seqnum->first) {
-                    // Only drop at one of the shards
+        if (IsSequencer(src)) {
+            proto::RequestMessage r = GetRequest(m);
+            uint64_t txnid = r.txnid();
+            if (txns.find(txnid) == txns.end()) {
+                txns[txnid] = ++txn_counter;
+            }
+            // only drop the first shard
+            int first_shard = r.request().ops(0).shard();
+            if (drops.find(txns.at(txnid)) != drops.end() &&
+                    dstIdx.first == first_shard) {
                     return false;
-                }
             }
         }
         return true;
@@ -737,14 +746,15 @@ TEST_F(ErisTest, FCFoundTxnRemote)
     EXPECT_EQ(nClients * NUM_PACKETS, numUpcalls);
 }
 
+/*
 TEST_F(ErisTest, FCDropTxn)
 {
     const int NUM_PACKETS = 10;
     int numUpcalls = 0;
     vector<Client::g_continuation_t> upcalls;
     map<int, vector<set<shardnum_t> > > clientRequests; // clientid -> [participant shards]
-    map<pair<shardnum_t, msgnum_t>, int> stamps;
-    int multishard_counter = 0;
+    map<uint64_t, int> txns;
+    int txn_counter = 0;
 
     unsigned int seed = time(NULL);
     Notice("Seed is %u", seed);
@@ -752,27 +762,18 @@ TEST_F(ErisTest, FCDropTxn)
 
     // Drop the 9th multishard client request at all shards.
     // FC will drop the txn.
-    eris::proto::RequestMessage requestMessage;
     set<int> drops = {9};
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (srcIdx.second == -1 &&
-            m.GetTypeName() == requestMessage.GetTypeName()) {
-            if (stamp.seqnums.size() > 1) {
-                // multi-shard request
-                auto seqnum = stamp.seqnums.begin();
-                if (stamps.find(make_pair(seqnum->first, seqnum->second)) == stamps.end()) {
-                    multishard_counter++;
-                    for (auto it = stamp.seqnums.begin();
-                         it != stamp.seqnums.end();
-                         ++it) {
-                        stamps[make_pair(it->first, it->second)] = multishard_counter;
-                    }
-                }
-                if (drops.find(stamps[make_pair(seqnum->first, seqnum->second)]) != drops.end()) {
-                    return false;
-                }
+        if (IsSequencer(src)) {
+            uint64_t txnid = GetRequest(m).txnid();
+            if (txns.find(txnid) == txns.end()) {
+                txns[txnid] = ++txn_counter;
+            }
+
+            if (drops.find(txns.at(txnid)) != drops.end()) {
+                return false;
             }
         }
         return true;
