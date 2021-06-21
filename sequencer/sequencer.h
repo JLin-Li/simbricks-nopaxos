@@ -20,6 +20,9 @@ public:
     virtual void Parse(const void *buf, size_t size) override;
     virtual void Serialize(void *buf) const override;
 
+    const void *GetBuffer() const;
+    size_t GetBufferSize() const;
+
 private:
     const void *buf_;
     size_t size_;

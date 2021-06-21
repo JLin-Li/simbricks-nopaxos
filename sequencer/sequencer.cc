@@ -26,6 +26,7 @@ BufferMessage::SerializedSize() const
 {
     return size_;
 }
+
 void
 BufferMessage::Parse(const void *buf, size_t size) { }
 
@@ -34,6 +35,18 @@ void
 BufferMessage::Serialize(void *buf) const
 {
     memcpy(buf, buf_, size_);
+}
+
+const void *
+BufferMessage::GetBuffer() const
+{
+    return buf_;
+}
+
+size_t
+BufferMessage::GetBufferSize() const
+{
+    return size_;
 }
 
 Sequencer::Sequencer(const Configuration &config, Transport *transport, int id)
