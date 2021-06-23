@@ -89,7 +89,9 @@ TEST(Unreplicated, OneOp)
     UnrepTestApp app;
 
     UnreplicatedReplica replica(c, 0, true, &transport, &app);
-    UnreplicatedClient client(c, &transport);
+    UnreplicatedClient client(c,
+                              ReplicaAddress("localhost", "0"),
+                              &transport);
 
     client.Invoke(string("test"), ClientUpcallHandler);
 
@@ -114,7 +116,9 @@ TEST(Unreplicated, Unlogged)
     UnrepTestApp app;
 
     UnreplicatedReplica replica(c, 0, true, &transport, &app);
-    UnreplicatedClient client(c, &transport);
+    UnreplicatedClient client(c,
+                              ReplicaAddress("localhost", "0"),
+                              &transport);
 
     client.InvokeUnlogged(0, string("test2"), ClientUpcallHandler);
 

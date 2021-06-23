@@ -17,6 +17,12 @@ NOPaxosMessage::NOPaxosMessage(::google::protobuf::Message &msg, bool sequencing
 
 NOPaxosMessage::~NOPaxosMessage() { }
 
+NOPaxosMessage *
+NOPaxosMessage::Clone() const
+{
+    return new NOPaxosMessage(*msg_, sequencing_);
+}
+
 size_t
 NOPaxosMessage::SerializedSize() const
 {

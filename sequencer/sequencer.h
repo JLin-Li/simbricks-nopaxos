@@ -14,10 +14,14 @@ public:
     BufferMessage(const void *buf, size_t size);
     ~BufferMessage();
 
+    virtual BufferMessage *Clone() const override;
     virtual std::string Type() const override;
     virtual size_t SerializedSize() const override;
     virtual void Parse(const void *buf, size_t size) override;
     virtual void Serialize(void *buf) const override;
+
+    const void *GetBuffer() const;
+    size_t GetBufferSize() const;
 
 private:
     const void *buf_;

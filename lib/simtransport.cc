@@ -58,7 +58,13 @@ SimulatedTransportAddress::clone() const
 std::string
 SimulatedTransportAddress::Serialize() const
 {
-    return "";
+    return std::to_string(addr);
+}
+
+void
+SimulatedTransportAddress::Parse(const std::string &s)
+{
+    addr = std::stoi(s);
 }
 
 bool
@@ -74,9 +80,7 @@ SimulatedTransport::SimulatedTransport(bool continuous)
     lastTimerId = 0;
     vtime = 0;
     processTimers = true;
-    fcAddress = -1;
 
-    sequencerID = 0;
     running = false;
 }
 
@@ -110,51 +114,33 @@ SimulatedTransport::SendMessageInternal(TransportReceiver *src,
                                         const SimulatedTransportAddress &dstAddr,
                                         const Message &m)
 {
-    multistamp_t stamp;
-    return _SendMessageInternal(src, dstAddr, m, stamp);
-}
-
-bool
-SimulatedTransport::SendBuffer(TransportReceiver *src, const TransportAddress &dst,
-                               const void *buf, size_t len)
-{
-    Panic("SendBuffer not implemented for SimulatedTransport");
-}
-
-bool
-SimulatedTransport::_SendMessageInternal(TransportReceiver *src,
-                                         const SimulatedTransportAddress &dstAddr,
-                                         const Message &m,
-                                         const multistamp_t &stamp)
-{
     int dst = dstAddr.addr;
     if (dst < 0) {
         Panic("Sending message to unknwon address");
     }
 
-    Message *msg = m.New();
-    msg->CheckTypeAndMergeFrom(m);
-
     int srcAddr =
         dynamic_cast<const SimulatedTransportAddress &>(src->GetAddress()).addr;
+
+    Message *copied_msg = m.Clone();
 
     uint64_t delay = 0;
     for (auto f : filters) {
         if (!f.second(src, replicaIdxs[srcAddr],
                       endpoints[dst], replicaIdxs[dst],
-                      *msg, delay, stamp)) {
+                      *copied_msg, delay)) {
             // Message dropped by filter
             // XXX Should we return failure?
-            delete msg;
             return true;
         }
     }
 
-    string msgData;
-    msg->SerializeToString(&msgData);
-    delete msg;
+    char buf[copied_msg->SerializedSize()];
+    copied_msg->Serialize(buf);
+    std::string msg(buf, copied_msg->SerializedSize());
+    delete copied_msg;
 
-    QueuedMessage q(dst, srcAddr, m.GetTypeName(), msgData, stamp);
+    QueuedMessage q(dst, srcAddr, msg);
 
     if (delay == 0) {
         queue.push_back(q);
@@ -162,42 +148,6 @@ SimulatedTransport::_SendMessageInternal(TransportReceiver *src,
         Timer(delay, [ = ]() {
             queue.push_back(q);
         });
-    }
-    return true;
-}
-
-bool
-SimulatedTransport::OrderedMulticast(TransportReceiver *src,
-                                     const std::vector<int> &groups,
-                                     const Message &m)
-{
-    multistamp_t stamp;
-    stamp.sessnum = this->sequencerID;
-    for (int groupIdx : groups) {
-        if (this->noCounters.find(groupIdx) == this->noCounters.end()) {
-            this->noCounters[groupIdx] = 0;
-        }
-        this->noCounters[groupIdx]++;
-        stamp.seqnums[groupIdx] = this->noCounters[groupIdx];
-    }
-
-    const dsnet::Configuration *cfg = this->configurations[src];
-    ASSERT(cfg != NULL);
-
-    if (!this->replicaAddressesInitialized) {
-        LookupAddresses();
-    }
-
-    const SimulatedTransportAddress &srcAddr = dynamic_cast<const SimulatedTransportAddress &>(src->GetAddress());
-    for (int groupIdx : groups) {
-        for (auto &kv : this->replicaAddresses[cfg][groupIdx]) {
-            if (srcAddr == kv.second) {
-                continue;
-            }
-            if (!_SendMessageInternal(src, kv.second, m, stamp)) {
-                return false;
-            }
-        }
     }
     return true;
 }
@@ -225,10 +175,11 @@ SimulatedTransport::Run()
         while (!queue.empty()) {
             QueuedMessage &q = queue.front();
             TransportReceiver *dst = endpoints[q.dst];
+            char buf[q.msg.size()];
+            memcpy(buf, q.msg.data(), q.msg.size());
             dst->ReceiveMessage(SimulatedTransportAddress(q.src),
-                                q.type,
-                                q.msg,
-                                &(q.stamp));
+                                buf,
+                                q.msg.size());
             queue.pop_front();
         }
 
@@ -311,13 +262,6 @@ SimulatedTransport::CancelAllTimers()
 {
     timers.clear();
     processTimers = false;
-}
-
-void
-SimulatedTransport::SessionChange()
-{
-    ++this->sequencerID;
-    noCounters.clear();
 }
 
 } // namespace dsnet

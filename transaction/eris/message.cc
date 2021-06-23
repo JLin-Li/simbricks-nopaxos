@@ -31,6 +31,14 @@ ErisMessage::ErisMessage(::google::protobuf::Message &msg, const std::vector<int
 
 ErisMessage::~ErisMessage() { }
 
+ErisMessage *
+ErisMessage::Clone() const
+{
+    ErisMessage *m = new ErisMessage(*msg_);
+    m->stamp_ = stamp_;
+    return m;
+}
+
 size_t
 ErisMessage::SerializedSize() const
 {

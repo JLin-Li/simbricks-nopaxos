@@ -43,6 +43,7 @@ class Message
 {
 public:
     virtual ~Message() { }
+    virtual Message *Clone() const = 0;
     virtual std::string Type() const = 0;
     virtual size_t SerializedSize() const = 0;
     virtual void Parse(const void *buf, size_t size) = 0;

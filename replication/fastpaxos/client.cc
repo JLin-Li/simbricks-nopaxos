@@ -157,6 +157,7 @@ FastPaxosClient::ReceiveMessage(const TransportAddress &remote,
             break;
         case ToClientMessage::MsgCase::kUnloggedReply:
             HandleUnloggedReply(remote, client_msg.unlogged_reply());
+            break;
         default:
             Panic("Received unexpected message type %u",
                     client_msg.msg_case());

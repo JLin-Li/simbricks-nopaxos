@@ -113,7 +113,9 @@ protected:
             replicas.push_back(new SpecReplica(*config, i, true, transport, apps[i]));
         }
 
-        client = new SpecClient(*config, transport);
+        client = new SpecClient(*config,
+                                ReplicaAddress("localhost", "0"),
+                                transport);
         requestNum = -1;
     }
 
@@ -223,8 +225,7 @@ TEST_F(SpecTest, UnloggedTimeout)
     // Drop messages to or from replica 1
     transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
                                  return false;
                              }
@@ -308,8 +309,7 @@ TEST_F(SpecTest, FailedReplica)
     // Drop messages to or from replica 1
     transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
                                  return false;
                              }
@@ -365,8 +365,7 @@ TEST_F(SpecTest, StateTransfer)
     // Drop messages to or from replica 3
     transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if ((srcIdx.second == 3) || (dstIdx.second == 3)) {
                                  return false;
                              }
@@ -394,8 +393,7 @@ TEST_F(SpecTest, FailedLeader)
             // Drop messages to or from replica 0
             transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                         TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                        Message &m, uint64_t &delay,
-                                        const multistamp_t &stamp) {
+                                        Message &m, uint64_t &delay) {
                                      if ((srcIdx.second == 0) || (dstIdx.second == 0)) {
                                          return false;
                                      }
@@ -434,13 +432,12 @@ TEST_F(SpecTest, Conflict)
     };
 
     // This one needs two clients. Set up a second one.
-    SpecClient otherClient(*config, transport);
+    SpecClient otherClient(*config, ReplicaAddress("localhost", "0"), transport);
 
     // Delay messages from the first client to two of the replicas
     transport->AddFilter(10, [=](TransportReceiver *src, std::pair<int, int> srcIdx,
                                  TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                 Message &m, uint64_t &delay,
-                                 const multistamp_t &stamp) {
+                                 Message &m, uint64_t &delay) {
                              if ((src == client) &&
                                  (dstIdx.second < 2)) {
                                  delay = 100;
@@ -489,8 +486,7 @@ TEST_F(SpecTest, ImmediatelyFailedLeader)
     // Drop messages to or from replica 0
     transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if ((srcIdx.second == 0) || (dstIdx.second == 0)) {
                                  return false;
                              }
@@ -543,8 +539,7 @@ TEST_F(SpecTest, NoSuperquorum)
     // Drop messages to or from replicas 1 and 2
     transport->AddFilter(10, [](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
                                  return false;
                              }
@@ -572,6 +567,7 @@ TEST_F(SpecTest, NoSuperquorum)
     }
 }
 
+/*
 TEST_F(SpecTest, Stress)
 {
     const int NUM_CLIENTS = 10;
@@ -583,7 +579,9 @@ TEST_F(SpecTest, Stress)
     std::vector<int> lastReq;
     std::vector<Client::continuation_t> upcalls;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        clients.push_back(new SpecClient(*config, transport));
+        clients.push_back(new SpecClient(*config,
+                                         ReplicaAddress("localhost", "0"),
+                                         transport));
         lastReq.push_back(0);
         upcalls.push_back([&, i](const string &req, const string &reply) {
                 EXPECT_EQ("reply: "+RequestOp(lastReq[i]), reply);
@@ -601,8 +599,7 @@ TEST_F(SpecTest, Stress)
     // of them
     transport->AddFilter(10, [=](TransportReceiver *src, std::pair<int, int> srcIdx,
                                  TransportReceiver *dst, std::pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
                              if (srcIdx.second == -1) {
                                  delay = rand() % MAX_DELAY;
                              }
@@ -630,5 +627,6 @@ TEST_F(SpecTest, Stress)
         delete c;
     }
 }
+*/
 
 } // namespace dsnet

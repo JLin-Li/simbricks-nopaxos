@@ -35,6 +35,7 @@
 
 #include "common/client.h"
 #include "common/replica.h"
+#include "common/pbmessage.h"
 #include "replication/vr/client.h"
 #include "replication/vr/replica.h"
 
@@ -48,7 +49,6 @@ static string replicaLastOp;
 static string clientLastOp;
 static string clientLastReply;
 
-using google::protobuf::Message;
 using namespace dsnet;
 using namespace dsnet::vr;
 using namespace dsnet::vr::proto;
@@ -105,7 +105,9 @@ protected:
             replicas.push_back(new VRReplica(*config, i, true, transport, GetParam(), apps[i]));
         }
 
-        client = new VRClient(*config, transport);
+        client = new VRClient(*config,
+                              ReplicaAddress("localhost", "0"),
+                              transport);
         requestNum = -1;
 
         // Only let tests run for a simulated minute. This prevents
@@ -213,8 +215,7 @@ TEST_P(VRTest, UnloggedTimeout)
     // Drop messages to or from replica 1
     transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                 TransportReceiver *dst, pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
         if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
             return false;
         }
@@ -288,8 +289,7 @@ TEST_P(VRTest, FailedReplica)
     // Drop messages to or from replica 1
     transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                 TransportReceiver *dst, pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
         if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
             return false;
         }
@@ -337,8 +337,7 @@ TEST_P(VRTest, StateTransfer)
     // Drop messages to or from replica 1
     transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                 TransportReceiver *dst, pair<int, int> dstIdx,
-                                Message &m, uint64_t &delay,
-                                const multistamp_t &stamp) {
+                                Message &m, uint64_t &delay) {
         if ((srcIdx.second == 1) || (dstIdx.second == 1)) {
             return false;
         }
@@ -367,8 +366,7 @@ TEST_P(VRTest, FailedLeader)
             // Drop messages to or from replica 0
             transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                         TransportReceiver *dst, pair<int, int> dstIdx,
-                                        Message &m, uint64_t &delay,
-                                        const multistamp_t &stamp) {
+                                        Message &m, uint64_t &delay) {
                 if ((srcIdx.second == 0) || (dstIdx.second == 0)) {
                     return false;
                 }
@@ -412,13 +410,16 @@ TEST_P(VRTest, DroppedReply)
     bool dropped = false;
     transport->AddFilter(10, [&dropped](TransportReceiver *src, pair<int, int> srcIdx,
                                         TransportReceiver *dst, pair<int, int> dstIdx,
-                                        Message &m, uint64_t &delay,
-                                        const multistamp_t &stamp) {
-        ReplyMessage r;
-        if (m.GetTypeName() == r.GetTypeName()) {
-            if (!dropped) {
-                dropped = true;
-                return false;
+                                        Message &m, uint64_t &delay) {
+        ToClientMessage r;
+        PBMessage &pbm = (PBMessage &)m;
+        if (pbm.Type() == r.GetTypeName()) {
+            if (((ToClientMessage &)pbm.Message()).msg_case() ==
+                    ToClientMessage::MsgCase::kReply) {
+                if (!dropped) {
+                    dropped = true;
+                    return false;
+                }
             }
         }
         return true;
@@ -449,13 +450,16 @@ TEST_P(VRTest, DroppedReplyThenFailedLeader)
     bool dropped = false;
     transport->AddFilter(10, [&dropped](TransportReceiver *src, pair<int, int> srcIdx,
                                         TransportReceiver *dst, pair<int, int> dstIdx,
-                                        Message &m, uint64_t &delay,
-                                        const multistamp_t &stamp) {
-        ReplyMessage r;
-        if (m.GetTypeName() == r.GetTypeName()) {
-            if (!dropped) {
-                dropped = true;
-                return false;
+                                        Message &m, uint64_t &delay) {
+        ToClientMessage r;
+        PBMessage &pbm = (PBMessage &)m;
+        if (pbm.Type() == r.GetTypeName()) {
+            if (((ToClientMessage &)pbm.Message()).msg_case() ==
+                    ToClientMessage::MsgCase::kReply) {
+                if (!dropped) {
+                    dropped = true;
+                    return false;
+                }
             }
         }
         return true;
@@ -464,8 +468,7 @@ TEST_P(VRTest, DroppedReplyThenFailedLeader)
     // ...and after we've done that, fail the leader altogether
     transport->AddFilter(20, [&dropped](TransportReceiver *src, pair<int, int> srcIdx,
                                         TransportReceiver *dst, pair<int, int> dstIdx,
-                                        Message &m, uint64_t &delay,
-                                        const multistamp_t &stamp) {
+                                        Message &m, uint64_t &delay) {
         if ((srcIdx.second == 0) || (dstIdx.second == 0)) {
             return !dropped;
         }
@@ -496,7 +499,9 @@ TEST_P(VRTest, ManyClients)
     std::vector<int> lastReq;
     std::vector<Client::continuation_t> upcalls;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        clients.push_back(new VRClient(*config, transport));
+        clients.push_back(new VRClient(*config,
+                                       ReplicaAddress("localhost", "0"),
+                                       transport));
         lastReq.push_back(0);
         upcalls.push_back([&, i](const string &req, const string &reply) {
                 EXPECT_EQ("reply: "+RequestOp(lastReq[i]), reply);
@@ -540,8 +545,7 @@ TEST_P(VRTest, Recovery)
             // Drop messages to or from replica 0
             transport->AddFilter(10, [](TransportReceiver *src, pair<int, int> srcIdx,
                                         TransportReceiver *dst, pair<int, int> dstIdx,
-                                        Message &m, uint64_t &delay,
-                                        const multistamp_t &stamp) {
+                                        Message &m, uint64_t &delay) {
                 if ((srcIdx.second == 0) || (dstIdx.second == 0)) {
                     return false;
                 }
@@ -592,7 +596,9 @@ TEST_P(VRTest, Stress)
     std::vector<int> lastReq;
     std::vector<Client::continuation_t> upcalls;
     for (int i = 0; i < NUM_CLIENTS; i++) {
-        clients.push_back(new VRClient(*config, transport));
+        clients.push_back(new VRClient(*config,
+                                       ReplicaAddress("localhost", "0"),
+                                       transport));
         lastReq.push_back(0);
         upcalls.push_back([&, i](const string &req, const string &reply) {
                 EXPECT_EQ("reply: "+RequestOp(lastReq[i]), reply);
@@ -610,8 +616,7 @@ TEST_P(VRTest, Stress)
     // of them
     transport->AddFilter(10, [=](TransportReceiver *src, pair<int, int> srcIdx,
                                  TransportReceiver *dst, pair<int, int> dstIdx,
-                                 Message &m, uint64_t &delay,
-                                 const multistamp_t &stamp) {
+                                 Message &m, uint64_t &delay) {
         if (srcIdx.second == -1) {
             delay = rand() % MAX_DELAY;
         }

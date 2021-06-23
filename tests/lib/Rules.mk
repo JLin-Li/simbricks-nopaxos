@@ -16,7 +16,7 @@ $(d)configuration-test: $(o)configuration-test.o $(LIB-configuration) $(GTEST_MA
 
 TEST_BINS += $(d)configuration-test
 
-$(d)simtransport-test: $(o)simtransport-test.o $(LIB-simtransport) $(o)simtransport-testmessage.o $(GTEST_MAIN)
+$(d)simtransport-test: $(o)simtransport-test.o $(LIB-simtransport) $(LIB-pbmessage) $(o)simtransport-testmessage.o $(GTEST_MAIN)
 
 TEST_BINS += $(d)simtransport-test
 
