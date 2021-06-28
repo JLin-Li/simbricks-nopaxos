@@ -42,7 +42,8 @@ ErisClient::ErisClient(const Configuration &config,
                        const ReplicaAddress &addr,
                        Transport *transport,
                        uint64_t clientid)
-    : Client(config, addr, transport, clientid)
+    : Client(config, addr, transport, clientid),
+    sequencerIndex(0)
 {
     this->txnid = (this->clientid / 10000) * 10000;
     this->pendingRequest = nullptr;
@@ -83,6 +84,12 @@ ErisClient::Invoke(const std::map<shardnum_t, std::string> &requests,
     }
 
     InvokeTxn(requests, replies, continuation, txn_type);
+}
+
+void
+ErisClient::ChangeSequencer(int index)
+{
+    sequencerIndex = index;
 }
 
 void
@@ -283,7 +290,7 @@ ErisClient::SendRequest()
     ErisMessage m(this->pendingRequest->msg, this->pendingRequest->groups);
 
     if (config.NumSequencers() > 0) {
-        transport->SendMessageToSequencer(this, 0, m);
+        transport->SendMessageToSequencer(this, sequencerIndex, m);
     } else {
         transport->SendMessageToMulticast(this, m);
     }
