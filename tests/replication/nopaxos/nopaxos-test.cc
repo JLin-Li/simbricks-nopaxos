@@ -103,7 +103,6 @@ protected:
 
     std::vector<NOPaxosTestApp *> apps;
     std::vector<NOPaxosReplica *> replicas;
-    std::vector<int> clientMsgCounter;
     std::vector<NOPaxosSequencer *> sequencers;
     SimulatedTransport *transport;
     Configuration *config;
@@ -133,7 +132,6 @@ protected:
         for (int i = 0; i < config->n; i++) {
             apps.push_back(new NOPaxosTestApp());
             replicas.push_back(new NOPaxosReplica(*config, i, true, transport, apps[i]));
-            clientMsgCounter.push_back(0);
         }
         for (int i = 0; i < config->NumSequencers(); i++) {
             sequencers.push_back(new NOPaxosSequencer(*config, transport, i));
@@ -157,6 +155,16 @@ protected:
         delete transport;
         delete config;
     }
+
+    bool IsSequencer(const TransportReceiver *r)
+    {
+        for (const auto s : sequencers) {
+            if (s == r) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 static bool
@@ -168,6 +176,18 @@ CheckMessageType(const Message &m, int type)
         return false;
     }
     return ((ToReplicaMessage &)npm.Message()).msg_case() == type;
+}
+
+static proto::RequestMessage
+GetRequest(const Message &m)
+{
+    const void *buf = ((BufferMessage &)m).GetBuffer();
+    size_t buf_size = ((BufferMessage &)m).GetBufferSize();
+    proto::ToReplicaMessage r;
+    NOPaxosMessage nm(r);
+    nm.Parse(buf, buf_size);
+    ASSERT(r.msg_case() == ToReplicaMessage::MsgCase::kRequest);
+    return r.request();
 }
 
 TEST_F(NOPaxosTest, OneOp)
@@ -324,7 +344,6 @@ TEST_F(NOPaxosTest, ManyOps)
     EXPECT_EQ(10, numUpcalls);
 }
 
-/*
 TEST_F(NOPaxosTest, ReplicaGap)
 {
     const int NUM_CLIENTS = 2;
@@ -340,9 +359,9 @@ TEST_F(NOPaxosTest, ReplicaGap)
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (srcIdx.second == -1 && dstIdx.second != 0) {
-            clientMsgCounter[dstIdx.second]++;
-            if (drops.find(clientMsgCounter[dstIdx.second]) != drops.end()) {
+        if (IsSequencer(src)) {
+            if (drops.find(GetRequest(m).msgnum()) != drops.end() &&
+                    dstIdx.second != 0) {
                 return false;
             }
         }
@@ -398,7 +417,6 @@ TEST_F(NOPaxosTest, ReplicaGap)
         delete client.client;
     }
 }
-*/
 
 TEST_F(NOPaxosTest, LeaderGap)
 {
@@ -415,9 +433,9 @@ TEST_F(NOPaxosTest, LeaderGap)
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (srcIdx.second == -1 && dstIdx.second == 0) {
-            clientMsgCounter[dstIdx.second]++;
-            if (drops.find(clientMsgCounter[dstIdx.second]) != drops.end()) {
+        if (IsSequencer(src)) {
+            if (drops.find(GetRequest(m).msgnum()) != drops.end() &&
+                    dstIdx.second == 0) {
                 return false;
             }
         }
@@ -489,9 +507,9 @@ TEST_F(NOPaxosTest, LeaderReplicaGap)
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (srcIdx.second == -1 && (dstIdx.second == 0 || dstIdx.second == 1)) {
-            clientMsgCounter[dstIdx.second]++;
-            if (drops.find(clientMsgCounter[dstIdx.second]) != drops.end()) {
+        if (IsSequencer(src)) {
+            if (drops.find(GetRequest(m).msgnum()) != drops.end() &&
+                    (dstIdx.second == 0 || dstIdx.second == 1)) {
                 return false;
             }
         }
@@ -547,7 +565,6 @@ TEST_F(NOPaxosTest, LeaderReplicaGap)
     }
 }
 
-/*
 TEST_F(NOPaxosTest, CommittedGap)
 {
     const int NUM_CLIENTS = 4;
@@ -564,9 +581,8 @@ TEST_F(NOPaxosTest, CommittedGap)
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (srcIdx.second == -1 && dstIdx.second >= 0) {
-            clientMsgCounter[dstIdx.second]++;
-            if (drops.find(clientMsgCounter[dstIdx.second]) != drops.end()) {
+        if (IsSequencer(src)) {
+            if (drops.find(GetRequest(m).msgnum()) != drops.end()) {
                 return false;
             }
         }
@@ -628,8 +644,8 @@ TEST_F(NOPaxosTest, CommittedGap)
         delete client.client;
     }
 }
-*/
 
+/*
 TEST_F(NOPaxosTest, ReplicaGapRequestTimeout)
 {
     const int NUM_CLIENTS = 4;
@@ -715,6 +731,7 @@ TEST_F(NOPaxosTest, ReplicaGapRequestTimeout)
         delete client.client;
     }
 }
+*/
 
 /*
 TEST_F(NOPaxosTest, LeaderGapRequestTimeout)
