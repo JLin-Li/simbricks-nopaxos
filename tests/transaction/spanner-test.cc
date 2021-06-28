@@ -45,7 +45,6 @@
 #include <utility>
 #include <random>
 
-using google::protobuf::Message;
 using namespace dsnet;
 using namespace dsnet::transaction;
 using namespace dsnet::transaction::kvstore;
@@ -119,7 +118,9 @@ protected:
             }
         }
 
-        this->protoClient = new SpannerClient(*config, transport);
+        this->protoClient = new SpannerClient(*config,
+                                              ReplicaAddress("localhost", "0"),
+                                              transport);
         this->txnClient = new TxnClientCommon(transport, protoClient);
         this->kvClient = new KVClient(txnClient, nShards);
     }

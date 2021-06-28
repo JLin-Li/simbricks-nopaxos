@@ -45,7 +45,6 @@
 #include <utility>
 #include <random>
 
-using google::protobuf::Message;
 using namespace dsnet;
 using namespace dsnet::transaction;
 using namespace dsnet::transaction::kvstore;
@@ -115,7 +114,9 @@ protected:
             client_id = dis(gen);
         }
 
-        this->protoClient = new UnreplicatedClient(*config, transport, client_id);
+        this->protoClient = new UnreplicatedClient(*config,
+                                                   ReplicaAddress("localhost", "0"),
+                                                   transport, client_id);
         this->txnClient = new TxnClientCommon(transport, protoClient);
         this->kvClient = new KVClient(txnClient, nShards);
     }
