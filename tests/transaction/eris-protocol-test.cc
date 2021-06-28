@@ -109,7 +109,7 @@ protected:
     map<int, vector<ErisServer *> > servers;
     vector<Fcor *> fcorApps;
     vector<vr::VRReplica *> fcorReplicas;
-    vector<TestClient>  clients;
+    vector<TestClient> clients;
     vector<ErisSequencer *> sequencers;
     SimulatedTransport *transport;
     Configuration *config;
@@ -280,12 +280,11 @@ protected:
                 }
                 if (clients[i].requestNum < num_packets) {
                     // Only change session once
-                    // TODO: fix session change
-                    /*
                     if (i == 0 && clients[i].requestNum == epoch_change_packet_index) {
-                        this->transport->SessionChange();
+                        for (auto &c : clients) {
+                            c.client->ChangeSequencer(1);
+                        }
                     }
-                    */
                     if (clients[i].requestNum == wait_packet_index) {
                         transport->Timer(wait_time, [&, i]() {
                             set<shardnum_t> shards = GenerateShards(nShards);
@@ -942,7 +941,6 @@ TEST_F(ErisTest, ViewChangeWithDrops)
     EXPECT_EQ(nClients * NUM_PACKETS, numUpcalls);
 }
 
-/*
 TEST_F(ErisTest, EpochChangeNoDrop)
 {
     const int NUM_PACKETS = 10;
@@ -979,18 +977,22 @@ TEST_F(ErisTest, EpochChangeWithDrops)
     srand(seed);
 
     // Drop a few txns before epoch change
-    eris::proto::RequestMessage requestMessage;
-    set<pair<uint64_t, uint64_t> > request_counter;
-    set<uint64_t> drops = {12, 15};
+    map<uint64_t, std::pair<int, int> > txns;
+    int txn_counter = 0;
+    set<uint64_t> drops = {7, 10};
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (m.GetTypeName() == requestMessage.GetTypeName()) {
-            requestMessage.CopyFrom(m);
-            request_counter.insert(make_pair(requestMessage.request().clientid(),
-                                             requestMessage.request().clientreqid()));
-            if (drops.find(request_counter.size()) != drops.end()) {
-                return false;
+        if (IsSequencer(src)) {
+            proto::RequestMessage r = GetRequest(m);
+            uint64_t txnid = r.txnid();
+            if (txns.find(txnid) == txns.end()) {
+                txns[txnid] = std::make_pair(++txn_counter, 0);
+            }
+            if (drops.find(txns.at(txnid).first) != drops.end()) {
+                if (++txns[txnid].second <= r.request().ops_size() * 3) {
+                    return false;
+                }
             }
         }
         return true;
@@ -1009,6 +1011,7 @@ TEST_F(ErisTest, EpochChangeWithDrops)
     EXPECT_EQ(nClients * NUM_PACKETS, numUpcalls);
 }
 
+/*
 TEST_F(ErisTest, EpochChangeWithStateTransfer)
 {
     const int NUM_PACKETS = 10;
