@@ -47,14 +47,14 @@ using namespace dsnet::pbft::proto;
 using std::map;
 using std::vector;
 
-// todo: replicas overwrite each other with these single-copied static global
-static string replicaLastOp;
 static string replicaLastUnloggedOp;
 static string clientLastOp;
 static string clientLastReply;
 
 class PbftTestApp : public AppReplica {
  public:
+  string replicaLastOp;
+
   PbftTestApp(){};
   ~PbftTestApp(){};
 
@@ -87,46 +87,10 @@ TEST(Pbft, OneOp) {
   client.Invoke(string("test"), ClientUpcallHandler);
   transport.Run();
 
-  EXPECT_EQ(replicaLastOp, "test");
+  EXPECT_EQ(app.replicaLastOp, "test");
   EXPECT_EQ(clientLastOp, "test");
   EXPECT_EQ(clientLastReply, "reply: test");
 }
-
-// TEST(Pbft, Unlogged) {
-//   map<int, vector<ReplicaAddress> > replicaAddrs = {
-//       {0, {{"localhost", "12345"}}}};
-//   Configuration c(1, 1, 0, replicaAddrs);
-//   SimulatedTransport transport;
-//   PbftTestApp app;
-//   PbftReplica replica(c, 0, true, &transport, &app);
-//   PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
-
-//   client.InvokeUnlogged(0, string("test2"), ClientUpcallHandler);
-//   transport.Run();
-
-//   EXPECT_EQ(replicaLastUnloggedOp, "test2");
-//   EXPECT_EQ(clientLastOp, "test2");
-//   EXPECT_EQ(clientLastReply, "unlreply: test2");
-// }
-
-// TEST(Pbft, UnloggedTimeout) {
-//   map<int, vector<ReplicaAddress> > replicaAddrs = {
-//       {0, {{"localhost", "12345"}}}};
-//   Configuration c(1, 1, 0, replicaAddrs);
-//   SimulatedTransport transport;
-//   PbftTestApp app;
-//   PbftReplica replica(c, 0, true, &transport, &app);
-//   PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
-
-//   transport.AddFilter(
-//       0, [](TransportReceiver *, std::pair<int, int>, TransportReceiver *,
-//             std::pair<int, int>, Message &, uint64_t &delay) { return false; });
-//   bool finished = true;
-//   client.InvokeUnlogged(0, string("willdrop"), ClientUpcallHandler,
-//                         [&](const std::string &) { finished = false; });
-//   transport.Run();
-//   ASSERT_FALSE(finished);
-// }
 
 TEST(Pbft, OneOpFourServers) {
   map<int, vector<ReplicaAddress> > replicaAddrs = {{0,
@@ -136,20 +100,21 @@ TEST(Pbft, OneOpFourServers) {
                                                       {"localhost", "1512"}}}};
   Configuration c(1, 4, 1, replicaAddrs);
   SimulatedTransport transport(true);
-  PbftTestApp app;
-  PbftReplica replica0(c, 0, true, &transport, &app);
-  PbftReplica replica1(c, 1, true, &transport, &app);
-  PbftReplica replica2(c, 2, true, &transport, &app);
-  PbftReplica replica3(c, 3, true, &transport, &app);
+  PbftTestApp app1, app2, app3, app4;
+  PbftReplica replica0(c, 0, true, &transport, &app1);
+  PbftReplica replica1(c, 1, true, &transport, &app2);
+  PbftReplica replica2(c, 2, true, &transport, &app3);
+  PbftReplica replica3(c, 3, true, &transport, &app4);
   PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
 
   client.Invoke(string("test3"), ClientUpcallHandler);
-  transport.Timer(3000, [&]() {
-    transport.Stop();
-  });
+  transport.Timer(3000, [&]() { transport.Stop(); });
   transport.Run();
 
-  EXPECT_EQ(replicaLastOp, "test3");
+  EXPECT_EQ(app1.replicaLastOp, "test3");
+  EXPECT_EQ(app2.replicaLastOp, "test3");
+  EXPECT_EQ(app3.replicaLastOp, "test3");
+  EXPECT_EQ(app4.replicaLastOp, "test3");
   EXPECT_EQ(clientLastOp, "test3");
   EXPECT_EQ(clientLastReply, "reply: test3");
 }
