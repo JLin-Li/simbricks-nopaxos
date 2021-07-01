@@ -1,11 +1,13 @@
-// -*- mode: c++; c-file-style: "k&r"; c-basic-offset: 4 -*-
 /***********************************************************************
  *
  * pbft/replica.h:
- *   dummy implementation of replication interface that just uses a
- *   single replica and passes commands directly to it
+ *   PBFT protocol replica
+ *   This is only a fast-path performance-equivalent implmentation. Noticable
+ *   missing parts include recovery, crash tolerance (i.e. view changing) and
+ *   part of Byzantine
  *
  * Copyright 2013 Dan R. K. Ports  <drkp@cs.washington.edu>
+ * Copyright 2021 Sun Guangda      <sung@comp.nus.edu.sg>
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -33,7 +35,9 @@
 #define _PBFT_REPLICA_H_
 
 #include "common/log.h"
+#include "common/quorumset.h"
 #include "common/replica.h"
+#include "lib/signature.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
 namespace dsnet {
@@ -41,26 +45,81 @@ namespace pbft {
 
 class PbftReplica : public Replica {
  public:
-  PbftReplica(Configuration config, int myIdx, bool initialize,
-              Transport *transport, AppReplica *app);
-  void ReceiveMessage(const TransportAddress &remote,
-                      void *buf, size_t size) override;
+  PbftReplica(const Configuration &config, int myIdx, bool initialize,
+              Transport *transport, const Security &sec, AppReplica *app);
+  void ReceiveMessage(const TransportAddress &remote, void *buf,
+                      size_t size) override;
 
  private:
+  const Security &security;
+
+  // message handlers
   void HandleRequest(const TransportAddress &remote,
                      const proto::RequestMessage &msg);
-  void HandleUnloggedRequest(const TransportAddress &remote,
-                             const proto::UnloggedRequestMessage &msg);
+  void HandlePrePrepare(const TransportAddress &remote,
+                        const proto::PrePrepareMessage &msg);
+  void HandlePrepare(const TransportAddress &remote,
+                     const proto::PrepareMessage &msg);
+  void HandleCommit(const TransportAddress &remote,
+                    const proto::CommitMessage &msg);
 
-  void UpdateClientTable(const Request &req, const proto::ToClientMessage &reply);
+  // timers and timeout handlers
+  Timeout *viewChangeTimeout;
+  void OnViewChange();
+  Timeout *stateTransferTimeout;
+  void OnStateTransfer();
+  Timeout *resendPrePrepareTimeout;  // TODO should be per-proposal
+  void OnResendPrePrepare();
 
-  opnum_t last_op_;
+  // states and utils
+  view_t view;
+  opnum_t seqNum;                               // only primary use this
+  int ReplicaId() const { return replicaIdx; }  // consistent naming to proto
+  bool AmPrimary() const {  // following PBFT paper terminology
+    return ReplicaId() == configuration.GetLeaderIndex(view);
+  };
+
   Log log;
+  // get cleared on view changing
+  std::map<opnum_t, proto::Common> acceptedPrePrepareTable;
+  ByzantineProtoQuorumSet<opnum_t, proto::Common> prepareSet, commitSet;
+  // prepared(m, v, n, i) where v(view) and i(replica index) should
+  // be fixed for each calling
+  // theoretically this verb could use const this, but underlying CheckForQuorum
+  // does not, and we actually don't need it to do so, so that's it
+  bool Prepared(opnum_t seqNum, const proto::Common &message) {
+    return acceptedPrePrepareTable.count(seqNum) &&
+           Match(acceptedPrePrepareTable[seqNum], message) &&
+           prepareSet.CheckForQuorum(seqNum, message);
+  }
+  // similar to prepared
+  bool CommittedLocal(opnum_t seqNum, const proto::Common &message) {
+    return Prepared(seqNum, message) &&
+           commitSet.CheckForQuorum(seqNum, message);
+  }
+
+  // multi-entry common actions
+  // HandleRequest, HandlePrePrepare
+  // PREPARED state maps to pre-prepared in PBFT
+  void AcceptPrePrepare(proto::PrePrepareMessage message);
+  // AcceptPrePrepare, HandlePrePrepare, HandlePrepare
+  void TryBroadcastCommit(const proto::Common &message);
+  // TryBroadcastCommit, HandleCommit
+  void TryExecute(const proto::Common &message);
+
   struct ClientTableEntry {
     uint64_t lastReqId;
     proto::ToClientMessage reply;
   };
   std::map<uint64_t, ClientTableEntry> clientTable;
+  std::unordered_map<uint64_t, std::unique_ptr<TransportAddress>>
+      clientAddressTable;
+  void UpdateClientTable(const Request &req,
+                         const proto::ToClientMessage &reply);
+
+  static bool Match(const proto::Common &lhs, const proto::Common &rhs) {
+    return lhs.SerializeAsString() == rhs.SerializeAsString();
+  }
 };
 
 }  // namespace pbft

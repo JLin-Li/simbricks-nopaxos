@@ -40,7 +40,11 @@ LIBUNWIND_LDFLAGS := -lunwind
 #LIBUNWIND_LDFLAGS := $(shell pkg-config --libs libunwind)
 CFLAGS += $(LIBUNWIND_CFLAGS)
 LDFLAGS += $(LIBUNWIND_LDFLAGS)
-
+# manually install package: libsecp256k1
+LIBSECP256K1_CFLAGS := $(shell pkg-config --cflags libsecp256k1)
+LIBSECP256K1_LDFLAGS := $(shell pkg-config --libs libsecp256k1)
+CFLAGS += $(LIBSECP256K1_CFLAGS)
+LDFLAGS += $(LIBSECP256K1_LDFLAGS)
 
 # Google test framework. This doesn't use pkgconfig
 GTEST_DIR := /usr/src/gtest

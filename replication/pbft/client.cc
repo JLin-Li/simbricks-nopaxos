@@ -1,9 +1,10 @@
 #include "replication/pbft/client.h"
 
 #include "common/client.h"
-#include "common/request.pb.h"
 #include "common/pbmessage.h"
+#include "common/request.pb.h"
 #include "lib/message.h"
+#include "lib/signature.h"
 #include "lib/transport.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
@@ -13,34 +14,20 @@ namespace pbft {
 using namespace proto;
 
 PbftClient::PbftClient(const Configuration &config, const ReplicaAddress &addr,
-                       Transport *transport, uint64_t clientid)
-    : Client(config, addr, transport, clientid) {
+                       Transport *transport, const Security &sec,
+                       uint64_t clientid)
+    : Client(config, addr, transport, clientid), security(sec) {
   lastReqId = 0;
   pendingRequest = nullptr;
   requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
 
-  pendingUnloggedRequest = nullptr;
-  unloggedRequestTimeout =
-      new Timeout(transport, DEFAULT_UNLOGGED_OP_TIMEOUT, [this]() {
-        if (!unloggedTimeoutContinuation) {
-          return;
-        }
-        Debug("Unlogged timeout call cont");
-        unloggedTimeoutContinuation(pendingUnloggedRequest->request);
-        unloggedRequestTimeout->Stop();
-      });
-
-  f = config.f;
+  view = 0;
 }
 
 PbftClient::~PbftClient() {
   delete requestTimeout;
-  delete unloggedRequestTimeout;
   if (pendingRequest) {
     delete pendingRequest;
-  }
-  if (pendingUnloggedRequest) {
-    delete pendingUnloggedRequest;
   }
 }
 
@@ -49,72 +36,56 @@ void PbftClient::Invoke(const string &request, continuation_t continuation) {
     Panic("Client only supports one pending request");
   }
   lastReqId += 1;
-  pendingRequest = new PendingRequest(request, lastReqId, continuation);
+  pendingRequest =
+      new PendingRequest(request, lastReqId, continuation, config.f + 1);
   SendRequest();
 }
 
-void PbftClient::SendRequest() {
-    ToReplicaMessage m;
-    RequestMessage *reqMsg = m.mutable_request();
-    reqMsg->mutable_req()->set_op(pendingRequest->request);
-    reqMsg->mutable_req()->set_clientid(clientid);
-    reqMsg->mutable_req()->set_clientreqid(lastReqId);
-    // todo
-    // transport->SendMessageToReplica(this, 0, reqMsg);
+void PbftClient::SendRequest(bool broadcast) {
+  ToReplicaMessage m;
+  proto::RequestMessage &reqMsg = *m.mutable_request();
+  reqMsg.mutable_req()->set_op(pendingRequest->request);
+  reqMsg.mutable_req()->set_clientid(clientid);
+  reqMsg.mutable_req()->set_clientreqid(lastReqId);
+
+  security.GetClientSigner(GetAddress())
+      .Sign(reqMsg.req().SerializeAsString(), *reqMsg.mutable_sig());
+
+  if (broadcast)
     transport->SendMessageToAll(this, PBMessage(m));
-    requestTimeout->Reset();
+  else
+    transport->SendMessageToReplica(this, config.GetLeaderIndex(view),
+                                    PBMessage(m));
+  requestTimeout->Reset();
 }
 
 void PbftClient::ResendRequest() {
   Warning("Timeout, resending request for req id %lu", lastReqId);
-  SendRequest();
+  SendRequest(true);
 }
 
 void PbftClient::InvokeUnlogged(int replicaIdx, const string &request,
                                 continuation_t continuation,
                                 timeout_continuation_t timeoutContinuation,
                                 uint32_t timeout) {
-    if (pendingUnloggedRequest != NULL) {
-        Panic("Client only supports one pending request");
-    }
-    uint64_t clientReqId = 0;
-    pendingUnloggedRequest =
-        new PendingRequest(request, clientReqId, continuation);
-
-    ToReplicaMessage m;
-    UnloggedRequestMessage *reqMsg = m.mutable_unlogged_request();
-    reqMsg->mutable_req()->set_op(pendingUnloggedRequest->request);
-    reqMsg->mutable_req()->set_clientid(clientid);
-    reqMsg->mutable_req()->set_clientreqid(clientReqId);
-
-    if (timeoutContinuation) {
-        Debug("Set unlogged timeout");
-        unloggedTimeoutContinuation = timeoutContinuation;
-        unloggedRequestTimeout->Stop();
-        unloggedRequestTimeout->SetTimeout(timeout);
-        unloggedRequestTimeout->Start();
-    }
-    transport->SendMessageToReplica(this, replicaIdx, PBMessage(m));
+  NOT_IMPLEMENTED();
 }
 
-void PbftClient::ReceiveMessage(const TransportAddress &remote,
-                                void *buf, size_t size) {
+void PbftClient::ReceiveMessage(const TransportAddress &remote, void *buf,
+                                size_t size) {
+  static ToClientMessage client_msg;
+  static PBMessage m(client_msg);
 
-    static ToClientMessage client_msg;
-    static PBMessage m(client_msg);
+  m.Parse(buf, size);
 
-    m.Parse(buf, size);
-
-    switch (client_msg.msg_case()) {
-        case ToClientMessage::MsgCase::kReply:
-            HandleReply(remote, client_msg.reply());
-            break;
-        case ToClientMessage::MsgCase::kUnloggedReply:
-            HandleUnloggedReply(remote, client_msg.unlogged_reply());
-            break;
-        default:
-            Panic("Received unexpected message type %u", client_msg.msg_case());
-    }
+  switch (client_msg.msg_case()) {
+    case ToClientMessage::MsgCase::kReply:
+      HandleReply(remote, client_msg.reply());
+      break;
+    // TODO unlogged
+    default:
+      Panic("Received unexpected message type %u", client_msg.msg_case());
+  }
 }
 
 void PbftClient::HandleReply(const TransportAddress &remote,
@@ -123,16 +94,22 @@ void PbftClient::HandleReply(const TransportAddress &remote,
     // Warning("Received reply when no request was pending");
     return;
   }
+
+  proto::ReplyMessage copy(msg);
+  copy.set_sig(std::string());
+  if (!security.GetReplicaVerifier(msg.replicaid())
+           .Verify(copy.SerializeAsString(), msg.sig())) {
+    Warning("Received wrong signature");
+    return;
+  }
+
   if (msg.req().clientreqid() != pendingRequest->clientreqid) {
     return;
   }
 
   Debug("Client received reply");
-  std::set<int> &replicaGroup = pendingRequest->replyGroupMap[msg.reply()];
-  replicaGroup.insert(msg.replicaid());  // todo: include signature in reply
-  int count = replicaGroup.size();
-  if (count < f + 1) {
-    Debug("%d replies has same result as current one, waiting for more", count);
+  if (!pendingRequest->replySet.Add(msg.req().clientreqid(), msg.replicaid(),
+                                    msg.reply())) {
     return;
   }
 
@@ -142,21 +119,9 @@ void PbftClient::HandleReply(const TransportAddress &remote,
   pendingRequest = nullptr;
   req->continuation(req->request, msg.reply());
   delete req;
-}
 
-void PbftClient::HandleUnloggedReply(const TransportAddress &remote,
-                                     const proto::UnloggedReplyMessage &msg) {
-  if (!pendingUnloggedRequest) {
-    Warning("Received unloggedReply when no request was pending");
-  }
-
-  Debug("Client received unloggedReply");
-  unloggedRequestTimeout->Stop();
-
-  PendingRequest *req = pendingUnloggedRequest;
-  pendingUnloggedRequest = nullptr;
-  req->continuation(req->request, msg.reply());
-  delete req;
+  Assert(msg.view() >= view);
+  view = msg.view();
 }
 
 }  // namespace pbft

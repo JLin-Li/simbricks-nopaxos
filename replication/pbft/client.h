@@ -3,9 +3,12 @@
 
 #include <map>
 #include <set>
+#include <string>
 
 #include "common/client.h"
+#include "common/quorumset.h"
 #include "lib/configuration.h"
+#include "lib/signature.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
 namespace dsnet {
@@ -14,7 +17,7 @@ namespace pbft {
 class PbftClient : public Client {
  public:
   PbftClient(const Configuration &config, const ReplicaAddress &addr,
-             Transport *transport, uint64_t clientid = 0);
+             Transport *transport, const Security &sec, uint64_t clientid = 0);
   virtual ~PbftClient();
   virtual void Invoke(const string &request,
                       continuation_t continuation) override;
@@ -22,40 +25,36 @@ class PbftClient : public Client {
       int replicaIdx, const string &request, continuation_t continuation,
       timeout_continuation_t timeoutContinuation = nullptr,
       uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
-  virtual void ReceiveMessage(const TransportAddress &remote,
-                              void *buf, size_t size) override;
+  virtual void ReceiveMessage(const TransportAddress &remote, void *buf,
+                              size_t size) override;
 
  private:
-  int f;  // the number of faulty servers that could be toleranced
+  const Security &security;
 
   struct PendingRequest {
-    string request;
-    uint64_t clientreqid;
+    std::string request;
+    std::uint64_t clientreqid;
     continuation_t continuation;
-    // in each group the result is the same
-    std::map<std::string, std::set<int>> replyGroupMap;
+    ByzantineQuorumSet<std::uint64_t, std::string> replySet;
     PendingRequest(string request, uint64_t clientreqid,
-                   continuation_t continuation)
+                   continuation_t continuation, int numRequired)
         : request(request),
           clientreqid(clientreqid),
-          continuation(continuation) {}
+          continuation(continuation),
+          replySet(numRequired) {}
   };
 
   uint64_t lastReqId;
   PendingRequest *pendingRequest;
   Timeout *requestTimeout;
-
-  PendingRequest *pendingUnloggedRequest;
-  Timeout *unloggedRequestTimeout;
-  timeout_continuation_t unloggedTimeoutContinuation;
+  view_t view;
 
   void HandleReply(const TransportAddress &remote,
                    const proto::ReplyMessage &msg);
-  void HandleUnloggedReply(const TransportAddress &remote,
-                           const proto::UnloggedReplyMessage &msg);
+  // void HandleUnloggedReply(const TransportAddress &remote,
+  //                          const proto::UnloggedReplyMessage &msg);
 
-  // only for (logged request)
-  void SendRequest();
+  void SendRequest(bool broadcast = false);
   void ResendRequest();
 };
 

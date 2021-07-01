@@ -48,11 +48,11 @@ namespace dsnet {
 enum LogEntryState {
     LOG_STATE_COMMITTED,
     LOG_STATE_PREPARED,
-    LOG_STATE_SPECULATIVE,      // dsnet only
+    LOG_STATE_SPECULATIVE,      // specpaxos, pbft
     LOG_STATE_FASTPREPARED,     // fastpaxos only
     LOG_STATE_RECEIVED,		// nopaxos only
     LOG_STATE_NOOP,		// nopaxos only
-    LOG_STATE_EXECUTED          // granola
+    LOG_STATE_EXECUTED          // granola, pbft
 };
 
 extern const string EMPTY_HASH;
