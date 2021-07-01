@@ -44,7 +44,6 @@
 #include <utility>
 #include <random>
 
-using google::protobuf::Message;
 using namespace dsnet;
 using namespace dsnet::transaction;
 using namespace dsnet::transaction::kvstore;
@@ -117,7 +116,9 @@ protected:
             }
         }
 
-        this->txnClient = new TapirClient(*this->config, this->transport);
+        this->txnClient = new TapirClient(*this->config,
+                                          ReplicaAddress("localhost", "0"),
+                                          this->transport);
         this->kvClient = new KVClient(txnClient, nShards);
     }
 

@@ -109,7 +109,7 @@ protected:
     map<int, vector<ErisServer *> > servers;
     vector<Fcor *> fcorApps;
     vector<vr::VRReplica *> fcorReplicas;
-    vector<TestClient>  clients;
+    vector<TestClient> clients;
     vector<ErisSequencer *> sequencers;
     SimulatedTransport *transport;
     Configuration *config;
@@ -280,12 +280,11 @@ protected:
                 }
                 if (clients[i].requestNum < num_packets) {
                     // Only change session once
-                    // TODO: fix session change
-                    /*
                     if (i == 0 && clients[i].requestNum == epoch_change_packet_index) {
-                        this->transport->SessionChange();
+                        for (auto &c : clients) {
+                            c.client->ChangeSequencer(1);
+                        }
                     }
-                    */
                     if (clients[i].requestNum == wait_packet_index) {
                         transport->Timer(wait_time, [&, i]() {
                             set<shardnum_t> shards = GenerateShards(nShards);
@@ -675,7 +674,7 @@ TEST_F(ErisTest, FCFoundTxnLocal)
                 return false;
             }
         } else if (srcIdx.second == 0 && dstIdx.second > 0 &&
-                   CheckMessageType(m, ToServerMessage::MsgCase::kGapRequest)) {
+                CheckMessageType(m, ToServerMessage::MsgCase::kGapRequest)) {
             return false;
         }
         return true;
@@ -708,11 +707,11 @@ TEST_F(ErisTest, FCFoundTxnRemote)
     Notice("Seed is %u", seed);
     srand(seed);
 
-    // Drop the 8rd multishard client request at one of
+    // Drop the 2nd multishard client request at one of
     // the shards (all replicas). Leader will contact
     // the FC, which will find the txn from some other
     // shards.
-    set<int> drops = {8};
+    set<int> drops = {2};
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
@@ -746,7 +745,6 @@ TEST_F(ErisTest, FCFoundTxnRemote)
     EXPECT_EQ(nClients * NUM_PACKETS, numUpcalls);
 }
 
-/*
 TEST_F(ErisTest, FCDropTxn)
 {
     const int NUM_PACKETS = 10;
@@ -755,25 +753,29 @@ TEST_F(ErisTest, FCDropTxn)
     map<int, vector<set<shardnum_t> > > clientRequests; // clientid -> [participant shards]
     map<uint64_t, int> txns;
     int txn_counter = 0;
+    int num_dropped = 0;
 
     unsigned int seed = time(NULL);
     Notice("Seed is %u", seed);
     srand(seed);
 
-    // Drop the 9th multishard client request at all shards.
-    // FC will drop the txn.
-    set<int> drops = {9};
+    // Drop the 3rd multishard client request at all shards. FC will drop the
+    // txn. However, do not drop subsequent client retries.
+    set<int> drops = {3};
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
         if (IsSequencer(src)) {
-            uint64_t txnid = GetRequest(m).txnid();
+            proto::RequestMessage r = GetRequest(m);
+            uint64_t txnid = r.txnid();
             if (txns.find(txnid) == txns.end()) {
                 txns[txnid] = ++txn_counter;
             }
 
             if (drops.find(txns.at(txnid)) != drops.end()) {
-                return false;
+                if (++num_dropped <= r.request().ops_size() * 3) {
+                    return false;
+                }
             }
         }
         return true;
@@ -809,7 +811,7 @@ TEST_F(ErisTest, ViewChangeNoDrop)
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (m.GetTypeName() == syncPrepareMessage.GetTypeName()) {
+        if (CheckMessageType(m, ToServerMessage::MsgCase::kSyncPrepare)) {
             return false;
         }
         return true;
@@ -842,24 +844,24 @@ TEST_F(ErisTest, ViewChangeStateTransfer)
     // Drop the last few txns in the first view at replica 1,
     // so that when it becomes the leader, it will transfer
     // state from other replicas.
-    eris::proto::SyncPrepareMessage syncPrepareMessage;
-    eris::proto::RequestMessage requestMessage;
-    set<pair<uint64_t, uint64_t> > request_counter;
-    uint64_t drop_start = 5 * nClients - 5;
-    uint64_t drop_end = 5 * nClients;
+    map<uint64_t, int> txns;
+    int txn_counter = 0;
+    int drop_start = 5 * nClients - 5;
+    int drop_end = 5 * nClients;
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (m.GetTypeName() == syncPrepareMessage.GetTypeName()) {
-            return false;
-        }
-        if (m.GetTypeName() == requestMessage.GetTypeName()) {
-            requestMessage.CopyFrom(m);
-            request_counter.insert(make_pair(requestMessage.request().clientid(),
-                                             requestMessage.request().clientreqid()));
-            if (request_counter.size() >= drop_start &&
-                request_counter.size() <= drop_end &&
-                dstIdx.second == 1) {
+        if (IsSequencer(src)) {
+            uint64_t txnid = GetRequest(m).txnid();
+            if (txns.find(txnid) == txns.end()) {
+                txns[txnid] = ++txn_counter;
+            }
+            if (txns.at(txnid) >= drop_start && txns.at(txnid) <= drop_end &&
+                    dstIdx.second == 1) {
+                return false;
+            }
+        } else {
+            if (CheckMessageType(m, ToServerMessage::MsgCase::kSyncPrepare)) {
                 return false;
             }
         }
@@ -894,33 +896,35 @@ TEST_F(ErisTest, ViewChangeWithDrops)
     // then drop all FC txn check at replica 1, so they will be
     // decided as perm drops. Replica 1 will merge these perm drops
     // during view change, overwriting existing log entries.
-    eris::proto::SyncPrepareMessage syncPrepareMessage;
-    eris::proto::RequestMessage requestMessage;
-    eris::proto::GapRequestMessage gapRequestMessage;
-    eris::proto::FCToErisMessage fcToErisMessage;
-    set<pair<uint64_t, uint64_t> > request_counter;
+    map<uint64_t, std::pair<int, int> > txns; // txnid -> <txn count, drop count>
+    int txn_counter = 0;
     set<uint64_t> drops = {15, 21};
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (m.GetTypeName() == syncPrepareMessage.GetTypeName()) {
-            return false;
-        }
-        if (m.GetTypeName() == gapRequestMessage.GetTypeName()) {
-            return false;
-        }
-        if (m.GetTypeName() == requestMessage.GetTypeName()) {
-            requestMessage.CopyFrom(m);
-            request_counter.insert(make_pair(requestMessage.request().clientid(),
-                                             requestMessage.request().clientreqid()));
-            if (drops.find(request_counter.size()) != drops.end() &&
-                dstIdx.second != 1) {
+        if (IsSequencer(src)) {
+            proto::RequestMessage r = GetRequest(m);
+            uint64_t txnid = r.txnid();
+            if (txns.find(txnid) == txns.end()) {
+                txns[txnid] = std::make_pair(++txn_counter, 0);
+            }
+            if (drops.find(txns.at(txnid).first) != drops.end() &&
+                    dstIdx.second != 1) {
+                if (++txns[txnid].second <= r.request().ops_size() * 2) {
+                    return false;
+                }
+            }
+        } else {
+            if (CheckMessageType(m, ToServerMessage::MsgCase::kSyncPrepare)) {
                 return false;
             }
-        }
-        if (m.GetTypeName() == fcToErisMessage.GetTypeName() &&
-            dstIdx.second == 1) {
-            return false;
+            if (CheckMessageType(m, ToServerMessage::MsgCase::kGapRequest)) {
+                return false;
+            }
+            if (CheckMessageType(m, ToServerMessage::MsgCase::kFc) &&
+                    dstIdx.second == 1) {
+                return false;
+            }
         }
         return true;
     });
@@ -973,18 +977,22 @@ TEST_F(ErisTest, EpochChangeWithDrops)
     srand(seed);
 
     // Drop a few txns before epoch change
-    eris::proto::RequestMessage requestMessage;
-    set<pair<uint64_t, uint64_t> > request_counter;
-    set<uint64_t> drops = {12, 15};
+    map<uint64_t, std::pair<int, int> > txns;
+    int txn_counter = 0;
+    set<uint64_t> drops = {7, 10};
     transport->AddFilter(1, [&](TransportReceiver *src, std::pair<int, int> srcIdx,
                                 TransportReceiver *dst, std::pair<int, int> dstIdx,
                                 Message &m, uint64_t &delay) {
-        if (m.GetTypeName() == requestMessage.GetTypeName()) {
-            requestMessage.CopyFrom(m);
-            request_counter.insert(make_pair(requestMessage.request().clientid(),
-                                             requestMessage.request().clientreqid()));
-            if (drops.find(request_counter.size()) != drops.end()) {
-                return false;
+        if (IsSequencer(src)) {
+            proto::RequestMessage r = GetRequest(m);
+            uint64_t txnid = r.txnid();
+            if (txns.find(txnid) == txns.end()) {
+                txns[txnid] = std::make_pair(++txn_counter, 0);
+            }
+            if (drops.find(txns.at(txnid).first) != drops.end()) {
+                if (++txns[txnid].second <= r.request().ops_size() * 3) {
+                    return false;
+                }
             }
         }
         return true;
@@ -1003,6 +1011,7 @@ TEST_F(ErisTest, EpochChangeWithDrops)
     EXPECT_EQ(nClients * NUM_PACKETS, numUpcalls);
 }
 
+/*
 TEST_F(ErisTest, EpochChangeWithStateTransfer)
 {
     const int NUM_PACKETS = 10;

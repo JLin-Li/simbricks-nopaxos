@@ -63,8 +63,10 @@ public:
                         void *buf, size_t size) override;
 
     void Invoke(const std::map<shardnum_t, std::string> &requests,
-		g_continuation_t continuation,
+                g_continuation_t continuation,
                 void *arg = nullptr) override;
+
+    void ChangeSequencer(int index);
 
 private:
     struct PendingRequest
@@ -94,6 +96,7 @@ private:
             }
     };
 
+    int sequencerIndex;
     txnid_t txnid;
     opnum_t lastReqId;
     PendingRequest *pendingRequest;

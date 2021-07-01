@@ -9,7 +9,7 @@ namespace eris {
 ErisSequencer::ErisSequencer(const Configuration &config,
                              Transport *transport, int id)
     : Sequencer(config, transport, id),
-      sess_num_(0) { }
+      sess_num_(id) { }
 
 ErisSequencer::~ErisSequencer() { }
 
