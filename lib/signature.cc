@@ -14,6 +14,7 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
+#include <openssl/sha.h>
 #include <openssl/ssl.h>
 
 #include <cstring>
@@ -147,23 +148,28 @@ dsnet::Secp256k1Signer::~Secp256k1Signer() { secp256k1_context_destroy(ctx); }
 
 bool dsnet::Secp256k1Signer::Sign(const std::string &message,
                                   std::string &signature) const {
-  // TODO hash message to 32 bytes
+  // hash message to 32 bytes
+  // use sha-256 following libhotstuff
+  unsigned char hash[SHA256_DIGEST_LENGTH];
+  SHA256_CTX sha256;
+  if (!SHA256_Init(&sha256)) return false;
+  if (!SHA256_Update(&sha256, message.c_str(), message.length())) return false;
+  if (!SHA256_Final(hash, &sha256)) return false;
 
   secp256k1_ecdsa_signature data;
-  if (!secp256k1_ecdsa_sign(
-          ctx, &data, reinterpret_cast<const unsigned char *>(message.c_str()),
-          secKey, nullptr, nullptr))
+  if (!secp256k1_ecdsa_sign(ctx, &data, hash, secKey, nullptr, nullptr))
     return false;
   unsigned char sig[64];
   if (!secp256k1_ecdsa_signature_serialize_compact(ctx, sig, &data))
     return false;
-  signature = reinterpret_cast<const char *>(sig);
+  signature.assign(reinterpret_cast<const char *>(sig), 64);
   return true;
 }
 
 dsnet::Secp256k1Verifier::Secp256k1Verifier(
     const dsnet::Secp256k1Signer &signer) {
-  ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+  ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN |
+                                 SECP256K1_CONTEXT_VERIFY);
   pubKey = new secp256k1_pubkey;
   if (!secp256k1_ec_pubkey_create(ctx, pubKey, signer.secKey)) {
     Panic("Cannot create public key");
@@ -177,5 +183,16 @@ dsnet::Secp256k1Verifier::~Secp256k1Verifier() {
 
 bool dsnet::Secp256k1Verifier::Verify(const std::string &message,
                                       const std::string &signature) const {
-  return true;
+  unsigned char hash[SHA256_DIGEST_LENGTH];
+  SHA256_CTX sha256;
+  if (!SHA256_Init(&sha256)) return false;
+  if (!SHA256_Update(&sha256, message.c_str(), message.length())) return false;
+  if (!SHA256_Final(hash, &sha256)) return false;
+
+  secp256k1_ecdsa_signature data;
+  if (!secp256k1_ecdsa_signature_parse_compact(
+          ctx, &data,
+          reinterpret_cast<const unsigned char *>(signature.c_str())))
+    return false;
+  return secp256k1_ecdsa_verify(ctx, &data, hash, pubKey);
 }
