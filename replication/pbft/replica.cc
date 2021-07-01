@@ -3,7 +3,7 @@
 #include "common/pbmessage.h"
 #include "common/replica.h"
 #include "lib/message.h"
-#include "lib/rsakeys.h"
+#include "lib/signature.h"
 #include "lib/transport.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
@@ -31,12 +31,9 @@ PbftReplica::PbftReplica(Configuration config, int myIdx, bool initialize,
   this->view = 0;
   this->seqNum = 0;
 
-  signer.Initialize(PRIVATE_KEY);
-  verifier.Initialize(PUBLIC_KEY);
-
   // 1min timeout to make sure no one ever want to change view
   viewChangeTimeout =
-      new Timeout(transport, 60 * 1000, bind(&PbftReplica::OnViewChange, this));
+      new Timeout(transport, 3600 * 1000, bind(&PbftReplica::OnViewChange, this));
 }
 
 void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,

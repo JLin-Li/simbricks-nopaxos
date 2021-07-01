@@ -4,7 +4,8 @@
 #include "common/pbmessage.h"
 #include "common/request.pb.h"
 #include "lib/message.h"
-#include "lib/rsakeys.h"
+#include "lib/security.h"
+#include "lib/signature.h"
 #include "lib/transport.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
@@ -19,9 +20,6 @@ PbftClient::PbftClient(const Configuration &config, const ReplicaAddress &addr,
   lastReqId = 0;
   pendingRequest = nullptr;
   requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
-
-  signer.Initialize(PRIVATE_KEY);
-  verifier.Initialize(PUBLIC_KEY);
 
   view = 0;
 }

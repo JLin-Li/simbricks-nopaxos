@@ -1,6 +1,7 @@
 // digest.c - sign and verify message using RSA
 // author: Sun Guangda <sung@comp.nus.edu.sg>
-// adopt from https://gist.github.com/irbull/08339ddcd5686f509e9826964b17bb59
+// openssl RSA part adopts from
+//  https://gist.github.com/irbull/08339ddcd5686f509e9826964b17bb59
 // TODO: figure out how to chain a pipeline instead of creating temporary
 // objects on every sign/verify to improve performance
 // TODO: test for memory leaking
@@ -16,6 +17,12 @@
 #include <openssl/ssl.h>
 
 #include <cstring>
+
+#include "lib/assert.h"
+
+// https://stackoverflow.com/a/34477445
+static const unsigned char SEC[] = "01234567890123456789012345678901";
+const unsigned char *dsnet::FixSingleKeySecp256k1Security::SECRET = SEC;
 
 namespace {
 
@@ -33,7 +40,7 @@ size_t calcDecodeLength(const char *b64input) {
 
 }  // namespace
 
-bool dsnet::Signer::Initialize(const std::string &privateKey) {
+bool dsnet::RsaSigner::SetKey(const std::string &privateKey) {
   BIO *keybio = BIO_new_mem_buf(privateKey.c_str(), -1);
   if (!keybio) return false;
   RSA *rsa = nullptr;
@@ -46,14 +53,15 @@ bool dsnet::Signer::Initialize(const std::string &privateKey) {
   return true;
 }
 
-dsnet::Signer::~Signer() {
+dsnet::RsaSigner::~RsaSigner() {
   // todo
   // signer should only be instantiated once per client/replica
   // so the memory leaking should be fine
 }
 
 // assume panic on failure so no "finally" clean up
-bool dsnet::Signer::Sign(const std::string &message, std::string &signature) {
+bool dsnet::RsaSigner::Sign(const std::string &message,
+                            std::string &signature) const {
   // create binary signature
   EVP_MD_CTX *context = EVP_MD_CTX_new();
   if (EVP_DigestSignInit(context, nullptr, EVP_sha256(), nullptr, pkey) <= 0)
@@ -83,7 +91,7 @@ bool dsnet::Signer::Sign(const std::string &message, std::string &signature) {
   return true;
 }
 
-bool dsnet::Verifier::Initialize(const std::string &publicKey) {
+bool dsnet::RsaVerifier::SetKey(const std::string &publicKey) {
   BIO *keybio = BIO_new_mem_buf(publicKey.c_str(), -1);
   if (!keybio) return false;
   RSA *rsa = nullptr;
@@ -96,12 +104,12 @@ bool dsnet::Verifier::Initialize(const std::string &publicKey) {
   return true;
 }
 
-dsnet::Verifier::~Verifier() {
+dsnet::RsaVerifier::~RsaVerifier() {
   // todo: same as above
 }
 
-bool dsnet::Verifier::Verify(const std::string &message,
-                             const std::string &signature) {
+bool dsnet::RsaVerifier::Verify(const std::string &message,
+                                const std::string &signature) const {
   int bufferSize = calcDecodeLength(signature.c_str());
   unsigned char *binSig = new unsigned char[bufferSize + 1];
   if (!binSig) return false;
@@ -124,5 +132,50 @@ bool dsnet::Verifier::Verify(const std::string &message,
   }
   EVP_MD_CTX_free(context);
   delete[] binSig;
+  return true;
+}
+
+dsnet::Secp256k1Signer::Secp256k1Signer(const unsigned char *secKey) {
+  if (secKey == nullptr) {
+    NOT_IMPLEMENTED();
+  }
+  std::memcpy(this->secKey, secKey, 32);
+  ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+}
+
+dsnet::Secp256k1Signer::~Secp256k1Signer() { secp256k1_context_destroy(ctx); }
+
+bool dsnet::Secp256k1Signer::Sign(const std::string &message,
+                                  std::string &signature) const {
+  // TODO hash message to 32 bytes
+
+  secp256k1_ecdsa_signature data;
+  if (!secp256k1_ecdsa_sign(
+          ctx, &data, reinterpret_cast<const unsigned char *>(message.c_str()),
+          secKey, nullptr, nullptr))
+    return false;
+  unsigned char sig[64];
+  if (!secp256k1_ecdsa_signature_serialize_compact(ctx, sig, &data))
+    return false;
+  signature = reinterpret_cast<const char *>(sig);
+  return true;
+}
+
+dsnet::Secp256k1Verifier::Secp256k1Verifier(
+    const dsnet::Secp256k1Signer &signer) {
+  ctx = secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+  pubKey = new secp256k1_pubkey;
+  if (!secp256k1_ec_pubkey_create(ctx, pubKey, signer.secKey)) {
+    Panic("Cannot create public key");
+  }
+}
+
+dsnet::Secp256k1Verifier::~Secp256k1Verifier() {
+  secp256k1_context_destroy(ctx);
+  delete pubKey;
+}
+
+bool dsnet::Secp256k1Verifier::Verify(const std::string &message,
+                                      const std::string &signature) const {
   return true;
 }

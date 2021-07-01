@@ -37,7 +37,6 @@
 #include "common/log.h"
 #include "common/quorumset.h"
 #include "common/replica.h"
-#include "lib/signature.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
 namespace dsnet {
@@ -51,10 +50,6 @@ class PbftReplica : public Replica {
                       size_t size) override;
 
  private:
-  // fundamental
-  Signer signer;
-  Verifier verifier;
-
   // message handlers
   void HandleRequest(const TransportAddress &remote,
                      const proto::RequestMessage &msg);

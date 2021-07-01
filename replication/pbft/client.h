@@ -8,7 +8,6 @@
 #include "common/client.h"
 #include "common/quorumset.h"
 #include "lib/configuration.h"
-#include "lib/signature.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
 namespace dsnet {
@@ -29,9 +28,6 @@ class PbftClient : public Client {
                               void *buf, size_t size) override;
 
  private:
-  Signer signer;
-  Verifier verifier;
-
   struct PendingRequest {
     std::string request;
     std::uint64_t clientreqid;
