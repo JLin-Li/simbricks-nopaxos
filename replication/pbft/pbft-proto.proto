@@ -44,6 +44,7 @@ message UnloggedRequestMessage {
     required dsnet.UnloggedRequest req = 1;
 }
 
+// signed part
 message Common {
     required uint64 view = 1;
     required uint64 seqnum = 2;
@@ -53,7 +54,6 @@ message Common {
 message PrePrepareMessage {
     required Common common = 1;
     required bytes sig = 2;
-    // non-sig fields
     required RequestMessage message = 3;
 }
 

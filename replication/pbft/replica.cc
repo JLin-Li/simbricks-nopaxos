@@ -19,9 +19,11 @@ namespace pbft {
 
 using namespace proto;
 
-PbftReplica::PbftReplica(Configuration config, int myIdx, bool initialize,
-                         Transport *transport, AppReplica *app)
+PbftReplica::PbftReplica(const Configuration &config, int myIdx,
+                         bool initialize, Transport *transport,
+                         const Security &sec, AppReplica *app)
     : Replica(config, 0, myIdx, initialize, transport, app),
+      security(sec),
       log(false),
       prepareSet(2 * config.f),
       commitSet(2 * config.f + 1) {
@@ -31,9 +33,13 @@ PbftReplica::PbftReplica(Configuration config, int myIdx, bool initialize,
   this->view = 0;
   this->seqNum = 0;
 
-  // 1min timeout to make sure no one ever want to change view
-  viewChangeTimeout =
-      new Timeout(transport, 3600 * 1000, bind(&PbftReplica::OnViewChange, this));
+  // 1h timeout to make sure no one ever want to change view
+  viewChangeTimeout = new Timeout(transport, 3600 * 1000,
+                                  bind(&PbftReplica::OnViewChange, this));
+  stateTransferTimeout =
+      new Timeout(transport, 1000, bind(&PbftReplica::OnStateTransfer, this));
+  resendPrePrepareTimeout =
+      new Timeout(transport, 300, bind(&PbftReplica::OnResendPrePrepare, this));
 }
 
 void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
@@ -44,17 +50,18 @@ void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
   m.Parse(buf, size);
 
   switch (replica_msg.msg_case()) {
-#define Handle(MessageType, message)                    \
-  case ToReplicaMessage::MsgCase::k##MessageType:       \
-    Handle##MessageType(remote, replica_msg.message()); \
-    break;
-
-    Handle(Request, request);
-    Handle(PrePrepare, pre_prepare);
-    Handle(Prepare, prepare);
-    Handle(Commit, commit);
-
-#undef Handle
+    case ToReplicaMessage::MsgCase::kRequest:
+      HandleRequest(remote, replica_msg.request());
+      break;
+    case ToReplicaMessage::MsgCase::kPrePrepare:
+      HandlePrePrepare(remote, replica_msg.pre_prepare());
+      break;
+    case ToReplicaMessage::MsgCase::kPrepare:
+      HandlePrepare(remote, replica_msg.prepare());
+      break;
+    case ToReplicaMessage::MsgCase::kCommit:
+      HandleCommit(remote, replica_msg.commit());
+      break;
     default:
       RPanic("Received unexpected message type in pbft proto: %u",
              replica_msg.msg_case());
@@ -63,6 +70,12 @@ void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
 
 void PbftReplica::HandleRequest(const TransportAddress &remote,
                                 const RequestMessage &msg) {
+  if (!security.GetClientVerifier(remote).Verify(msg.req().SerializeAsString(),
+                                                 msg.sig())) {
+    RWarning("Wrong signature for client");
+    return;
+  }
+
   clientAddressTable[msg.req().clientid()] =
       unique_ptr<TransportAddress>(remote.clone());
   auto kv = clientTable.find(msg.req().clientid());
@@ -91,6 +104,9 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
     return;
   }
 
+  // TODO prevent duplicated active proposal for same Request
+  // especially when backup relaying
+
   RDebug("Start pre-prepare for client#%lu req#%lu", msg.req().clientid(),
          msg.req().clientreqid());
   seqNum += 1;
@@ -98,13 +114,16 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   PrePrepareMessage &prePrepare = *m.mutable_pre_prepare();
   prePrepare.mutable_common()->set_view(view);
   prePrepare.mutable_common()->set_seqnum(seqNum);
-  // TODO digest and sig
-  prePrepare.mutable_common()->set_digest(std::string());
-  prePrepare.set_sig(std::string());
+  prePrepare.mutable_common()->set_digest(std::string());  // TODO
+  security.GetReplicaSigner(ReplicaId())
+      .Sign(prePrepare.common().SerializeAsString(), *prePrepare.mutable_sig());
   *prePrepare.mutable_message() = msg;
 
+  Assert(prePrepare.common().seqnum() == log.LastOpnum() + 1);
   AcceptPrePrepare(prePrepare);
   transport->SendMessageToAll(this, PBMessage(m));
+  // TODO
+  // resendPrePrepareTimeout->Start();
 
   TryBroadcastCommit(prePrepare.common());  // for single replica setup
 }
@@ -113,10 +132,23 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
                                    const proto::PrePrepareMessage &msg) {
   if (AmPrimary()) RPanic("Unexpected PrePrepare sent to primary");
 
-  // TODO verify sig and digest
-  // NOTICE verify both sig of PrePrepare and Request
-
   if (view != msg.common().view()) return;
+
+  if (!security.GetReplicaVerifier(configuration.GetLeaderIndex(view))
+           .Verify(msg.common().SerializeAsString(), msg.sig())) {
+    RWarning("Wrong signature for PrePrepare");
+    return;
+  }
+  uint64_t clientid = msg.message().req().clientid();
+  if (!clientAddressTable.count(clientid)) {
+    RWarning("sig@PrePrepare: no client address record");
+    return;
+  }
+  if (!security.GetClientVerifier(*clientAddressTable[clientid])
+           .Verify(msg.message().SerializeAsString(), msg.message().sig())) {
+    RWarning("Wrong signature for client in PrePrepare");
+    return;
+  }
 
   opnum_t seqNum = msg.common().seqnum();
   if (acceptedPrePrepareTable.count(seqNum) &&
@@ -125,14 +157,23 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
 
   // no impl high and low water mark, along with GC
 
+  if (msg.common().seqnum() != log.LastOpnum() + 1) {
+    // TODO still prepare but record message out of Log
+    RNotice("Gap detected, not prepare and schedule state transfer");
+    // TODO pend pre-prepare
+    if (!stateTransferTimeout->Active()) {
+      stateTransferTimeout->Start();
+    }
+    return;
+  }
   RDebug("Enter PREPARE round for view#%ld seq#%ld", view, seqNum);
   AcceptPrePrepare(msg);
   ToReplicaMessage m;
   PrepareMessage &prepare = *m.mutable_prepare();
   *prepare.mutable_common() = msg.common();
   prepare.set_replicaid(ReplicaId());
-  // TODO sig
-  prepare.set_sig(std::string());
+  security.GetReplicaSigner(ReplicaId())
+      .Sign(prepare.common().SerializeAsString(), *prepare.mutable_sig());
   transport->SendMessageToAll(this, PBMessage(m));
 
   prepareSet.Add(seqNum, ReplicaId(), msg.common());
@@ -141,24 +182,36 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
 
 void PbftReplica::HandlePrepare(const TransportAddress &remote,
                                 const proto::PrepareMessage &msg) {
+  if (!security.GetReplicaVerifier(msg.replicaid())
+           .Verify(msg.common().SerializeAsString(), msg.sig())) {
+    RWarning("Wrong signature for Prepare");
+    return;
+  }
+
   prepareSet.Add(msg.common().seqnum(), msg.replicaid(), msg.common());
   TryBroadcastCommit(msg.common());
 }
 
 void PbftReplica::HandleCommit(const TransportAddress &remote,
                                const proto::CommitMessage &msg) {
+  if (!security.GetReplicaVerifier(msg.replicaid())
+           .Verify(msg.common().SerializeAsString(), msg.sig())) {
+    RWarning("Wrong signature for Commit");
+    return;
+  }
+
   commitSet.Add(msg.common().seqnum(), msg.replicaid(), msg.common());
   TryExecute(msg.common());
 }
 
 void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
 
+void PbftReplica::OnStateTransfer() { NOT_IMPLEMENTED(); }
+
+void PbftReplica::OnResendPrePrepare() { NOT_IMPLEMENTED(); }
+
 void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
   acceptedPrePrepareTable[message.common().seqnum()] = message.common();
-  if (message.common().seqnum() != log.LastOpnum() + 1) {
-    // collect info of the gap, pend pre-prepare, and start state transfer
-    NOT_IMPLEMENTED();
-  }
   log.Append(new LogEntry(
       viewstamp_t(message.common().view(), message.common().seqnum()),
       LOG_STATE_PREPARED, message.message().req()));
@@ -176,8 +229,8 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
   CommitMessage &commit = *m.mutable_commit();
   *commit.mutable_common() = message;
   commit.set_replicaid(ReplicaId());
-  // TODO sig
-  commit.set_sig(std::string());
+  security.GetReplicaSigner(ReplicaId())
+      .Sign(commit.common().SerializeAsString(), *commit.mutable_sig());
   transport->SendMessageToAll(this, PBMessage(m));
 
   commitSet.Add(message.seqnum(), ReplicaId(), message);
@@ -214,8 +267,9 @@ void PbftReplica::TryExecute(const proto::Common &message) {
     reply.set_view(view);
     *reply.mutable_req() = req;
     reply.set_replicaid(ReplicaId());
-    // TODO sig
     reply.set_sig(std::string());
+    security.GetReplicaSigner(ReplicaId())
+        .Sign(reply.SerializeAsString(), *reply.mutable_sig());
     UpdateClientTable(req, m);
     if (clientAddressTable.count(req.clientid()))
       transport->SendMessage(this, *clientAddressTable[req.clientid()],

@@ -4,7 +4,6 @@
 #include "common/pbmessage.h"
 #include "common/request.pb.h"
 #include "lib/message.h"
-#include "lib/security.h"
 #include "lib/signature.h"
 #include "lib/transport.h"
 #include "replication/pbft/pbft-proto.pb.h"
@@ -15,8 +14,9 @@ namespace pbft {
 using namespace proto;
 
 PbftClient::PbftClient(const Configuration &config, const ReplicaAddress &addr,
-                       Transport *transport, uint64_t clientid)
-    : Client(config, addr, transport, clientid) {
+                       Transport *transport, const Security &sec,
+                       uint64_t clientid)
+    : Client(config, addr, transport, clientid), security(sec) {
   lastReqId = 0;
   pendingRequest = nullptr;
   requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
@@ -48,8 +48,8 @@ void PbftClient::SendRequest(bool broadcast) {
   reqMsg.mutable_req()->set_clientid(clientid);
   reqMsg.mutable_req()->set_clientreqid(lastReqId);
 
-  // TODO sig
-  reqMsg.set_sig(std::string());
+  security.GetClientSigner(GetAddress())
+      .Sign(reqMsg.req().SerializeAsString(), *reqMsg.mutable_sig());
 
   if (broadcast)
     transport->SendMessageToAll(this, PBMessage(m));
@@ -94,11 +94,18 @@ void PbftClient::HandleReply(const TransportAddress &remote,
     // Warning("Received reply when no request was pending");
     return;
   }
-  if (msg.req().clientreqid() != pendingRequest->clientreqid) {
+
+  proto::ReplyMessage copy(msg);
+  copy.set_sig(std::string());
+  if (!security.GetReplicaVerifier(msg.replicaid())
+           .Verify(copy.SerializeAsString(), msg.sig())) {
+    Warning("Received wrong signature");
     return;
   }
 
-  // TODO verify sig
+  if (msg.req().clientreqid() != pendingRequest->clientreqid) {
+    return;
+  }
 
   Debug("Client received reply");
   if (!pendingRequest->replySet.Add(msg.req().clientreqid(), msg.replicaid(),

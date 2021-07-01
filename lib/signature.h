@@ -10,6 +10,7 @@
 #include <string>
 
 #include "lib/configuration.h"
+#include "lib/transport.h"
 
 // change back to specpaxos if we are not adopting
 namespace dsnet {
@@ -18,7 +19,7 @@ class Signer {
  public:
   // return true and overwrite signature on sucess
   virtual bool Sign(const std::string &message, std::string &signature) const {
-    signature = "";
+    signature = "signed";
     return true;
   }
 };
@@ -28,7 +29,7 @@ class Verifier {
   // return false on both signature mismatching and verification failure
   virtual bool Verify(const std::string &message,
                       const std::string &signature) const {
-    return true;
+    return signature == "signed";
   }
 };
 
@@ -86,9 +87,9 @@ class Security {
  public:
   virtual const Signer &GetReplicaSigner(int replicaIndex) const = 0;
   virtual const Verifier &GetReplicaVerifier(int replicaIndex) const = 0;
-  virtual const Signer &GetClientSigner(const ReplicaAddress &addr) const = 0;
+  virtual const Signer &GetClientSigner(const TransportAddress &addr) const = 0;
   virtual const Verifier &GetClientVerifier(
-      const ReplicaAddress &addr) const = 0;
+      const TransportAddress &addr) const = 0;
 };
 
 class NopSecurity : public Security {
@@ -99,13 +100,14 @@ class NopSecurity : public Security {
  public:
   NopSecurity() {}
   const Signer &GetReplicaSigner(int replicaIndex) const override { return s; }
-  const Signer &GetClientSigner(const ReplicaAddress &addr) const override {
+  const Signer &GetClientSigner(const TransportAddress &addr) const override {
     return s;
   }
   const Verifier &GetReplicaVerifier(int replicaIndex) const override {
     return v;
   }
-  const Verifier &GetClientVerifier(const ReplicaAddress &addr) const override {
+  const Verifier &GetClientVerifier(
+      const TransportAddress &addr) const override {
     return v;
   }
 };
@@ -119,13 +121,14 @@ class FixSingleKeySecp256k1Security : public Security {
  public:
   FixSingleKeySecp256k1Security() : s(SECRET), v(s) {}
   const Signer &GetReplicaSigner(int replicaIndex) const override { return s; }
-  const Signer &GetClientSigner(const ReplicaAddress &addr) const override {
+  const Signer &GetClientSigner(const TransportAddress &addr) const override {
     return s;
   }
   const Verifier &GetReplicaVerifier(int replicaIndex) const override {
     return v;
   }
-  const Verifier &GetClientVerifier(const ReplicaAddress &addr) const override {
+  const Verifier &GetClientVerifier(
+      const TransportAddress &addr) const override {
     return v;
   }
 };

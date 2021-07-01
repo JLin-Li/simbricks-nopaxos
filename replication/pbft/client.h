@@ -8,6 +8,7 @@
 #include "common/client.h"
 #include "common/quorumset.h"
 #include "lib/configuration.h"
+#include "lib/signature.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
 namespace dsnet {
@@ -16,7 +17,7 @@ namespace pbft {
 class PbftClient : public Client {
  public:
   PbftClient(const Configuration &config, const ReplicaAddress &addr,
-             Transport *transport, uint64_t clientid = 0);
+             Transport *transport, const Security &sec, uint64_t clientid = 0);
   virtual ~PbftClient();
   virtual void Invoke(const string &request,
                       continuation_t continuation) override;
@@ -24,10 +25,12 @@ class PbftClient : public Client {
       int replicaIdx, const string &request, continuation_t continuation,
       timeout_continuation_t timeoutContinuation = nullptr,
       uint32_t timeout = DEFAULT_UNLOGGED_OP_TIMEOUT) override;
-  virtual void ReceiveMessage(const TransportAddress &remote,
-                              void *buf, size_t size) override;
+  virtual void ReceiveMessage(const TransportAddress &remote, void *buf,
+                              size_t size) override;
 
  private:
+  const Security &security;
+
   struct PendingRequest {
     std::string request;
     std::uint64_t clientreqid;

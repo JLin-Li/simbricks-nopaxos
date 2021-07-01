@@ -36,6 +36,7 @@
 #include "common/replica.h"
 #include "lib/configuration.h"
 #include "lib/message.h"
+#include "lib/signature.h"
 #include "lib/simtransport.h"
 #include "lib/transport.h"
 #include "replication/pbft/client.h"
@@ -79,12 +80,33 @@ TEST(Pbft, OneOp) {
   map<int, vector<ReplicaAddress> > replicaAddrs = {
       {0, {{"localhost", "12345"}}}};
   Configuration c(1, 1, 0, replicaAddrs);
-  SimulatedTransport transport;
+  SimulatedTransport transport(true);
+  NopSecurity security;
   PbftTestApp app;
-  PbftReplica replica(c, 0, true, &transport, &app);
-  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
+  PbftReplica replica(c, 0, true, &transport, security, &app);
+  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
 
   client.Invoke(string("test"), ClientUpcallHandler);
+  transport.Timer(0, [&]() { transport.Stop(); });
+  transport.Run();
+
+  EXPECT_EQ(app.replicaLastOp, "test");
+  EXPECT_EQ(clientLastOp, "test");
+  EXPECT_EQ(clientLastReply, "reply: test");
+}
+
+TEST(Pbft, OneOpSign) {
+  map<int, vector<ReplicaAddress> > replicaAddrs = {
+      {0, {{"localhost", "12345"}}}};
+  Configuration c(1, 1, 0, replicaAddrs);
+  SimulatedTransport transport(true);
+  FixSingleKeySecp256k1Security security;
+  PbftTestApp app;
+  PbftReplica replica(c, 0, true, &transport, security, &app);
+  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
+
+  client.Invoke(string("test"), ClientUpcallHandler);
+  transport.Timer(0, [&]() { transport.Stop(); });
   transport.Run();
 
   EXPECT_EQ(app.replicaLastOp, "test");
@@ -100,15 +122,16 @@ TEST(Pbft, OneOpFourServers) {
                                                       {"localhost", "1512"}}}};
   Configuration c(1, 4, 1, replicaAddrs);
   SimulatedTransport transport(true);
+  NopSecurity security;
   PbftTestApp app1, app2, app3, app4;
-  PbftReplica replica0(c, 0, true, &transport, &app1);
-  PbftReplica replica1(c, 1, true, &transport, &app2);
-  PbftReplica replica2(c, 2, true, &transport, &app3);
-  PbftReplica replica3(c, 3, true, &transport, &app4);
-  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport);
+  PbftReplica replica0(c, 0, true, &transport, security, &app1);
+  PbftReplica replica1(c, 1, true, &transport, security, &app2);
+  PbftReplica replica2(c, 2, true, &transport, security, &app3);
+  PbftReplica replica3(c, 3, true, &transport, security, &app4);
+  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
 
   client.Invoke(string("test3"), ClientUpcallHandler);
-  transport.Timer(3000, [&]() { transport.Stop(); });
+  transport.Timer(1001, [&]() { transport.Stop(); });
   transport.Run();
 
   EXPECT_EQ(app1.replicaLastOp, "test3");

@@ -37,6 +37,7 @@
 #include "common/log.h"
 #include "common/quorumset.h"
 #include "common/replica.h"
+#include "lib/signature.h"
 #include "replication/pbft/pbft-proto.pb.h"
 
 namespace dsnet {
@@ -44,12 +45,14 @@ namespace pbft {
 
 class PbftReplica : public Replica {
  public:
-  PbftReplica(Configuration config, int myIdx, bool initialize,
-              Transport *transport, AppReplica *app);
+  PbftReplica(const Configuration &config, int myIdx, bool initialize,
+              Transport *transport, const Security &sec, AppReplica *app);
   void ReceiveMessage(const TransportAddress &remote, void *buf,
                       size_t size) override;
 
  private:
+  const Security &security;
+
   // message handlers
   void HandleRequest(const TransportAddress &remote,
                      const proto::RequestMessage &msg);
@@ -63,6 +66,10 @@ class PbftReplica : public Replica {
   // timers and timeout handlers
   Timeout *viewChangeTimeout;
   void OnViewChange();
+  Timeout *stateTransferTimeout;
+  void OnStateTransfer();
+  Timeout *resendPrePrepareTimeout;  // TODO should be per-proposal
+  void OnResendPrePrepare();
 
   // states and utils
   view_t view;
