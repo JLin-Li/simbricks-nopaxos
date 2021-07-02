@@ -68,8 +68,12 @@ class PbftReplica : public Replica {
   void OnViewChange();
   Timeout *stateTransferTimeout;
   void OnStateTransfer();
-  std::unordered_map<opnum_t, Timeout *> resendPrePrepareTimeoutTable;
-  void OnResendPrePrepare();
+  struct PendingPrePrepare {
+    opnum_t seqNum;
+    uint64_t clientId, clientReqId;
+    std::unique_ptr<Timeout> timeout;
+  };
+  std::list<PendingPrePrepare> pendingPrePrepareList;
 
   // states and utils
   view_t view;

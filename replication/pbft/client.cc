@@ -104,7 +104,6 @@ void PbftClient::HandleReply(const TransportAddress &remote,
     return;
   }
 
-  Debug("Client received reply (pre)");
   if (msg.req().clientreqid() != pendingRequest->clientreqid) {
     return;
   }

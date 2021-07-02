@@ -108,8 +108,13 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
     return;
   }
 
-  // TODO prevent duplicated active proposal for same Request
-  // especially when backup relaying
+  for (auto &pp : pendingPrePrepareList) {
+    if (pp.clientId == msg.req().clientid() &&
+        pp.clientReqId == msg.req().clientreqid()) {
+      RNotice("Skip propose; active propose exist");
+      return;
+    }
+  }
 
   RDebug("Start pre-prepare for client#%lu req#%lu", msg.req().clientid(),
          msg.req().clientreqid());
@@ -126,13 +131,18 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   Assert(prePrepare.common().seqnum() == log.LastOpnum() + 1);
   AcceptPrePrepare(prePrepare);
   transport->SendMessageToAll(this, PBMessage(m));
-  resendPrePrepareTimeoutTable[seqNum] =
-      new Timeout(transport, 300, [this, m = m]() {
+  PendingPrePrepare pp;
+  pp.seqNum = seqNum;
+  pp.clientId = msg.req().clientid();
+  pp.clientReqId = msg.req().clientreqid();
+  pp.timeout =
+      std::unique_ptr<Timeout>(new Timeout(transport, 300, [this, m = m]() {
         RWarning("Resend PrePrepare #%lu", m.pre_prepare().common().seqnum());
         ToReplicaMessage copy(m);
         transport->SendMessageToAll(this, PBMessage(copy));
-      });
-  resendPrePrepareTimeoutTable[seqNum]->Start();
+      }));
+  pp.timeout->Start();
+  pendingPrePrepareList.push_back(std::move(pp));
   TryBroadcastCommit(prePrepare.common());  // for single replica setup
 }
 
@@ -217,8 +227,6 @@ void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
 
 void PbftReplica::OnStateTransfer() { NOT_IMPLEMENTED(); }
 
-void PbftReplica::OnResendPrePrepare() { NOT_IMPLEMENTED(); }
-
 void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
   acceptedPrePrepareTable[message.common().seqnum()] = message.common();
   log.Append(new LogEntry(
@@ -232,10 +240,15 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
   RDebug("Enter COMMIT round for view#%lu seq#%lu", message.view(),
          message.seqnum());
 
-  if (AmPrimary() && resendPrePrepareTimeoutTable.count(message.seqnum())) {
-    resendPrePrepareTimeoutTable[message.seqnum()]->Stop();
-    delete resendPrePrepareTimeoutTable[message.seqnum()];
-    resendPrePrepareTimeoutTable.erase(message.seqnum());
+  if (AmPrimary()) {
+    for (auto iter = pendingPrePrepareList.begin();
+         iter != pendingPrePrepareList.end(); ++iter) {
+      if (iter->seqNum == message.seqnum()) {
+        iter->timeout->Stop();
+        pendingPrePrepareList.erase(iter);
+        break;
+      }
+    }
   }
 
   // TODO set a Timeout to prevent duplicated broadcast
