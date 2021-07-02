@@ -38,6 +38,7 @@ message RequestMessage {
     // op, timpstamp, client inside
     required dsnet.Request req = 1;
     required bytes sig = 2;    
+    required bool relayed = 3;
 }
 
 message UnloggedRequestMessage {

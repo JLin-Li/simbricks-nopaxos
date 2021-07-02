@@ -68,7 +68,7 @@ class PbftReplica : public Replica {
   void OnViewChange();
   Timeout *stateTransferTimeout;
   void OnStateTransfer();
-  Timeout *resendPrePrepareTimeout;  // TODO should be per-proposal
+  std::unordered_map<opnum_t, Timeout *> resendPrePrepareTimeoutTable;
   void OnResendPrePrepare();
 
   // states and utils

@@ -38,8 +38,9 @@ PbftReplica::PbftReplica(const Configuration &config, int myIdx,
                                   bind(&PbftReplica::OnViewChange, this));
   stateTransferTimeout =
       new Timeout(transport, 1000, bind(&PbftReplica::OnStateTransfer, this));
-  resendPrePrepareTimeout =
-      new Timeout(transport, 300, bind(&PbftReplica::OnResendPrePrepare, this));
+  // resendPrePrepareTimeout =
+  //     new Timeout(transport, 300, bind(&PbftReplica::OnResendPrePrepare,
+  //     this));
 }
 
 void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
@@ -76,8 +77,10 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
     return;
   }
 
-  clientAddressTable[msg.req().clientid()] =
-      unique_ptr<TransportAddress>(remote.clone());
+  if (!msg.relayed()) {
+    clientAddressTable[msg.req().clientid()] =
+        unique_ptr<TransportAddress>(remote.clone());
+  }
   auto kv = clientTable.find(msg.req().clientid());
   if (kv != clientTable.end()) {
     ClientTableEntry &entry = kv->second;
@@ -98,6 +101,7 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
     RWarning("Received Request but not primary; is primary dead?");
     ToReplicaMessage m;
     *m.mutable_request() = msg;
+    m.mutable_request()->set_relayed(true);
     transport->SendMessageToReplica(this, configuration.GetLeaderIndex(view),
                                     PBMessage(m));
     viewChangeTimeout->Start();
@@ -122,9 +126,13 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   Assert(prePrepare.common().seqnum() == log.LastOpnum() + 1);
   AcceptPrePrepare(prePrepare);
   transport->SendMessageToAll(this, PBMessage(m));
-  // TODO
-  // resendPrePrepareTimeout->Start();
-
+  resendPrePrepareTimeoutTable[seqNum] =
+      new Timeout(transport, 300, [this, m = m]() {
+        RWarning("Resend PrePrepare #%lu", m.pre_prepare().common().seqnum());
+        ToReplicaMessage copy(m);
+        transport->SendMessageToAll(this, PBMessage(copy));
+      });
+  resendPrePrepareTimeoutTable[seqNum]->Start();
   TryBroadcastCommit(prePrepare.common());  // for single replica setup
 }
 
@@ -145,7 +153,8 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
     return;
   }
   if (!security.GetClientVerifier(*clientAddressTable[clientid])
-           .Verify(msg.message().SerializeAsString(), msg.message().sig())) {
+           .Verify(msg.message().req().SerializeAsString(),
+                   msg.message().sig())) {
     RWarning("Wrong signature for client in PrePrepare");
     return;
   }
@@ -157,7 +166,7 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
 
   // no impl high and low water mark, along with GC
 
-  if (msg.common().seqnum() != log.LastOpnum() + 1) {
+  if (msg.common().seqnum() > log.LastOpnum() + 1) {
     // TODO still prepare but record message out of Log
     RNotice("Gap detected, not prepare and schedule state transfer");
     // TODO pend pre-prepare
@@ -222,6 +231,12 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
 
   RDebug("Enter COMMIT round for view#%lu seq#%lu", message.view(),
          message.seqnum());
+
+  if (AmPrimary() && resendPrePrepareTimeoutTable.count(message.seqnum())) {
+    resendPrePrepareTimeoutTable[message.seqnum()]->Stop();
+    delete resendPrePrepareTimeoutTable[message.seqnum()];
+    resendPrePrepareTimeoutTable.erase(message.seqnum());
+  }
 
   // TODO set a Timeout to prevent duplicated broadcast
 

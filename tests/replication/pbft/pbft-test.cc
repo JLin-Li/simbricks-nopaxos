@@ -90,28 +90,9 @@ TEST(Pbft, OneOp) {
   transport.Timer(0, [&]() { transport.Stop(); });
   transport.Run();
 
-  EXPECT_EQ(app.replicaLastOp, "test");
-  EXPECT_EQ(clientLastOp, "test");
-  EXPECT_EQ(clientLastReply, "reply: test");
-}
-
-TEST(Pbft, OneOpSign) {
-  map<int, vector<ReplicaAddress> > replicaAddrs = {
-      {0, {{"localhost", "12345"}}}};
-  Configuration c(1, 1, 0, replicaAddrs);
-  SimulatedTransport transport(true);
-  FixSingleKeySecp256k1Security security;
-  PbftTestApp app;
-  PbftReplica replica(c, 0, true, &transport, security, &app);
-  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
-
-  client.Invoke(string("test"), ClientUpcallHandler);
-  transport.Timer(0, [&]() { transport.Stop(); });
-  transport.Run();
-
-  EXPECT_EQ(app.replicaLastOp, "test");
-  EXPECT_EQ(clientLastOp, "test");
-  EXPECT_EQ(clientLastReply, "reply: test");
+  ASSERT_EQ(app.replicaLastOp, "test");
+  ASSERT_EQ(clientLastOp, "test");
+  ASSERT_EQ(clientLastReply, "reply: test");
 }
 
 TEST(Pbft, OneOpFourServers) {
@@ -131,13 +112,41 @@ TEST(Pbft, OneOpFourServers) {
   PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
 
   client.Invoke(string("test3"), ClientUpcallHandler);
-  transport.Timer(1001, [&]() { transport.Stop(); });
+  transport.Timer(1500, [&]() { transport.Stop(); });
   transport.Run();
 
-  EXPECT_EQ(app1.replicaLastOp, "test3");
-  EXPECT_EQ(app2.replicaLastOp, "test3");
-  EXPECT_EQ(app3.replicaLastOp, "test3");
-  EXPECT_EQ(app4.replicaLastOp, "test3");
-  EXPECT_EQ(clientLastOp, "test3");
-  EXPECT_EQ(clientLastReply, "reply: test3");
+  ASSERT_EQ(app1.replicaLastOp, "test3");
+  ASSERT_EQ(app2.replicaLastOp, "test3");
+  ASSERT_EQ(app3.replicaLastOp, "test3");
+  ASSERT_EQ(app4.replicaLastOp, "test3");
+  ASSERT_EQ(clientLastOp, "test3");
+  ASSERT_EQ(clientLastReply, "reply: test3");
+}
+
+TEST(Pbft, OneOpSign) {
+  map<int, vector<ReplicaAddress> > replicaAddrs = {{0,
+                                                     {{"localhost", "1509"},
+                                                      {"localhost", "1510"},
+                                                      {"localhost", "1511"},
+                                                      {"localhost", "1512"}}}};
+  Configuration c(1, 4, 1, replicaAddrs);
+  SimulatedTransport transport(true);
+  FixSingleKeySecp256k1Security security;
+  PbftTestApp app1, app2, app3, app4;
+  PbftReplica replica0(c, 0, true, &transport, security, &app1);
+  PbftReplica replica1(c, 1, true, &transport, security, &app2);
+  PbftReplica replica2(c, 2, true, &transport, security, &app3);
+  PbftReplica replica3(c, 3, true, &transport, security, &app4);
+  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
+
+  client.Invoke(string("test3"), ClientUpcallHandler);
+  transport.Timer(1500, [&]() { transport.Stop(); });
+  transport.Run();
+
+  ASSERT_EQ(app1.replicaLastOp, "test3");
+  ASSERT_EQ(app2.replicaLastOp, "test3");
+  ASSERT_EQ(app3.replicaLastOp, "test3");
+  ASSERT_EQ(app4.replicaLastOp, "test3");
+  ASSERT_EQ(clientLastOp, "test3");
+  ASSERT_EQ(clientLastReply, "reply: test3");
 }
