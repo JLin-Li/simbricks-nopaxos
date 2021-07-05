@@ -359,10 +359,9 @@ UDPTransport::ListenOnMulticast(TransportReceiver *src,
     multicastFds[canonical] = fd;
     multicastConfigs[fd] = canonical;
 
-    Notice("Listening for multicast requests on %s:%s (interface %s)",
+    Notice("Listening for multicast requests on %s:%s",
            canonical->multicast()->host.c_str(),
-           canonical->multicast()->port.c_str(),
-           canonical->multicast()->interface.c_str());
+           canonical->multicast()->port.c_str());
 }
 
 bool

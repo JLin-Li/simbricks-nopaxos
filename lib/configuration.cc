@@ -36,14 +36,16 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <string.h>
+#include <cstring>
+#include <cstdlib>
 
 namespace dsnet {
 
 ReplicaAddress ParseReplicaAddress(const char *);
 
-ReplicaAddress::ReplicaAddress(const string &host, const string &port, const string &interface)
-    : host(host), port(port), interface(interface)
+ReplicaAddress::ReplicaAddress(const string &host, const string &port,
+                               int dev_port)
+    : host(host), port(port), dev_port(dev_port)
 {
 
 }
@@ -52,7 +54,7 @@ bool
 ReplicaAddress::operator==(const ReplicaAddress &other) const {
     return ((host == other.host) &&
             (port == other.port) &&
-            (interface == other.interface));
+            (dev_port == other.dev_port));
 }
 
 
@@ -244,13 +246,14 @@ ParseReplicaAddress(const char *name)
 
     char *host = strtok(arg, ":");
     char *port = strtok(nullptr, ":");
-    char *interface = strtok(nullptr, "");
+    char *dev_port = strtok(nullptr, "");
     if (!host || !port) {
-        Panic("Configuration line format: '%s host:port[:interface]'", name);
+        Panic("Configuration line format: '%s host:port[:dev_port]'", name);
     }
 
+    char **endptr;
     return ReplicaAddress(string(host), string(port),
-            interface == nullptr ? string() : string(interface));
+            dev_port == nullptr ? -1 : strtol(dev_port, endptr, 10));
 }
 
 } // namespace dsnet
