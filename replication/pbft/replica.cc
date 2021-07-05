@@ -12,6 +12,8 @@
 #define RWarning(fmt, ...) Warning("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 #define RPanic(fmt, ...) Panic("[%d] " fmt, this->replicaIdx, ##__VA_ARGS__)
 
+#define PROTOCOL_FMT "[protocol] [%s] "
+
 using namespace std;
 
 namespace dsnet {
@@ -38,9 +40,6 @@ PbftReplica::PbftReplica(const Configuration &config, int myIdx,
                                   bind(&PbftReplica::OnViewChange, this));
   stateTransferTimeout =
       new Timeout(transport, 1000, bind(&PbftReplica::OnStateTransfer, this));
-  // resendPrePrepareTimeout =
-  //     new Timeout(transport, 300, bind(&PbftReplica::OnResendPrePrepare,
-  //     this));
 }
 
 void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
@@ -116,9 +115,9 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
     }
   }
 
-  RDebug("Start pre-prepare for client#%lu req#%lu", msg.req().clientid(),
-         msg.req().clientreqid());
   seqNum += 1;
+  RDebug(PROTOCOL_FMT "view = %lu, seq = %lu, req = %lu@%lu", "preprepare",
+         view, seqNum, msg.req().clientreqid(), msg.req().clientid());
   ToReplicaMessage m;
   PrePrepareMessage &prePrepare = *m.mutable_pre_prepare();
   prePrepare.mutable_common()->set_view(view);
@@ -148,8 +147,10 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
 
 void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
                                    const proto::PrePrepareMessage &msg) {
-  if (AmPrimary()) RPanic("Unexpected PrePrepare sent to primary");
-
+  if (AmPrimary()) {
+    RNotice("Unexpected PrePrepare sent to primary");
+    return;
+  }
   if (view != msg.common().view()) return;
 
   if (!security.GetReplicaVerifier(configuration.GetLeaderIndex(view))
@@ -177,15 +178,14 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   // no impl high and low water mark, along with GC
 
   if (msg.common().seqnum() > log.LastOpnum() + 1) {
-    // TODO still prepare but record message out of Log
-    RNotice("Gap detected, not prepare and schedule state transfer");
-    // TODO pend pre-prepare
+    // TODO fill the gap with PLACEHOLDER
+    RNotice("Gap detected; schedule state transfer");
     if (!stateTransferTimeout->Active()) {
       stateTransferTimeout->Start();
     }
     return;
   }
-  RDebug("Enter PREPARE round for view#%ld seq#%ld", view, seqNum);
+  RDebug(PROTOCOL_FMT "view = %ld, seq = %ld", "prepare", view, seqNum);
   AcceptPrePrepare(msg);
   ToReplicaMessage m;
   PrepareMessage &prepare = *m.mutable_prepare();
@@ -204,6 +204,12 @@ void PbftReplica::HandlePrepare(const TransportAddress &remote,
   if (!security.GetReplicaVerifier(msg.replicaid())
            .Verify(msg.common().SerializeAsString(), msg.sig())) {
     RWarning("Wrong signature for Prepare");
+    return;
+  }
+
+  if (pastCommitted.count(msg.common().seqnum())) {
+    RNotice("not broadcast for delayed Prepare; directly resp instead");
+    // TODO
     return;
   }
 
@@ -235,10 +241,13 @@ void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
 }
 
 void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
+  Assert(!pastCommitted.count(message.seqnum()));
+
   if (!Prepared(message.seqnum(), message)) return;
 
-  RDebug("Enter COMMIT round for view#%lu seq#%lu", message.view(),
+  RDebug(PROTOCOL_FMT "view = %lu, seq = %lu", "commit", message.view(),
          message.seqnum());
+  pastCommitted.insert(message.seqnum());
 
   if (AmPrimary()) {
     for (auto iter = pendingPrePrepareList.begin();
@@ -250,8 +259,6 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
       }
     }
   }
-
-  // TODO set a Timeout to prevent duplicated broadcast
 
   ToReplicaMessage m;
   CommitMessage &commit = *m.mutable_commit();
@@ -273,7 +280,7 @@ void PbftReplica::TryExecute(const proto::Common &message) {
 
   if (!CommittedLocal(message.seqnum(), message)) return;
 
-  RDebug("Reach commit point for view #%lu seq#%lu", message.view(),
+  RDebug(PROTOCOL_FMT "view = %lu, seq = %lu", "commit point", message.view(),
          message.seqnum());
   log.SetStatus(message.seqnum(), LOG_STATE_COMMITTED);
 

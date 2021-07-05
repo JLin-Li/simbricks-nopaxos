@@ -84,8 +84,7 @@ class PbftReplica : public Replica {
   };
 
   Log log;
-  // get cleared on view changing
-  std::map<opnum_t, proto::Common> acceptedPrePrepareTable;
+  std::unordered_map<opnum_t, proto::Common> acceptedPrePrepareTable;
   ByzantineProtoQuorumSet<opnum_t, proto::Common> prepareSet, commitSet;
   // prepared(m, v, n, i) where v(view) and i(replica index) should
   // be fixed for each calling
@@ -101,6 +100,7 @@ class PbftReplica : public Replica {
     return Prepared(seqNum, message) &&
            commitSet.CheckForQuorum(seqNum, message);
   }
+  std::unordered_set<opnum_t> pastCommitted;
 
   // multi-entry common actions
   // HandleRequest, HandlePrePrepare
@@ -115,7 +115,7 @@ class PbftReplica : public Replica {
     uint64_t lastReqId;
     proto::ToClientMessage reply;
   };
-  std::map<uint64_t, ClientTableEntry> clientTable;
+  std::unordered_map<uint64_t, ClientTableEntry> clientTable;
   std::unordered_map<uint64_t, std::unique_ptr<TransportAddress>>
       clientAddressTable;
   void UpdateClientTable(const Request &req,
