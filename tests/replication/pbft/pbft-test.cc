@@ -48,6 +48,7 @@ using namespace dsnet;
 using namespace dsnet::pbft;
 using namespace dsnet::pbft::proto;
 using std::map;
+using std::pair;
 using std::sprintf;
 using std::string;
 using std::unique_ptr;
@@ -156,4 +157,48 @@ TEST(Pbft, 100Op) {
 TEST(Pbft, 100OpSign) {
   FixSingleKeySecp256k1Security security;
   OneClientMultiOp(100, security);
+}
+
+TEST(Pbft, ResendPrePrepare) {
+  System<1> system;
+  Client &client = *system.clients[0];
+  bool done = false;
+  client.Invoke("warmup", [&](const string &, const string &) {
+    // prevent primary send out anything
+    system.transport.AddFilter(
+        0,
+        [&](TransportReceiver *src, pair<int, int> srcId,
+            TransportReceiver *dst, pair<int, int> dstId, Message &msg,
+            uint64_t &delay) -> bool {
+          if (dynamic_cast<const SimulatedTransportAddress &>(
+                  src->GetAddress()) ==
+              dynamic_cast<const SimulatedTransportAddress &>(
+                  system.replicas[0]->GetAddress()))
+            return false;
+          return true;
+        });
+    client.Invoke("test", [&](const string &, const string &) { done = true; });
+
+    // prevent client resend
+    system.transport.AddFilter(
+        1,
+        [&](TransportReceiver *src, pair<int, int> srcId,
+            TransportReceiver *dst, pair<int, int> dstId, Message &msg,
+            uint64_t &delay) -> bool {
+          if (dynamic_cast<const SimulatedTransportAddress &>(
+                  src->GetAddress()) ==
+              dynamic_cast<const SimulatedTransportAddress &>(
+                  system.clients[0]->GetAddress()))
+            return false;
+          return true;
+        });
+    system.transport.Timer(1000, [&]() { system.transport.RemoveFilter(0); });
+  });
+  system.transport.Timer(1800, [&]() { system.transport.Stop(); });
+  system.transport.Run();
+  ASSERT_FALSE(done);
+
+  system.transport.Timer(800, [&]() { system.transport.Stop(); });
+  system.transport.Run();
+  ASSERT_TRUE(done);
 }
