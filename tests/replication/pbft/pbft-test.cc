@@ -32,6 +32,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 
 #include "common/client.h"
 #include "common/replica.h"
@@ -49,6 +50,7 @@ using namespace dsnet::pbft::proto;
 using std::map;
 using std::sprintf;
 using std::string;
+using std::unique_ptr;
 using std::vector;
 
 class PbftTestApp : public AppReplica {
@@ -66,20 +68,49 @@ class PbftTestApp : public AppReplica {
   }
 };
 
+FixSingleKeySecp256k1Security defaultSecurity;
+
+template <int numberClient>
+struct System {
+  Security &security;
+  SimulatedTransport transport;
+  PbftTestApp apps[4];
+  unique_ptr<PbftReplica> *replicas;
+  unique_ptr<PbftClient> *clients;
+
+  System(Security &security) : security(security), transport(true) {
+    map<int, vector<ReplicaAddress> > replicaAddrs = {
+        {0,
+         {{"localhost", "1509"},
+          {"localhost", "1510"},
+          {"localhost", "1511"},
+          {"localhost", "1512"}}}};
+    Configuration c(1, 4, 1, replicaAddrs);
+
+    replicas = new unique_ptr<PbftReplica>[4];
+    for (int i = 0; i < 4; i += 1) {
+      replicas[i] = unique_ptr<PbftReplica>(
+          new PbftReplica(c, i, true, &transport, security, &apps[i]));
+    }
+    clients = new unique_ptr<PbftClient>[numberClient];
+    for (int i = 0; i < numberClient; i += 1) {
+      clients[i] = unique_ptr<PbftClient>(new PbftClient(
+          c, ReplicaAddress("localhost", "0"), &transport, security));
+    }
+  }
+
+  System() : System(defaultSecurity) {}
+
+  ~System() {
+    delete[] replicas;
+    delete[] clients;
+  }
+};
+
 void OneClientMultiOp(int numberOp, Security &security) {
-  map<int, vector<ReplicaAddress> > replicaAddrs = {{0,
-                                                     {{"localhost", "1509"},
-                                                      {"localhost", "1510"},
-                                                      {"localhost", "1511"},
-                                                      {"localhost", "1512"}}}};
-  Configuration c(1, 4, 1, replicaAddrs);
-  SimulatedTransport transport(true);
-  PbftTestApp app1, app2, app3, app4;
-  PbftReplica replica0(c, 0, true, &transport, security, &app1);
-  PbftReplica replica1(c, 1, true, &transport, security, &app2);
-  PbftReplica replica2(c, 2, true, &transport, security, &app3);
-  PbftReplica replica3(c, 3, true, &transport, security, &app4);
-  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
+  System<1> system(security);
+  Client &client = *system.clients[0];
+  Transport &transport = system.transport;
 
   int opIndex = 0;
   std::function<void(const string &, const string &)> onResp;
@@ -87,6 +118,10 @@ void OneClientMultiOp(int numberOp, Security &security) {
     char buf[100];
     sprintf(buf, "test%d", opIndex);
     ASSERT_EQ(req, buf);
+    for (int i = 0; i < 4; i += 1) {
+      ASSERT_EQ(system.apps[i].LastOp(), buf);
+    }
+
     sprintf(buf, "reply: test%d", opIndex);
     ASSERT_EQ(reply, buf);
     opIndex += 1;

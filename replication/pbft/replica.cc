@@ -337,6 +337,14 @@ void PbftReplica::TryExecute(const proto::Common &message) {
     entry->state = LOG_STATE_EXECUTED;
 
     const Request &req = log.Find(executing)->request;
+    if (clientTable.count(req.clientid()) &&
+        clientTable[req.clientid()].lastReqId >= req.clientreqid()) {
+      RNotice("Skip execute duplicated; seq = %lu, req = %lu@%lu", executing,
+              req.clientreqid(), req.clientid());
+      executing += 1;
+      continue;
+    }
+
     ToClientMessage m;
     proto::ReplyMessage &reply = *m.mutable_reply();
     UpcallArg arg;
