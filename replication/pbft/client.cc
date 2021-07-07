@@ -50,6 +50,7 @@ void PbftClient::SendRequest(bool broadcast) {
 
   security.GetClientSigner(GetAddress())
       .Sign(reqMsg.req().SerializeAsString(), *reqMsg.mutable_sig());
+  reqMsg.set_relayed(false);
 
   if (broadcast)
     transport->SendMessageToAll(this, PBMessage(m));

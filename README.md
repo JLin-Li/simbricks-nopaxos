@@ -44,15 +44,7 @@ Eris and can be built using `make`. It has been tested on Ubuntu 14.04,
 Dependencies include (Debian/Ubuntu packages):
   protobuf-compiler pkg-config libunwind-dev libssl-dev libprotobuf-dev libevent-dev libgtest-dev libboost-dev
 
-You also need to manully install secp256k1:
-
-```
-git clone https://github.com/bitcoin-core/secp256k1
-cd secp256k1
-make
-sudo make install
-sudo ldconfig
-```
+You also need to manully install [secp256k1](https://github.com/bitcoin-core/secp256k1).
 
 You will need to create a configuration file with the following
 syntax:

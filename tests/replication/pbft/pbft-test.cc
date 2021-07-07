@@ -29,8 +29,9 @@
  **********************************************************************/
 
 #include <gtest/gtest.h>
-#include <stdio.h>
-#include <stdlib.h>
+
+#include <cstdio>
+#include <cstdlib>
 
 #include "common/client.h"
 #include "common/replica.h"
@@ -46,75 +47,26 @@ using namespace dsnet;
 using namespace dsnet::pbft;
 using namespace dsnet::pbft::proto;
 using std::map;
+using std::sprintf;
+using std::string;
 using std::vector;
-
-static string replicaLastUnloggedOp;
-static string clientLastOp;
-static string clientLastReply;
 
 class PbftTestApp : public AppReplica {
  public:
-  string replicaLastOp;
+  vector<string> opList;
+  string LastOp() { return opList.back(); }
 
   PbftTestApp(){};
   ~PbftTestApp(){};
 
   void ReplicaUpcall(opnum_t opnum, const string &req, string &reply,
                      void *arg = nullptr, void *ret = nullptr) override {
-    replicaLastOp = req;
+    opList.push_back(req);
     reply = "reply: " + req;
-  }
-
-  void UnloggedUpcall(const string &req, string &reply) {
-    replicaLastUnloggedOp = req;
-    reply = "unlreply: " + req;
   }
 };
 
-static void ClientUpcallHandler(const string &req, const string &reply) {
-  clientLastOp = req;
-  clientLastReply = reply;
-}
-
-TEST(Pbft, OneOp) {
-  map<int, vector<ReplicaAddress> > replicaAddrs = {
-      {0, {{"localhost", "12345"}}}};
-  Configuration c(1, 1, 0, replicaAddrs);
-  SimulatedTransport transport(true);
-  NopSecurity security;
-  PbftTestApp app;
-  PbftReplica replica(c, 0, true, &transport, security, &app);
-  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
-
-  client.Invoke(string("test"), ClientUpcallHandler);
-  transport.Timer(0, [&]() { transport.Stop(); });
-  transport.Run();
-
-  EXPECT_EQ(app.replicaLastOp, "test");
-  EXPECT_EQ(clientLastOp, "test");
-  EXPECT_EQ(clientLastReply, "reply: test");
-}
-
-TEST(Pbft, OneOpSign) {
-  map<int, vector<ReplicaAddress> > replicaAddrs = {
-      {0, {{"localhost", "12345"}}}};
-  Configuration c(1, 1, 0, replicaAddrs);
-  SimulatedTransport transport(true);
-  FixSingleKeySecp256k1Security security;
-  PbftTestApp app;
-  PbftReplica replica(c, 0, true, &transport, security, &app);
-  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
-
-  client.Invoke(string("test"), ClientUpcallHandler);
-  transport.Timer(0, [&]() { transport.Stop(); });
-  transport.Run();
-
-  EXPECT_EQ(app.replicaLastOp, "test");
-  EXPECT_EQ(clientLastOp, "test");
-  EXPECT_EQ(clientLastReply, "reply: test");
-}
-
-TEST(Pbft, OneOpFourServers) {
+void OneClientMultiOp(int numberOp, Security &security) {
   map<int, vector<ReplicaAddress> > replicaAddrs = {{0,
                                                      {{"localhost", "1509"},
                                                       {"localhost", "1510"},
@@ -122,7 +74,6 @@ TEST(Pbft, OneOpFourServers) {
                                                       {"localhost", "1512"}}}};
   Configuration c(1, 4, 1, replicaAddrs);
   SimulatedTransport transport(true);
-  NopSecurity security;
   PbftTestApp app1, app2, app3, app4;
   PbftReplica replica0(c, 0, true, &transport, security, &app1);
   PbftReplica replica1(c, 1, true, &transport, security, &app2);
@@ -130,14 +81,44 @@ TEST(Pbft, OneOpFourServers) {
   PbftReplica replica3(c, 3, true, &transport, security, &app4);
   PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
 
-  client.Invoke(string("test3"), ClientUpcallHandler);
-  transport.Timer(1001, [&]() { transport.Stop(); });
+  int opIndex = 0;
+  std::function<void(const string &, const string &)> onResp;
+  onResp = [&](const string &req, const string &reply) {
+    char buf[100];
+    sprintf(buf, "test%d", opIndex);
+    ASSERT_EQ(req, buf);
+    sprintf(buf, "reply: test%d", opIndex);
+    ASSERT_EQ(reply, buf);
+    opIndex += 1;
+    if (opIndex < numberOp) {
+      sprintf(buf, "test%d", opIndex);
+      client.Invoke(buf, onResp);
+    }
+  };
+
+  client.Invoke("test0", onResp);
+  transport.Timer(1500, [&]() { transport.Stop(); });
   transport.Run();
 
-  EXPECT_EQ(app1.replicaLastOp, "test3");
-  EXPECT_EQ(app2.replicaLastOp, "test3");
-  EXPECT_EQ(app3.replicaLastOp, "test3");
-  EXPECT_EQ(app4.replicaLastOp, "test3");
-  EXPECT_EQ(clientLastOp, "test3");
-  EXPECT_EQ(clientLastReply, "reply: test3");
+  ASSERT_EQ(opIndex, numberOp);
+}
+
+TEST(Pbft, 1Op) {
+  NopSecurity security;
+  OneClientMultiOp(1, security);
+}
+
+TEST(Pbft, 1OpSign) {
+  FixSingleKeySecp256k1Security security;
+  OneClientMultiOp(1, security);
+}
+
+TEST(Pbft, 100Op) {
+  NopSecurity security;
+  OneClientMultiOp(100, security);
+}
+
+TEST(Pbft, 100OpSign) {
+  FixSingleKeySecp256k1Security security;
+  OneClientMultiOp(100, security);
 }
