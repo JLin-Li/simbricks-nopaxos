@@ -67,6 +67,7 @@ class PbftReplica : public Replica {
   Timeout *viewChangeTimeout;
   void OnViewChange();
   Timeout *stateTransferTimeout;
+  opnum_t lowestEmptyOp;
   void OnStateTransfer();
   struct PendingPrePrepare {
     opnum_t seqNum;
