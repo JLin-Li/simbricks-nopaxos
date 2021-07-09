@@ -1,17 +1,28 @@
+#include <mutex>
+#include <arpa/inet.h>
 #include <rte_eal.h>
 #include <rte_lcore.h>
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
 #include <rte_malloc.h>
+#include <rte_timer.h>
 
 #include "lib/dpdktransport.h"
 
 namespace dsnet {
 
+#define TIMER_RESOLUTION_MS 1
 #define NUM_MBUFS 2048
+#define MAX_PKT_BURST 32
 #define MEMPOOL_CACHE_SIZE 256
 #define RTE_RX_DESC 4096
 #define RTE_TX_DESC 4096
+#define IPV4_HDR_SIZE 5
+#define IPV4_TTL 0xFF
+
+thread_local static uint16_t thread_dev_port;
+thread_local static int thread_rx_queue_id;
+thread_local static int thread_tx_queue_id;
 
 DPDKTransportAddress::DPDKTransportAddress(const std::string &s)
 {
@@ -58,19 +69,23 @@ DPDKTransportAddress::Parse(const std::string &s)
 bool
 operator==(const DPDKTransportAddress &a, const DPDKTransportAddress &b)
 {
+    // Do not compare device port number
     return (memcmp(&a.ether_addr_, &b.ether_addr_, sizeof(a.ether_addr_)) == 0 &&
             a.ip_addr_ == b.ip_addr_ &&
-            a.udp_addr_ == b.udp_addr_ &&
-            a.dev_port_ == b.dev_port_);
+            a.udp_addr_ == b.udp_addr_);
 }
 
 bool
 operator<(const DPDKTransportAddress &a, const DPDKTransportAddress &b)
 {
-    return (memcmp(&a.ether_addr_, &b.ether_addr_, sizeof(a.ether_addr_)) < 0 ||
-            a.ip_addr_ < b.ip_addr_ ||
-            a.udp_addr_ < b.udp_addr_ ||
-            a.dev_port_ < b.dev_port_);
+    int r;
+    if ((r = memcmp(&a.ether_addr_, &b.ether_addr_, sizeof(a.ether_addr_))) != 0)  {
+        return r < 0;
+    }
+    if (a.ip_addr_ != b.ip_addr_) {
+        return a.ip_addr_ < b.ip_addr_;
+    }
+    return a.udp_addr_ < b.udp_addr_;
 }
 
 static void
@@ -87,7 +102,9 @@ ConstructArguments(int argc, char **argv)
 }
 
 DPDKTransport::DPDKTransport(double drop_rate)
-    : drop_rate_(drop_rate)
+    : drop_rate_(drop_rate), status_(STOPPED),
+    receiver_(nullptr), receiver_addr_(nullptr), multicast_addr_(nullptr),
+    last_timer_id_(0)
 {
     // Initialize DPDK
     int argc = 4;
@@ -101,7 +118,7 @@ DPDKTransport::DPDKTransport(double drop_rate)
     if (rte_eth_dev_count_avail() == 0) {
         Panic("No available Ethernet ports");
     }
-
+    // Initialize pktmbuf pool
     char pool_name[32];
     sprintf(pool_name, "pktmbuf_pool");
     pktmbuf_pool_ = rte_pktmbuf_pool_create(pool_name,
@@ -114,6 +131,10 @@ DPDKTransport::DPDKTransport(double drop_rate)
     if (pktmbuf_pool_ == nullptr) {
         Panic("rte_pktmbuf_pool_create failed");
     }
+    // Initialize timer library
+    if (rte_timer_subsystem_init() != 0) {
+        Panic("rte_timer_subsystem_init failed");
+    }
 
     for (int i = 0; i < argc; i++) {
         delete argv[i];
@@ -123,6 +144,8 @@ DPDKTransport::DPDKTransport(double drop_rate)
 
 DPDKTransport::~DPDKTransport()
 {
+    delete receiver_addr_;
+    delete multicast_addr_;
 }
 
 void
@@ -130,6 +153,10 @@ DPDKTransport::RegisterInternal(TransportReceiver *receiver,
                                 const ReplicaAddress *addr,
                                 int group_id, int replica_id)
 {
+    if (receiver_ != nullptr) {
+        // TODO: currently only support one transport receiver
+        Panic("DPDKTransport currently only supports one transport receiver");
+    }
     // Initialize port
     struct rte_eth_conf port_conf;
     memset(&port_conf, 0, sizeof(port_conf));
@@ -192,55 +219,258 @@ DPDKTransport::RegisterInternal(TransportReceiver *receiver,
     if (rte_eth_promiscuous_enable(addr->dev_port) != 0) {
         Panic("rte_eth_promiscuous_enable failed");
     }
+
+    receiver_ = receiver;
+    receiver_addr_ = new DPDKTransportAddress(LookupAddress(*addr));
 }
 
 void
 DPDKTransport::ListenOnMulticast(TransportReceiver *receiver,
                                  const Configuration &config)
 {
-    // DPDK doesn't require special initialization for multicast
-    return;
+    if (multicast_addr_ != nullptr) {
+        return;
+    }
+    multicast_addr_ = LookupAddress(*config.multicast()).clone();
 }
 
 void
 DPDKTransport::Run()
 {
+    if (receiver_addr_ == nullptr) {
+        Panic("No transport receiver registered");
+    }
+    status_ = RUNNING;
+    // Currently only use master core for transport
+    thread_dev_port = receiver_addr_->dev_port_;
+    thread_rx_queue_id = 0;
+    thread_tx_queue_id = 0;
+    RunTransport(0);
 }
 
 void
 DPDKTransport::Stop()
 {
+    status_ = STOPPED;
 }
 
 int
 DPDKTransport::Timer(uint64_t ms, timer_callback_t cb)
 {
-    return 0;
+    static const double hz = rte_get_timer_hz();
+    std::lock_guard<std::mutex> lck(timers_lock_);
+    DPDKTransportTimerInfo *info = new DPDKTransportTimerInfo();
+
+    info->transport = this;
+    info->cb = cb;
+    rte_timer_init(&info->timer);
+    info->id = ++last_timer_id_;
+    timers_[info->id] = info;
+
+    uint64_t ticks = hz / (1000 / (double)ms);
+    rte_timer_reset(&info->timer, ticks, SINGLE, rte_lcore_id(), TimerCallback, info);
+
+    return info->id;
 }
 
 bool
 DPDKTransport::CancelTimer(int id)
 {
+    std::lock_guard<std::mutex> lck(timers_lock_);
+
+    if (timers_.find(id) == timers_.end()) {
+        return false;
+    }
+
+    DPDKTransportTimerInfo *info = timers_.at(id);
+    if (info == nullptr) {
+        return false;
+    }
+
+    rte_timer_stop(&info->timer);
+    timers_.erase(info->id);
+    delete info;
+
     return true;
 }
 
 void
 DPDKTransport::CancelAllTimers()
 {
+    while (!timers_.empty()) {
+        auto kv = timers_.begin();
+        CancelTimer(kv->first);
+    }
 }
 
 bool
 DPDKTransport::SendMessageInternal(TransportReceiver *src,
-                                   const DPDKTransportAddress &dst,
+                                   const DPDKTransportAddress &dst_addr,
                                    const Message &m)
 {
-    return true;
+    const DPDKTransportAddress &src_addr =
+        static_cast<const DPDKTransportAddress&>(src->GetAddress());
+    // Allocate mbuf
+    struct rte_mbuf *mbuf = rte_pktmbuf_alloc(pktmbuf_pool_);
+    if (mbuf == nullptr) {
+        Panic("Failed to allocate rte_mbuf");
+    }
+    // Ethernet header
+    struct rte_ether_hdr *ether_hdr =
+        (struct rte_ether_hdr *)rte_pktmbuf_append(mbuf, RTE_ETHER_HDR_LEN);
+    if (ether_hdr == nullptr) {
+        Panic("Failed to allocate Ethernet header");
+    }
+    ether_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
+    memcpy(&ether_hdr->d_addr, &dst_addr.ether_addr_, sizeof(struct rte_ether_addr));
+    memcpy(&ether_hdr->s_addr, &src_addr.ether_addr_, sizeof(struct rte_ether_addr));
+    // IP header
+    struct rte_ipv4_hdr *ip_hdr;
+    ip_hdr =
+        (struct rte_ipv4_hdr *)rte_pktmbuf_append(mbuf,
+                                                  IPV4_HDR_SIZE * RTE_IPV4_IHL_MULTIPLIER);
+    if (ip_hdr == nullptr) {
+        Panic("Failed to allocate IP header");
+    }
+    ip_hdr->version_ihl = (IPVERSION << 4) | IPV4_HDR_SIZE;
+    ip_hdr->type_of_service = 0;
+    ip_hdr->total_length = rte_cpu_to_be_16(IPV4_HDR_SIZE * RTE_IPV4_IHL_MULTIPLIER +
+                                            sizeof(struct rte_udp_hdr) +
+                                            m.SerializedSize());
+    ip_hdr->packet_id = 0;
+    ip_hdr->fragment_offset = 0;
+    ip_hdr->time_to_live = IPV4_TTL;
+    ip_hdr->next_proto_id = IPPROTO_UDP;
+    ip_hdr->hdr_checksum = 0;
+    ip_hdr->src_addr = src_addr.ip_addr_;
+    ip_hdr->dst_addr = dst_addr.ip_addr_;
+    ip_hdr->hdr_checksum = rte_ipv4_cksum(ip_hdr);
+    /* UDP header */
+    struct rte_udp_hdr *udp_hdr;
+    udp_hdr = (struct rte_udp_hdr*)rte_pktmbuf_append(mbuf, sizeof(struct rte_udp_hdr));
+    if (udp_hdr == nullptr) {
+        Panic("Failed to allocate UDP header");
+    }
+    udp_hdr->src_port = src_addr.udp_addr_;
+    udp_hdr->dst_port = dst_addr.udp_addr_;
+    udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(struct rte_udp_hdr) +
+            m.SerializedSize());
+    udp_hdr->dgram_cksum = 0;
+    /* Datagram */
+    void *dgram;
+    dgram = rte_pktmbuf_append(mbuf, m.SerializedSize());
+    if (dgram == nullptr) {
+        Panic("Failed to allocate data gram");
+    }
+    m.Serialize(dgram);
+    /* Send packet */
+    if (rte_eth_tx_burst(thread_dev_port, thread_tx_queue_id, &mbuf, 1) == 1) {
+        return true;
+    } else {
+        rte_pktmbuf_free(mbuf);
+        return false;
+    }
 }
 
 DPDKTransportAddress
 DPDKTransport::LookupAddress(const ReplicaAddress &addr)
 {
-    return DPDKTransportAddress("");
+    struct rte_ether_addr ether_addr;
+    if (rte_ether_unformat_addr(addr.dev.data(), &ether_addr) != 0) {
+        Panic("Failed to parse ethernet address");
+    }
+    rte_be32_t ip_addr;
+    if (inet_pton(AF_INET, addr.host.data(), &ip_addr) != 1) {
+        Panic("Failed to parse IP address");
+    }
+    rte_be16_t udp_addr = rte_cpu_to_be_16(uint16_t(stoul(addr.port)));
+    return DPDKTransportAddress(ether_addr, ip_addr, udp_addr, addr.dev_port);
+}
+
+void
+DPDKTransport::RunTransport(int tid)
+{
+    static uint64_t cycles_per_ms = rte_get_timer_hz() / 1000;
+    static uint64_t timer_resolution_cycles = cycles_per_ms * TIMER_RESOLUTION_MS;
+
+    uint16_t n_rx;
+    struct rte_mbuf *pkt_burst[MAX_PKT_BURST];
+    uint64_t cur_tsc, prev_tsc = 0;
+
+    while (status_ == RUNNING) {
+        cur_tsc = rte_rdtsc();
+        if (cur_tsc - prev_tsc > timer_resolution_cycles) {
+            rte_timer_manage();
+            prev_tsc = cur_tsc;
+        }
+        n_rx = rte_eth_rx_burst(thread_dev_port,
+                                thread_rx_queue_id,
+                                pkt_burst,
+                                MAX_PKT_BURST);
+        for (int i = 0; i < n_rx; i++) {
+            struct rte_mbuf *m = pkt_burst[i];
+            // Parse packet header
+            struct rte_ether_hdr *ether_hdr;
+            struct rte_ipv4_hdr *ip_hdr;
+            struct rte_udp_hdr *udp_hdr;
+            size_t offset = 0;
+            ether_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ether_hdr*, offset);
+            offset += RTE_ETHER_HDR_LEN;
+            ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
+            offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) * RTE_IPV4_IHL_MULTIPLIER;
+            udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
+            offset += sizeof(struct rte_udp_hdr);
+
+            // Deliver packet
+            if (FilterPacket(DPDKTransportAddress(ether_hdr->d_addr,
+                                                  ip_hdr->dst_addr,
+                                                  udp_hdr->dst_port,
+                                                  thread_dev_port))) {
+                // Construct source address
+                DPDKTransportAddress src(ether_hdr->s_addr,
+                                         ip_hdr->src_addr,
+                                         udp_hdr->src_port,
+                                         thread_dev_port);
+                receiver_->ReceiveMessage(src,
+                                          rte_pktmbuf_mtod_offset(m, void*, offset),
+                                          rte_be_to_cpu_16(udp_hdr->dgram_len)
+                                          - sizeof(struct rte_udp_hdr));
+            }
+            rte_pktmbuf_free(m);
+        }
+    }
+}
+
+bool
+DPDKTransport::FilterPacket(const DPDKTransportAddress &addr)
+{
+    if (receiver_ == nullptr) {
+        return false;
+    }
+
+    // Only accept multicast packets and packets destined to the receiver
+    return (multicast_addr_ != nullptr && addr == *multicast_addr_) ||
+        (addr == *receiver_addr_);
+}
+
+void
+DPDKTransport::TimerCallback(struct rte_timer *timer, void *arg)
+{
+    DPDKTransport::DPDKTransportTimerInfo *info =
+        (DPDKTransport::DPDKTransportTimerInfo *)arg;
+    info->transport->OnTimer(info);
+}
+
+void
+DPDKTransport::OnTimer(DPDKTransportTimerInfo *info)
+{
+    {
+        std::lock_guard<std::mutex> lck(timers_lock_);
+        timers_.erase(info->id);
+    }
+
+    info->cb();
+    delete info;
 }
 
 } // namespace dsnet
