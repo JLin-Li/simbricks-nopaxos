@@ -37,15 +37,14 @@
 #include <fstream>
 #include <string>
 #include <cstring>
-#include <cstdlib>
 
 namespace dsnet {
 
 ReplicaAddress ParseReplicaAddress(const char *);
 
 ReplicaAddress::ReplicaAddress(const string &host, const string &port,
-                               int dev_port)
-    : host(host), port(port), dev_port(dev_port)
+                               const string &dev, int dev_port)
+    : host(host), port(port), dev(dev), dev_port(dev_port)
 {
 
 }
@@ -54,6 +53,7 @@ bool
 ReplicaAddress::operator==(const ReplicaAddress &other) const {
     return ((host == other.host) &&
             (port == other.port) &&
+            (dev == other.dev) &&
             (dev_port == other.dev_port));
 }
 
@@ -246,14 +246,15 @@ ParseReplicaAddress(const char *name)
 
     char *host = strtok(arg, ":");
     char *port = strtok(nullptr, ":");
+    char *dev = strtok(nullptr, ":");
     char *dev_port = strtok(nullptr, "");
     if (!host || !port) {
         Panic("Configuration line format: '%s host:port[:dev_port]'", name);
     }
 
-    char **endptr;
     return ReplicaAddress(string(host), string(port),
-            dev_port == nullptr ? -1 : strtol(dev_port, endptr, 10));
+                          dev == nullptr ? "" : string(dev),
+                          dev_port == nullptr ? -1 : std::stoul(dev_port));
 }
 
 } // namespace dsnet
