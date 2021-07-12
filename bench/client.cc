@@ -31,6 +31,7 @@
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/udptransport.h"
+#include "lib/dpdktransport.h"
 
 #include "bench/benchmark.h"
 #include "common/client.h"
@@ -47,7 +48,7 @@
 static void
 Usage(const char *progName)
 {
-    fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-d delay-ms] [-u duration-sec] -c conf-file -h address -m unreplicated|vr|fastpaxos|nopaxos\n",
+    fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-d delay-ms] [-u duration-sec] [-p udp|dpdk] -c conf-file -h address -m unreplicated|vr|fastpaxos|nopaxos\n",
             progName);
         exit(1);
 }
@@ -77,11 +78,17 @@ int main(int argc, char **argv)
         PROTO_NOPAXOS
     } proto = PROTO_UNKNOWN;
 
+    enum
+    {
+        TRANSPORT_UDP,
+        TRANSPORT_DPDK
+    } transport_type = TRANSPORT_UDP;
+
     string statsFile;
 
     // Parse arguments
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:h:s:m:t:i:u:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:h:s:m:t:i:u:p:")) != -1) {
         switch (opt) {
         case 'c':
             configPath = optarg;
@@ -165,6 +172,17 @@ int main(int argc, char **argv)
             break;
         }
 
+        case 'p':
+            if (strcasecmp(optarg, "udp") == 0) {
+                transport_type = TRANSPORT_UDP;
+            } else if (strcasecmp(optarg, "dpdk") == 0) {
+                transport_type = TRANSPORT_DPDK;
+            } else {
+                fprintf(stderr, "unknown transport '%s'\n", optarg);
+                Usage(argv[0]);
+            }
+            break;
+
         default:
             fprintf(stderr, "Unknown argument %s\n", argv[optind]);
             Usage(argv[0]);
@@ -194,7 +212,16 @@ int main(int argc, char **argv)
     }
     dsnet::Configuration config(configStream);
 
-    dsnet::UDPTransport transport(0, 0);
+    dsnet::Transport *transport;
+    switch (transport_type) {
+        case TRANSPORT_UDP:
+            transport = new dsnet::UDPTransport(0, 0);
+            break;
+        case TRANSPORT_DPDK:
+            transport = new dsnet::DPDKTransport(0);
+            break;
+    }
+
     std::vector<dsnet::Client *> clients;
     std::vector<dsnet::BenchmarkClient *> benchClients;
     dsnet::ReplicaAddress addr(host, "0");
@@ -206,23 +233,23 @@ int main(int argc, char **argv)
             client =
                 new dsnet::unreplicated::UnreplicatedClient(config,
                                                             addr,
-                                                            &transport);
+                                                            transport);
             break;
 
         case PROTO_VR:
-            client = new dsnet::vr::VRClient(config, addr, &transport);
+            client = new dsnet::vr::VRClient(config, addr, transport);
             break;
 
         case PROTO_FASTPAXOS:
             client = new dsnet::fastpaxos::FastPaxosClient(config,
                                                            addr,
-                                                           &transport);
+                                                           transport);
             break;
 
         case PROTO_NOPAXOS:
             client = new dsnet::nopaxos::NOPaxosClient(config,
                                                        addr,
-                                                       &transport);
+                                                       transport);
             break;
 
         default:
@@ -230,16 +257,16 @@ int main(int argc, char **argv)
         }
 
         dsnet::BenchmarkClient *bench =
-            new dsnet::BenchmarkClient(*client, transport,
-                                           duration, delay,
-                                           tputInterval);
+            new dsnet::BenchmarkClient(*client, *transport,
+                                       duration, delay,
+                                       tputInterval);
 
-        transport.Timer(0, [=]() { bench->Start(); });
+        transport->Timer(0, [=]() { bench->Start(); });
         clients.push_back(client);
         benchClients.push_back(bench);
     }
 
-    dsnet::Timeout checkTimeout(&transport, 100, [&]() {
+    dsnet::Timeout checkTimeout(transport, 100, [&]() {
             for (auto x : benchClients) {
                 if (!x->done) {
                     return;
@@ -325,5 +352,7 @@ done:
         });
     checkTimeout.Start();
 
-    transport.Run();
+    transport->Run();
+
+    delete transport;
 }

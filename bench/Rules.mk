@@ -6,7 +6,7 @@ SRCS += $(addprefix $(d), \
 OBJS-benchmark := $(o)benchmark.o \
                   $(LIB-message) $(LIB-latency)
 
-$(d)client: $(o)client.o $(OBJS-benchmark) $(LIB-udptransport)
+$(d)client: $(o)client.o $(OBJS-benchmark) $(LIB-udptransport) $(LIB-dpdktransport)
 $(d)client:	$(OBJS-vr-client) $(OBJS-fastpaxos-client) $(OBJS-unreplicated-client) $(OBJS-nopaxos-client)
 $(d)client: $(OBJS-spec-client) $(OBJS-pbft-client)
 
