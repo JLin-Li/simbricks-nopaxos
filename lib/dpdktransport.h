@@ -2,6 +2,7 @@
 
 #include <rte_ether.h>
 #include <rte_byteorder.h>
+#include <rte_timer.h>
 
 #include "lib/configuration.h"
 #include "lib/transport.h"
