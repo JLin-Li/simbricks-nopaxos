@@ -48,7 +48,7 @@
 static void
 Usage(const char *progName)
 {
-    fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-d delay-ms] [-u duration-sec] [-p udp|dpdk] -c conf-file -h address -m unreplicated|vr|fastpaxos|nopaxos\n",
+    fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-d delay-ms] [-u duration-sec] [-p udp|dpdk] [-v device] [-x device-port] [-z transport-cmdline] -c conf-file -h host-address -m unreplicated|vr|fastpaxos|nopaxos\n",
             progName);
         exit(1);
 }
@@ -66,7 +66,8 @@ int main(int argc, char **argv)
     int duration = 1;
     uint64_t delay = 0;
     int tputInterval = 0;
-    std::string host;
+    std::string host, dev, transport_cmdline;
+    int dev_port = 0;
 
     enum
     {
@@ -88,7 +89,7 @@ int main(int argc, char **argv)
 
     // Parse arguments
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:h:s:m:t:i:u:p:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:h:s:m:t:i:u:p:v:x:z:")) != -1) {
         switch (opt) {
         case 'c':
             configPath = optarg;
@@ -110,6 +111,23 @@ int main(int argc, char **argv)
         case 'h':
             host = std::string(optarg);
             break;
+
+        case 'v':
+            dev = std::string(optarg);
+            break;
+
+        case 'x':
+        {
+            char *strtol_ptr;
+            dev_port = strtoul(optarg, &strtol_ptr, 10);
+            if ((*optarg == '\0') || (*strtol_ptr != '\0')) {
+                fprintf(stderr,
+                        "option -x requires a numeric arg\n");
+                Usage(argv[0]);
+            }
+            break;
+        }
+
 
         case 's':
             statsFile = string(optarg);
@@ -183,6 +201,10 @@ int main(int argc, char **argv)
             }
             break;
 
+        case 'z':
+            transport_cmdline = std::string(optarg);
+            break;
+
         default:
             fprintf(stderr, "Unknown argument %s\n", argv[optind]);
             Usage(argv[0]);
@@ -218,13 +240,13 @@ int main(int argc, char **argv)
             transport = new dsnet::UDPTransport(0, 0);
             break;
         case TRANSPORT_DPDK:
-            transport = new dsnet::DPDKTransport(0);
+            transport = new dsnet::DPDKTransport(0, transport_cmdline);
             break;
     }
 
     std::vector<dsnet::Client *> clients;
     std::vector<dsnet::BenchmarkClient *> benchClients;
-    dsnet::ReplicaAddress addr(host, "0");
+    dsnet::ReplicaAddress addr(host, "0", dev, dev_port);
 
     for (int i = 0; i < numClients; i++) {
         dsnet::Client *client;
