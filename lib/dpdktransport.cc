@@ -23,6 +23,9 @@ thread_local static uint16_t thread_dev_port;
 thread_local static int thread_rx_queue_id;
 thread_local static int thread_tx_queue_id;
 
+typedef uint32_t Preamble;
+static const Preamble NONFRAG_MAGIC = 0x20050318;
+
 DPDKTransportAddress::DPDKTransportAddress(const std::string &s)
 {
     Parse(s);
@@ -88,7 +91,7 @@ operator<(const DPDKTransportAddress &a, const DPDKTransportAddress &b)
 }
 
 static void
-ConstructArguments(int argc, char **argv)
+ConstructArguments(int argc, char **argv, const std::string &cmdline)
 {
     argv[0] = new char[strlen("command")+1];
     strcpy(argv[0], "command");
@@ -98,17 +101,24 @@ ConstructArguments(int argc, char **argv)
     strcpy(argv[2], "0");
     argv[3] = new char[strlen("--proc-type=auto")+1];
     strcpy(argv[3], "--proc-type=auto");
+    if (cmdline.length() > 0) {
+        argv[4] = new char[cmdline.length()+1];
+        strcpy(argv[4], cmdline.c_str());
+    }
 }
 
-DPDKTransport::DPDKTransport(double drop_rate)
+DPDKTransport::DPDKTransport(double drop_rate, const std::string &cmdline)
     : drop_rate_(drop_rate), status_(STOPPED),
     receiver_(nullptr), receiver_addr_(nullptr), multicast_addr_(nullptr),
     last_timer_id_(0)
 {
     // Initialize DPDK
     int argc = 4;
+    if (cmdline.length() > 0) {
+        argc++;
+    }
     char **argv = new char*[argc];
-    ConstructArguments(argc, argv);
+    ConstructArguments(argc, argv, cmdline);
 
     if (rte_eal_init(argc, argv) < 0) {
         Panic("rte_eal_init failed");
@@ -134,11 +144,6 @@ DPDKTransport::DPDKTransport(double drop_rate)
     if (rte_timer_subsystem_init() != 0) {
         Panic("rte_timer_subsystem_init failed");
     }
-
-    for (int i = 0; i < argc; i++) {
-        delete argv[i];
-    }
-    delete argv;
 }
 
 DPDKTransport::~DPDKTransport()
@@ -161,7 +166,7 @@ DPDKTransport::RegisterInternal(TransportReceiver *receiver,
     memset(&port_conf, 0, sizeof(port_conf));
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
     port_conf.rx_adv_conf.rss_conf.rss_key = nullptr;
-    port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_NONFRAG_IPV4_UDP;
+    //port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_NONFRAG_IPV4_UDP;
 
     struct rte_eth_dev_info dev_info;
     if (rte_eth_dev_info_get(addr->dev_port, &dev_info) != 0) {
@@ -221,6 +226,7 @@ DPDKTransport::RegisterInternal(TransportReceiver *receiver,
 
     receiver_ = receiver;
     receiver_addr_ = new DPDKTransportAddress(LookupAddress(*addr));
+    receiver->SetAddress(receiver_addr_);
 }
 
 void
@@ -335,6 +341,7 @@ DPDKTransport::SendMessageInternal(TransportReceiver *src,
     ip_hdr->type_of_service = 0;
     ip_hdr->total_length = rte_cpu_to_be_16(IPV4_HDR_SIZE * RTE_IPV4_IHL_MULTIPLIER +
                                             sizeof(struct rte_udp_hdr) +
+                                            sizeof(Preamble) +
                                             m.SerializedSize());
     ip_hdr->packet_id = 0;
     ip_hdr->fragment_offset = 0;
@@ -353,15 +360,19 @@ DPDKTransport::SendMessageInternal(TransportReceiver *src,
     udp_hdr->src_port = src_addr.udp_addr_;
     udp_hdr->dst_port = dst_addr.udp_addr_;
     udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(struct rte_udp_hdr) +
-            m.SerializedSize());
+                                          sizeof(Preamble) +
+                                          m.SerializedSize());
     udp_hdr->dgram_cksum = 0;
     /* Datagram */
     void *dgram;
-    dgram = rte_pktmbuf_append(mbuf, m.SerializedSize());
+    dgram = rte_pktmbuf_append(mbuf, sizeof(Preamble) + m.SerializedSize());
     if (dgram == nullptr) {
         Panic("Failed to allocate data gram");
     }
-    m.Serialize(dgram);
+    char *ptr = (char *)dgram;
+    *(Preamble *)ptr = NONFRAG_MAGIC;
+    ptr += sizeof(Preamble);
+    m.Serialize(ptr);
     /* Send packet */
     if (rte_eth_tx_burst(thread_dev_port, thread_tx_queue_id, &mbuf, 1) == 1) {
         return true;
@@ -382,7 +393,12 @@ DPDKTransport::LookupAddress(const ReplicaAddress &addr)
     if (inet_pton(AF_INET, addr.host.data(), &ip_addr) != 1) {
         Panic("Failed to parse IP address");
     }
-    rte_be16_t udp_addr = rte_cpu_to_be_16(uint16_t(stoul(addr.port)));
+    uint16_t udp_port = uint16_t(stoul(addr.port));
+    if (udp_port == 0) {
+        // Assign a random udp port
+        udp_port = rand() % 65535;
+    }
+    rte_be16_t udp_addr = rte_cpu_to_be_16(udp_port);
     return DPDKTransportAddress(ether_addr, ip_addr, udp_addr, addr.dev_port);
 }
 
@@ -425,15 +441,23 @@ DPDKTransport::RunTransport(int tid)
                                                   ip_hdr->dst_addr,
                                                   udp_hdr->dst_port,
                                                   thread_dev_port))) {
-                // Construct source address
-                DPDKTransportAddress src(ether_hdr->s_addr,
-                                         ip_hdr->src_addr,
-                                         udp_hdr->src_port,
-                                         thread_dev_port);
-                receiver_->ReceiveMessage(src,
-                                          rte_pktmbuf_mtod_offset(m, void*, offset),
-                                          rte_be_to_cpu_16(udp_hdr->dgram_len)
-                                          - sizeof(struct rte_udp_hdr));
+                void *msg_buf = rte_pktmbuf_mtod_offset(m, void*, offset);
+                char *ptr = (char *)msg_buf;
+                Preamble magic = *(Preamble *)ptr;
+                ptr += sizeof(Preamble);
+
+                if (magic == NONFRAG_MAGIC) {
+                    // Construct source address
+                    DPDKTransportAddress src(ether_hdr->s_addr,
+                                             ip_hdr->src_addr,
+                                             udp_hdr->src_port,
+                                             thread_dev_port);
+                    receiver_->ReceiveMessage(src,
+                                              ptr,
+                                              rte_be_to_cpu_16(udp_hdr->dgram_len)
+                                              - sizeof(struct rte_udp_hdr)
+                                              - sizeof(Preamble));
+                }
             }
             rte_pktmbuf_free(m);
         }

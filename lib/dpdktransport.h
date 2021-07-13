@@ -39,7 +39,7 @@ private:
 class DPDKTransport : public TransportCommon<DPDKTransportAddress>
 {
 public:
-    DPDKTransport(double drop_rate = 0.0);
+    DPDKTransport(double drop_rate = 0.0, const std::string &cmdline = "");
     virtual ~DPDKTransport();
     virtual void RegisterInternal(TransportReceiver *receiver,
                                   const ReplicaAddress *addr,
