@@ -245,11 +245,11 @@ ParseReplicaAddress(const char *name)
     }
 
     char *host = strtok(arg, ":");
-    char *port = strtok(nullptr, ":");
-    char *dev = strtok(nullptr, ":");
+    char *port = strtok(nullptr, "|");
+    char *dev = strtok(nullptr, "|");
     char *dev_port = strtok(nullptr, "");
     if (!host || !port) {
-        Panic("Configuration line format: '%s host:port[:dev_port]'", name);
+        Panic("Configuration line format: '%s host:port[|dev|dev_port]'", name);
     }
 
     return ReplicaAddress(string(host), string(port),
