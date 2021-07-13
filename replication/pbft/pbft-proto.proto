@@ -38,6 +38,7 @@ message RequestMessage {
     // op, timpstamp, client inside
     required dsnet.Request req = 1;
     required bytes sig = 2;    
+    required bool relayed = 3;
 }
 
 message UnloggedRequestMessage {
@@ -59,12 +60,12 @@ message PrePrepareMessage {
 
 message PrepareMessage {
     required Common common = 1;
-    required uint64 replicaid = 2;
+    required int64 replicaid = 2;
     required bytes sig = 3;
 }
 
 message CommitMessage {
     required Common common = 1;
-    required uint64 replicaid = 2;
+    required int64 replicaid = 2;
     required bytes sig = 3;
 }
