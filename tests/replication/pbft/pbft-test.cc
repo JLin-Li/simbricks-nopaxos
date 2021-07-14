@@ -169,6 +169,12 @@ filter_t DisableRx(TransportReceiver *r) {
              uint64_t &delay) { return dst != r; };
 }
 
+filter_t DisableTraffic(TransportReceiver *src, TransportReceiver *dst) {
+  return [=](TransportReceiver *src_, pair<int, int> srcId,
+             TransportReceiver *dst_, pair<int, int> dstId, Message &msg,
+             uint64_t &delay) { return src != src_ || dst != dst_; };
+}
+
 TEST(Pbft, ResendPrePrepare) {
   System<1> system;
   Client &client = *system.clients[0];
@@ -192,6 +198,32 @@ TEST(Pbft, ResendPrePrepare) {
   ASSERT_FALSE(done);
 
   system.transport.Timer(800, [&]() { system.transport.Stop(); });
+  system.transport.Run();
+  ASSERT_TRUE(done);
+}
+
+TEST(Pbft, SimpleStateTransfer) {
+  System<1> system;
+  Client &client = *system.clients[0];
+  bool done = false;
+  client.Invoke("warmup", [&](const string &, const string &) {
+    for (int i = 1; i < 4; i += 1) {
+      for (int j = 1; j < 4; j += 1) {
+        system.transport.AddFilter(
+            (i << 2) | j,
+            DisableTraffic(system.replicas[i].get(), system.replicas[j].get()));
+      }
+    }
+    client.Invoke("test", [&](const string &, const string &) { done = true; });
+    system.transport.Timer(100, [&]() {
+      for (int i = 1; i < 4; i += 1) {
+        for (int j = 1; j < 4; j += 1) {
+          system.transport.RemoveFilter((i << 2) | j);
+        }
+      }
+    });
+  });
+  system.transport.Timer(3000, [&]() { system.transport.Stop(); });
   system.transport.Run();
   ASSERT_TRUE(done);
 }

@@ -183,8 +183,8 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
     RWarning("Gap detected; fill with EMPTY and schedule state transfer");
     for (opnum_t seqNum = log.LastOpnum() + 1; seqNum < msg.common().seqnum();
          seqNum += 1) {
-      log.Append(new LogEntry(viewstamp_t(view, msg.common().seqnum()),
-                              LOG_STATE_EMPTY, Request()));
+      log.Append(
+          new LogEntry(viewstamp_t(view, seqNum), LOG_STATE_EMPTY, Request()));
     }
     ScheduleTransfer(log.LastOpnum() + 1);
   }
