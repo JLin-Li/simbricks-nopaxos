@@ -159,40 +159,33 @@ TEST(Pbft, 100OpSign) {
   OneClientMultiOp(100, security);
 }
 
+using filter_t = std::function<bool(TransportReceiver *, std::pair<int, int>,
+                                    TransportReceiver *, std::pair<int, int>,
+                                    Message &, uint64_t &delay)>;
+
+filter_t DisableRx(TransportReceiver *r) {
+  return [=](TransportReceiver *src, pair<int, int> srcId,
+             TransportReceiver *dst, pair<int, int> dstId, Message &msg,
+             uint64_t &delay) { return dst != r; };
+}
+
 TEST(Pbft, ResendPrePrepare) {
   System<1> system;
   Client &client = *system.clients[0];
   bool done = false;
   client.Invoke("warmup", [&](const string &, const string &) {
-    // prevent primary send out anything
-    system.transport.AddFilter(
-        0,
-        [&](TransportReceiver *src, pair<int, int> srcId,
-            TransportReceiver *dst, pair<int, int> dstId, Message &msg,
-            uint64_t &delay) -> bool {
-          if (dynamic_cast<const SimulatedTransportAddress &>(
-                  src->GetAddress()) ==
-              dynamic_cast<const SimulatedTransportAddress &>(
-                  system.replicas[0]->GetAddress()))
-            return false;
-          return true;
-        });
+    // prevent replica rx, so no prepreare and client request is delivered
+    for (int i = 1; i < 4; i += 1) {
+      system.transport.AddFilter(i, DisableRx(system.replicas[i].get()));
+    }
     client.Invoke("test", [&](const string &, const string &) { done = true; });
+    system.transport.AddFilter(0, DisableRx(system.replicas[0].get()));
 
-    // prevent client resend
-    system.transport.AddFilter(
-        1,
-        [&](TransportReceiver *src, pair<int, int> srcId,
-            TransportReceiver *dst, pair<int, int> dstId, Message &msg,
-            uint64_t &delay) -> bool {
-          if (dynamic_cast<const SimulatedTransportAddress &>(
-                  src->GetAddress()) ==
-              dynamic_cast<const SimulatedTransportAddress &>(
-                  system.clients[0]->GetAddress()))
-            return false;
-          return true;
-        });
-    system.transport.Timer(1000, [&]() { system.transport.RemoveFilter(0); });
+    system.transport.Timer(1000, [&]() {
+      for (int i = 0; i < 4; i += 1) {
+        system.transport.RemoveFilter(i);
+      }
+    });
   });
   system.transport.Timer(1800, [&]() { system.transport.Stop(); });
   system.transport.Run();
