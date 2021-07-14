@@ -66,8 +66,34 @@ class PbftReplica : public Replica {
   // timers and timeout handlers
   Timeout *viewChangeTimeout;
   void OnViewChange();
+  // resend strategy
+  // this implementation has two resending, resending preprepare and general state transfer
+  // primary resend preprepare if itself has not received 2f replied prepare
+  // if primary has received 2f prepare, there must be 2f + 1 replicas (including primary)
+  // have entered prepare round, which means the system does not need any further preprepare resending
+  // to progress
+  // replicas schedule state transfer after
+  // * they broadcast prepare (backup only) (in HandlePrePrepare)
+  // * they broadcast commit (in TryBroadcastCommit)
+  // * they received out-of-order preprepare (backup only) (in HandlePrePrepare)
+  // currently, a scheduled state transfer only get cancelled when the seqnum reaches commit point
+  // i.e. LOG_STATE_COMMITTED, which indicates that no further message need to be received for the seqnum
+  // for backup, a seqnum will be (re)scheduled for state transfer for 2 or 3 times: (optional) higher preprepare received,
+  // enter prepare round and enter commit round, on rescheduling the timer is reset
+  // for primary, a seqnum will be scheduled for resend prepreare once, 
+  // and scheduled for state transfer once when enter commit round
+  // each seqnum has independent scheduling for both prepreare resending and state transfering
+  // when state transfer is requested, a replica send whatever it has for a seqnum, which means:
+  // * 2f prepare and 2f + 1 commit when committed
+  // * 2f prepare when prepared
+  // * nothing otherwise
+  // in conclusion, a replica send messages in three conditions:
+  // * following standard protocol spec, including preprepare, prepare and commit broadcast, and reply to client
+  // * individule reply prepare/commit for delayed preprepare/prepare
+  // * state transfer
+  // TODO view change details
   Timeout *stateTransferTimeout;
-  opnum_t lowestEmptyOp;
+  opnum_t tranferTarget;
   void OnStateTransfer();
   struct PendingPrePrepare {
     opnum_t seqNum;
@@ -111,6 +137,8 @@ class PbftReplica : public Replica {
   void TryBroadcastCommit(const proto::Common &message);
   // TryBroadcastCommit, HandleCommit
   void TryExecute(const proto::Common &message);
+
+  void ScheduleTransfer(opnum_t target);
 
   struct ClientTableEntry {
     uint64_t lastReqId;

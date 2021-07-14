@@ -184,19 +184,12 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   if (msg.common().seqnum() > log.LastOpnum() + 1) {
     // TODO fill the gap with PLACEHOLDER
     RWarning("Gap detected; fill with EMPTY and schedule state transfer");
-    Assert(lowestEmptyOp <
-           log.LastOpnum() + 1);  // either there are already gaps or not
-    if (lowestEmptyOp == 0) {
-      lowestEmptyOp = log.LastOpnum() + 1;
-    }
     for (opnum_t seqNum = log.LastOpnum() + 1; seqNum < msg.common().seqnum();
          seqNum += 1) {
       log.Append(new LogEntry(viewstamp_t(view, msg.common().seqnum()),
                               LOG_STATE_EMPTY, Request()));
     }
-    if (!stateTransferTimeout->Active()) {
-      stateTransferTimeout->Start();
-    }
+    ScheduleTransfer(log.LastOpnum() + 1);
   }
   Assert(msg.common().seqnum() <= log.LastOpnum() + 1);
   RDebug(PROTOCOL_FMT, "prepare", view, seqNum);
@@ -208,6 +201,8 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   security.GetReplicaSigner(ReplicaId())
       .Sign(prepare.common().SerializeAsString(), *prepare.mutable_sig());
   transport->SendMessageToAll(this, PBMessage(m));
+
+  ScheduleTransfer(msg.common().seqnum());
 
   prepareSet.Add(seqNum, ReplicaId(), msg.common());
   TryBroadcastCommit(msg.common());
@@ -249,7 +244,7 @@ void PbftReplica::HandleCommit(const TransportAddress &remote,
 void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
 
 void PbftReplica::OnStateTransfer() {
-  Assert(log.Find(lowestEmptyOp)->state == LOG_STATE_EMPTY);
+  Assert(log.Find(tranferTarget)->state != LOG_STATE_EXECUTED);
   stateTransferTimeout->Stop();
   NOT_IMPLEMENTED();
 }
@@ -264,25 +259,15 @@ void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
   }
   LogEntry *entry = log.Find(message.common().seqnum());
   if (entry->state != LOG_STATE_EMPTY) {
-    // ignore stall preprepare
+    // TODO directly respond to stalled preprepare
     return;
   }
   RNotice("PrePrepare gap at seq = %lu is filled", message.common().seqnum());
   log.SetRequest(message.common().seqnum(), message.message().req());
   log.SetStatus(message.common().seqnum(), LOG_STATE_PREPARED);
-  Assert(message.common().seqnum() >= lowestEmptyOp);
-  if (message.common().seqnum() == lowestEmptyOp) {
-    stateTransferTimeout->Stop();
-    lowestEmptyOp = 0;
-    for (opnum_t seqNum = message.common().seqnum() + 1;
-         seqNum <= log.LastOpnum(); seqNum += 1) {
-      if (log.Find(seqNum)->state == LOG_STATE_EMPTY) {
-        lowestEmptyOp = seqNum;
-        stateTransferTimeout->Start();
-        break;
-      }
-    }
-  }
+  // don't need to schedule state transfer at this point
+  // primary do not schedule state transfer now, schedule resend preprepare instead
+  // backup schedule it in HandlePrePrepare
 }
 
 void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
@@ -292,6 +277,7 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
 
   RDebug(PROTOCOL_FMT, "commit", message.view(), message.seqnum());
   pastCommitted.insert(message.seqnum());
+  ScheduleTransfer(message.seqnum());
 
   if (AmPrimary()) {
     for (auto iter = pendingPrePrepareList.begin();
@@ -326,6 +312,7 @@ void PbftReplica::TryExecute(const proto::Common &message) {
 
   RDebug(PROTOCOL_FMT, "commit point", message.view(), message.seqnum());
   log.SetStatus(message.seqnum(), LOG_STATE_COMMITTED);
+  // TODO cancel state transfer
 
   opnum_t executing = message.seqnum();
   if (executing != log.FirstOpnum() &&
@@ -363,6 +350,10 @@ void PbftReplica::TryExecute(const proto::Common &message) {
 
     executing += 1;
   }
+}
+
+void PbftReplica::ScheduleTransfer(opnum_t target) {
+  //
 }
 
 void PbftReplica::UpdateClientTable(const Request &req,
