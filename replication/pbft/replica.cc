@@ -38,8 +38,6 @@ PbftReplica::PbftReplica(const Configuration &config, int myIdx,
   // 1h timeout to make sure no one ever wants to change view
   viewChangeTimeout = new Timeout(transport, 3600 * 1000,
                                   bind(&PbftReplica::OnViewChange, this));
-  stateTransferTimeout =
-      new Timeout(transport, 1000, bind(&PbftReplica::OnStateTransfer, this));
 }
 
 void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
@@ -182,7 +180,6 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   viewChangeTimeout->Stop();  // TODO filter out faulty message
 
   if (msg.common().seqnum() > log.LastOpnum() + 1) {
-    // TODO fill the gap with PLACEHOLDER
     RWarning("Gap detected; fill with EMPTY and schedule state transfer");
     for (opnum_t seqNum = log.LastOpnum() + 1; seqNum < msg.common().seqnum();
          seqNum += 1) {
@@ -243,12 +240,6 @@ void PbftReplica::HandleCommit(const TransportAddress &remote,
 
 void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
 
-void PbftReplica::OnStateTransfer() {
-  Assert(log.Find(tranferTarget)->state != LOG_STATE_EXECUTED);
-  stateTransferTimeout->Stop();
-  NOT_IMPLEMENTED();
-}
-
 void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
   acceptedPrePrepareTable[message.common().seqnum()] = message.common();
   if (log.LastOpnum() < message.common().seqnum()) {
@@ -266,8 +257,8 @@ void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
   log.SetRequest(message.common().seqnum(), message.message().req());
   log.SetStatus(message.common().seqnum(), LOG_STATE_PREPARED);
   // don't need to schedule state transfer at this point
-  // primary do not schedule state transfer now, schedule resend preprepare instead
-  // backup schedule it in HandlePrePrepare
+  // primary do not schedule state transfer now, schedule resend preprepare
+  // instead backup schedule it in HandlePrePrepare
 }
 
 void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
@@ -312,7 +303,15 @@ void PbftReplica::TryExecute(const proto::Common &message) {
 
   RDebug(PROTOCOL_FMT, "commit point", message.view(), message.seqnum());
   log.SetStatus(message.seqnum(), LOG_STATE_COMMITTED);
-  // TODO cancel state transfer
+
+  for (auto iter = pendingProposalList.begin();
+       iter != pendingProposalList.end(); ++iter) {
+    if (iter->seqNum == message.seqnum()) {
+      iter->timeout->Stop();
+      pendingProposalList.erase(iter);
+      break;
+    }
+  }
 
   opnum_t executing = message.seqnum();
   if (executing != log.FirstOpnum() &&
@@ -352,8 +351,23 @@ void PbftReplica::TryExecute(const proto::Common &message) {
   }
 }
 
-void PbftReplica::ScheduleTransfer(opnum_t target) {
-  //
+void PbftReplica::ScheduleTransfer(opnum_t seqNum) {
+  for (auto &pp : pendingProposalList) {
+    if (pp.seqNum == seqNum) {
+      pp.timeout->Reset();
+      return;
+    }
+  }
+  PendingProposal pp;
+  pp.seqNum = seqNum;
+  pp.timeout = unique_ptr<Timeout>(
+      new Timeout(transport, 1000, [this, seqNum = seqNum]() {
+        Assert(log.Find(seqNum)->state != LOG_STATE_COMMITTED);
+        RWarning("State transfer triggered, seq = %lu", seqNum);
+        NOT_IMPLEMENTED();
+      }));
+  pp.timeout->Start();
+  pendingProposalList.push_back(std::move(pp));
 }
 
 void PbftReplica::UpdateClientTable(const Request &req,
