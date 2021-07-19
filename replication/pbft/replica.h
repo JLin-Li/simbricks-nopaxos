@@ -35,6 +35,7 @@
 #define _PBFT_REPLICA_H_
 
 #include "common/log.h"
+#include "common/pbmessage.h"
 #include "common/quorumset.h"
 #include "common/replica.h"
 #include "lib/signature.h"
@@ -42,6 +43,25 @@
 
 namespace dsnet {
 namespace pbft {
+
+template <typename MsgTy>
+struct Downcast {
+  static MsgTy *GetMutable(proto::ToReplicaMessage &m) { return nullptr; }
+};
+
+template <>
+struct Downcast<proto::PrepareMessage> {
+  static proto::PrepareMessage *GetMutable(proto::ToReplicaMessage &m) {
+    return m.mutable_prepare();
+  }
+};
+
+template <>
+struct Downcast<proto::CommitMessage> {
+  static proto::CommitMessage *GetMutable(proto::ToReplicaMessage &m) {
+    return m.mutable_commit();
+  }
+};
 
 class PbftReplica : public Replica {
  public:
@@ -62,6 +82,9 @@ class PbftReplica : public Replica {
                      const proto::PrepareMessage &msg);
   void HandleCommit(const TransportAddress &remote,
                     const proto::CommitMessage &msg);
+  void HandleStateTransferRequest(
+      const TransportAddress &remote,
+      const proto::StateTransferRequestMessage &msg);
 
   // timers and timeout handlers
   // TODO view change details
@@ -75,7 +98,7 @@ class PbftReplica : public Replica {
   // system does not need any further preprepare resending to progress replicas
   // schedule state transfer after
   // * they broadcast prepare (backup only) (in HandlePrePrepare)
-  // * they broadcast commit (in TryBroadcastCommit)
+  // * they broadcast commit (in TryEnterCommit)
   // * they received out-of-order preprepare (backup only) (in HandlePrePrepare)
   // currently, a scheduled state transfer only get cancelled when the seqnum
   // reaches commit point i.e. LOG_STATE_COMMITTED, which indicates that no
@@ -119,32 +142,50 @@ class PbftReplica : public Replica {
   };
 
   Log log;
-  std::unordered_map<opnum_t, proto::Common> acceptedPrePrepareTable;
+  std::unordered_map<opnum_t, proto::Common> commonTable;
   ByzantineProtoQuorumSet<opnum_t, proto::Common> prepareSet, commitSet;
   // prepared(m, v, n, i) where v(view) and i(replica index) should
   // be fixed for each calling
   // theoretically this verb could use const this, but underlying CheckForQuorum
   // does not, and we actually don't need it to do so, so that's it
   bool Prepared(opnum_t seqNum, const proto::Common &message) {
-    return acceptedPrePrepareTable.count(seqNum) &&
-           Match(acceptedPrePrepareTable[seqNum], message) &&
+    return commonTable.count(seqNum) && Match(commonTable[seqNum], message) &&
            prepareSet.CheckForQuorum(seqNum, message);
   }
+  std::unordered_set<opnum_t> pastPrepared;
   // similar to prepared
   bool CommittedLocal(opnum_t seqNum, const proto::Common &message) {
     return Prepared(seqNum, message) &&
            commitSet.CheckForQuorum(seqNum, message);
   }
-  std::unordered_set<opnum_t> pastCommitted;
+  // no need to record past committed, because no action is required for delayed
+  // commit message
 
   // multi-entry common actions
   // HandleRequest, HandlePrePrepare
   // PREPARED state maps to pre-prepared in PBFT
   void AcceptPrePrepare(proto::PrePrepareMessage message);
   // AcceptPrePrepare, HandlePrePrepare, HandlePrepare
-  void TryBroadcastCommit(const proto::Common &message);
-  // TryBroadcastCommit, HandleCommit
+  void TryEnterCommit(const proto::Common &message);
+  // TryEnterCommit, HandleCommit
   void TryExecute(const proto::Common &message);
+
+  // common logic of send prepare/commit message
+  template <typename MsgTy>
+  void CommonSend(const proto::Common &common,
+                  const TransportAddress *address) {
+    proto::ToReplicaMessage m;
+    MsgTy &msg = *Downcast<MsgTy>::GetMutable(m);
+    *msg.mutable_common() = common;
+    msg.set_replicaid(ReplicaId());
+    security.GetReplicaSigner(ReplicaId())
+        .Sign(msg.common().SerializeAsString(), *msg.mutable_sig());
+    if (address == nullptr) {
+      transport->SendMessageToAll(this, PBMessage(m));
+    } else {
+      transport->SendMessage(this, *address, PBMessage(m));
+    }
+  }
 
   void ScheduleTransfer(opnum_t target);
 

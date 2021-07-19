@@ -60,6 +60,9 @@ void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
     case ToReplicaMessage::MsgCase::kCommit:
       HandleCommit(remote, replica_msg.commit());
       break;
+    case ToReplicaMessage::MsgCase::kStateTransferRequest:
+      HandleStateTransferRequest(remote, replica_msg.state_transfer_request());
+      break;
     default:
       RPanic("Received unexpected message type in pbft proto: %u",
              replica_msg.msg_case());
@@ -124,10 +127,10 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   security.GetReplicaSigner(ReplicaId())
       .Sign(prePrepare.common().SerializeAsString(), *prePrepare.mutable_sig());
   *prePrepare.mutable_message() = msg;
-
   Assert(prePrepare.common().seqnum() == log.LastOpnum() + 1);
   AcceptPrePrepare(prePrepare);
   transport->SendMessageToAll(this, PBMessage(m));
+
   PendingPrePrepare pp;
   pp.seqNum = seqNum;
   pp.clientId = msg.req().clientid();
@@ -141,7 +144,8 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
       }));
   pp.timeout->Start();
   pendingPrePrepareList.push_back(std::move(pp));
-  TryBroadcastCommit(prePrepare.common());  // for single replica setup
+
+  TryEnterCommit(prePrepare.common());  // for single replica setup
 }
 
 void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
@@ -171,8 +175,7 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   }
 
   opnum_t seqNum = msg.common().seqnum();
-  if (acceptedPrePrepareTable.count(seqNum) &&
-      !Match(acceptedPrePrepareTable[seqNum], msg.common()))
+  if (commonTable.count(seqNum) && !Match(commonTable[seqNum], msg.common()))
     return;
 
   // no impl high and low water mark, along with GC
@@ -185,24 +188,18 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
          seqNum += 1) {
       log.Append(
           new LogEntry(viewstamp_t(view, seqNum), LOG_STATE_EMPTY, Request()));
+      ScheduleTransfer(seqNum);
     }
-    ScheduleTransfer(log.LastOpnum() + 1);
   }
   Assert(msg.common().seqnum() <= log.LastOpnum() + 1);
   RDebug(PROTOCOL_FMT, "prepare", view, seqNum);
   AcceptPrePrepare(msg);
-  ToReplicaMessage m;
-  PrepareMessage &prepare = *m.mutable_prepare();
-  *prepare.mutable_common() = msg.common();
-  prepare.set_replicaid(ReplicaId());
-  security.GetReplicaSigner(ReplicaId())
-      .Sign(prepare.common().SerializeAsString(), *prepare.mutable_sig());
-  transport->SendMessageToAll(this, PBMessage(m));
 
+  CommonSend<PrepareMessage>(msg.common(), nullptr);
   ScheduleTransfer(msg.common().seqnum());
 
   prepareSet.Add(seqNum, ReplicaId(), msg.common());
-  TryBroadcastCommit(msg.common());
+  TryEnterCommit(msg.common());
 }
 
 void PbftReplica::HandlePrepare(const TransportAddress &remote,
@@ -213,14 +210,15 @@ void PbftReplica::HandlePrepare(const TransportAddress &remote,
     return;
   }
 
-  if (pastCommitted.count(msg.common().seqnum())) {
+  // TODO verify incoming prepare matches prepared proposal
+  if (pastPrepared.count(msg.common().seqnum())) {
     RDebug("not broadcast for delayed Prepare; directly resp instead");
-    // TODO
+    CommonSend<CommitMessage>(msg.common(), &remote);
     return;
   }
 
   prepareSet.Add(msg.common().seqnum(), msg.replicaid(), msg.common());
-  TryBroadcastCommit(msg.common());
+  TryEnterCommit(msg.common());
 }
 
 void PbftReplica::HandleCommit(const TransportAddress &remote,
@@ -238,37 +236,59 @@ void PbftReplica::HandleCommit(const TransportAddress &remote,
   TryExecute(msg.common());
 }
 
+void PbftReplica::HandleStateTransferRequest(
+    const TransportAddress &remote,
+    const proto::StateTransferRequestMessage &msg) {
+  // TODO view change along with state transfer
+  if (commonTable.count(msg.seqnum())) {
+    if (AmPrimary()) {
+      ToReplicaMessage m;
+      PrePrepareMessage &prePrepare = *m.mutable_pre_prepare();
+      *prePrepare.mutable_common() = commonTable[msg.seqnum()];
+      security.GetReplicaSigner(ReplicaId())
+          .Sign(prePrepare.common().SerializeAsString(),
+                *prePrepare.mutable_sig());
+      auto *entry = log.Find(msg.seqnum());
+      *prePrepare.mutable_message()->mutable_req() = entry->request;
+      prePrepare.mutable_message()->set_sig(entry->signature);
+      prePrepare.mutable_message()->set_relayed(false);  // ok?
+      transport->SendMessage(this, remote, PBMessage(m));
+    } else {
+      CommonSend<PrepareMessage>(commonTable[msg.seqnum()], &remote);
+    }
+  }
+  if (pastPrepared.count(msg.seqnum())) {
+    CommonSend<CommitMessage>(commonTable[msg.seqnum()], &remote);
+  }
+};
+
 void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
 
 void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
-  acceptedPrePrepareTable[message.common().seqnum()] = message.common();
+  commonTable[message.common().seqnum()] = message.common();
   if (log.LastOpnum() < message.common().seqnum()) {
     log.Append(new LogEntry(
         viewstamp_t(message.common().view(), message.common().seqnum()),
-        LOG_STATE_PREPARED, message.message().req()));
+        LOG_STATE_PREPARED, message.message().req(), message.message().sig(),
+        EMPTY_HASH));
     return;
   }
+
   LogEntry *entry = log.Find(message.common().seqnum());
-  if (entry->state != LOG_STATE_EMPTY) {
-    // TODO directly respond to stalled preprepare
-    return;
-  }
+  if (entry->state != LOG_STATE_EMPTY) return;
+
   RNotice("PrePrepare gap at seq = %lu is filled", message.common().seqnum());
   log.SetRequest(message.common().seqnum(), message.message().req());
   log.SetStatus(message.common().seqnum(), LOG_STATE_PREPARED);
-  // don't need to schedule state transfer at this point
-  // primary do not schedule state transfer now, schedule resend preprepare
-  // instead backup schedule it in HandlePrePrepare
 }
 
-void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
-  Assert(!pastCommitted.count(message.seqnum()));
+void PbftReplica::TryEnterCommit(const proto::Common &message) {
+  Assert(!pastPrepared.count(message.seqnum()));
 
   if (!Prepared(message.seqnum(), message)) return;
 
   RDebug(PROTOCOL_FMT, "commit", message.view(), message.seqnum());
-  pastCommitted.insert(message.seqnum());
-  ScheduleTransfer(message.seqnum());
+  pastPrepared.insert(message.seqnum());
 
   if (AmPrimary()) {
     for (auto iter = pendingPrePrepareList.begin();
@@ -281,13 +301,8 @@ void PbftReplica::TryBroadcastCommit(const proto::Common &message) {
     }
   }
 
-  ToReplicaMessage m;
-  CommitMessage &commit = *m.mutable_commit();
-  *commit.mutable_common() = message;
-  commit.set_replicaid(ReplicaId());
-  security.GetReplicaSigner(ReplicaId())
-      .Sign(commit.common().SerializeAsString(), *commit.mutable_sig());
-  transport->SendMessageToAll(this, PBMessage(m));
+  CommonSend<CommitMessage>(message, nullptr);
+  ScheduleTransfer(message.seqnum());
 
   commitSet.Add(message.seqnum(), ReplicaId(), message);
   TryExecute(message);  // for single replica setup
@@ -364,7 +379,11 @@ void PbftReplica::ScheduleTransfer(opnum_t seqNum) {
       new Timeout(transport, 1000, [this, seqNum = seqNum]() {
         Assert(log.Find(seqNum)->state != LOG_STATE_COMMITTED);
         RWarning("State transfer triggered, seq = %lu", seqNum);
-        NOT_IMPLEMENTED();
+        ToReplicaMessage m;
+        StateTransferRequestMessage &stReq =
+            *m.mutable_state_transfer_request();
+        stReq.set_seqnum(seqNum);
+        transport->SendMessageToAll(this, PBMessage(m));
       }));
   pp.timeout->Start();
   pendingProposalList.push_back(std::move(pp));

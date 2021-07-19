@@ -103,7 +103,7 @@ Log::SetStatus(opnum_t op, LogEntryState state)
 }
 
 bool
-Log::SetRequest(opnum_t op, const Request &req)
+Log::SetRequest(opnum_t op, const Request &req, const string &sig)
 {
     if (useHash) {
         Panic("Log::SetRequest on hashed log not supported.");
@@ -115,6 +115,7 @@ Log::SetRequest(opnum_t op, const Request &req)
     }
 
     entry->request = req;
+    entry->signature = sig;
     return true;
 }
 
