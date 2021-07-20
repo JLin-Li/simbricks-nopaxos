@@ -36,8 +36,7 @@ void PbftClient::Invoke(const string &request, continuation_t continuation) {
     Panic("Client only supports one pending request");
   }
   lastReqId += 1;
-  pendingRequest =
-      new PendingRequest(request, lastReqId, continuation, config.f + 1);
+  pendingRequest = new PendingRequest(request, lastReqId, continuation, config);
   SendRequest();
 }
 
@@ -108,13 +107,25 @@ void PbftClient::HandleReply(const TransportAddress &remote,
     return;
   }
 
-  Debug("Client received reply");
-  if (!pendingRequest->replySet.Add(msg.req().clientreqid(), msg.replicaid(),
-                                    msg.reply())) {
-    return;
+  Debug("Client received reply, spec = %d", msg.speculative());
+  if (!msg.speculative()) {
+    if (!pendingRequest->replySet.Add(msg.req().clientreqid(), msg.replicaid(),
+                                      msg.reply())) {
+      return;
+    } else {
+      Debug("f + 1 replies received, done req = %lu",
+            pendingRequest->clientreqid);
+    }
+  } else {
+    if (!pendingRequest->specReplySet.Add(msg.req().clientreqid(),
+                                          msg.replicaid(), msg.reply())) {
+      return;
+    } else {
+      Debug("2f + 1 speculative replies received, done req = %lu",
+            pendingRequest->clientreqid);
+    }
   }
 
-  Debug("f + 1 replies received, current request done");
   requestTimeout->Stop();
   PendingRequest *req = pendingRequest;
   pendingRequest = nullptr;

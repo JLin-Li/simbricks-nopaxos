@@ -36,12 +36,14 @@ class PbftClient : public Client {
     std::uint64_t clientreqid;
     continuation_t continuation;
     ByzantineQuorumSet<std::uint64_t, std::string> replySet;
+    ByzantineQuorumSet<std::uint64_t, std::string> specReplySet;
     PendingRequest(string request, uint64_t clientreqid,
-                   continuation_t continuation, int numRequired)
+                   continuation_t continuation, const Configuration &config)
         : request(request),
           clientreqid(clientreqid),
           continuation(continuation),
-          replySet(numRequired) {}
+          replySet(config.f + 1),
+          specReplySet(2 * config.f + 1) {}
   };
 
   uint64_t lastReqId;
