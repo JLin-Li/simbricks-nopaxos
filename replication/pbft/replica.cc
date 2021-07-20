@@ -26,6 +26,7 @@ PbftReplica::PbftReplica(const Configuration &config, int myIdx,
                          const Security &sec, AppReplica *app)
     : Replica(config, 0, myIdx, initialize, transport, app),
       security(sec),
+      lastExecuted(0),
       log(false),
       prepareSet(2 * config.f),
       commitSet(2 * config.f + 1) {
@@ -128,7 +129,7 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
       .Sign(prePrepare.common().SerializeAsString(), *prePrepare.mutable_sig());
   *prePrepare.mutable_message() = msg;
   Assert(prePrepare.common().seqnum() == log.LastOpnum() + 1);
-  AcceptPrePrepare(prePrepare);
+  EnterPrepareRound(prePrepare);
   transport->SendMessageToAll(this, PBMessage(m));
 
   PendingPrePrepare pp;
@@ -145,7 +146,7 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   pp.timeout->Start();
   pendingPrePrepareList.push_back(std::move(pp));
 
-  TryEnterCommit(prePrepare.common());  // for single replica setup
+  TryEnterCommitRound(prePrepare.common());  // for single replica setup
 }
 
 void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
@@ -188,18 +189,18 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
          seqNum += 1) {
       log.Append(
           new LogEntry(viewstamp_t(view, seqNum), LOG_STATE_EMPTY, Request()));
-      ScheduleTransfer(seqNum);
+      ScheduleStateTransfer(seqNum);
     }
   }
   Assert(msg.common().seqnum() <= log.LastOpnum() + 1);
   RDebug(PROTOCOL_FMT, "prepare", view, seqNum);
-  AcceptPrePrepare(msg);
+  EnterPrepareRound(msg);
 
   CommonSend<PrepareMessage>(msg.common(), nullptr);
-  ScheduleTransfer(msg.common().seqnum());
+  ScheduleStateTransfer(msg.common().seqnum());
 
   prepareSet.Add(seqNum, ReplicaId(), msg.common());
-  TryEnterCommit(msg.common());
+  TryEnterCommitRound(msg.common());
 }
 
 void PbftReplica::HandlePrepare(const TransportAddress &remote,
@@ -211,14 +212,14 @@ void PbftReplica::HandlePrepare(const TransportAddress &remote,
   }
 
   // TODO verify incoming prepare matches prepared proposal
-  if (pastPrepared.count(msg.common().seqnum())) {
+  if (LoggedPrepared(msg.common().seqnum())) {
     RDebug("not broadcast for delayed Prepare; directly resp instead");
     CommonSend<CommitMessage>(msg.common(), &remote);
     return;
   }
 
   prepareSet.Add(msg.common().seqnum(), msg.replicaid(), msg.common());
-  TryEnterCommit(msg.common());
+  TryEnterCommitRound(msg.common());
 }
 
 void PbftReplica::HandleCommit(const TransportAddress &remote,
@@ -233,7 +234,7 @@ void PbftReplica::HandleCommit(const TransportAddress &remote,
     viewChangeTimeout->Stop();  // TODO filter out faulty message
 
   commitSet.Add(msg.common().seqnum(), msg.replicaid(), msg.common());
-  TryExecute(msg.common());
+  TryReachCommitPoint(msg.common());
 }
 
 void PbftReplica::HandleStateTransferRequest(
@@ -257,43 +258,44 @@ void PbftReplica::HandleStateTransferRequest(
       CommonSend<PrepareMessage>(commonTable[msg.seqnum()], &remote);
     }
   }
-  if (pastPrepared.count(msg.seqnum())) {
+  if (LoggedPrepared(msg.seqnum())) {
     CommonSend<CommitMessage>(commonTable[msg.seqnum()], &remote);
   }
 };
 
 void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
 
-void PbftReplica::AcceptPrePrepare(proto::PrePrepareMessage message) {
-  commonTable[message.common().seqnum()] = message.common();
-  if (log.LastOpnum() < message.common().seqnum()) {
-    log.Append(new LogEntry(
-        viewstamp_t(message.common().view(), message.common().seqnum()),
-        LOG_STATE_PREPARED, message.message().req(), message.message().sig(),
-        EMPTY_HASH));
+void PbftReplica::EnterPrepareRound(proto::PrePrepareMessage msg) {
+  commonTable[msg.common().seqnum()] = msg.common();
+  if (log.LastOpnum() < msg.common().seqnum()) {
+    log.Append(
+        new LogEntry(viewstamp_t(msg.common().view(), msg.common().seqnum()),
+                     LOG_STATE_PREPREPARED, msg.message().req(),
+                     msg.message().sig(), EMPTY_HASH));
     return;
   }
 
-  LogEntry *entry = log.Find(message.common().seqnum());
+  LogEntry *entry = log.Find(msg.common().seqnum());
   if (entry->state != LOG_STATE_EMPTY) return;
 
-  RNotice("PrePrepare gap at seq = %lu is filled", message.common().seqnum());
-  log.SetRequest(message.common().seqnum(), message.message().req());
-  log.SetStatus(message.common().seqnum(), LOG_STATE_PREPARED);
+  RNotice("PrePrepare gap at seq = %lu is filled", msg.common().seqnum());
+  log.SetRequest(msg.common().seqnum(), msg.message().req());
+  log.SetStatus(msg.common().seqnum(), LOG_STATE_PREPREPARED);
 }
 
-void PbftReplica::TryEnterCommit(const proto::Common &message) {
-  Assert(!pastPrepared.count(message.seqnum()));
+void PbftReplica::TryEnterCommitRound(const proto::Common &msg) {
+  Assert(!LoggedPrepared(msg.seqnum()));
 
-  if (!Prepared(message.seqnum(), message)) return;
+  if (!Prepared(msg.seqnum(), msg)) return;
 
-  RDebug(PROTOCOL_FMT, "commit", message.view(), message.seqnum());
-  pastPrepared.insert(message.seqnum());
+  RDebug(PROTOCOL_FMT, "commit", msg.view(), msg.seqnum());
+  log.Find(msg.seqnum())->state = LOG_STATE_PREPARED;
+  // TryReachCommitPoint(message, true);  // speculative execution
 
   if (AmPrimary()) {
     for (auto iter = pendingPrePrepareList.begin();
          iter != pendingPrePrepareList.end(); ++iter) {
-      if (iter->seqNum == message.seqnum()) {
+      if (iter->seqNum == msg.seqnum()) {
         iter->timeout->Stop();
         pendingPrePrepareList.erase(iter);
         break;
@@ -301,47 +303,47 @@ void PbftReplica::TryEnterCommit(const proto::Common &message) {
     }
   }
 
-  CommonSend<CommitMessage>(message, nullptr);
-  ScheduleTransfer(message.seqnum());
+  CommonSend<CommitMessage>(msg, nullptr);
+  ScheduleStateTransfer(msg.seqnum());
 
-  commitSet.Add(message.seqnum(), ReplicaId(), message);
-  TryExecute(message);  // for single replica setup
+  commitSet.Add(msg.seqnum(), ReplicaId(), msg);
+  TryReachCommitPoint(msg);  // for single replica setup
 }
 
-void PbftReplica::TryExecute(const proto::Common &message) {
-  Assert(message.seqnum() <= log.LastOpnum());
-  if (log.Find(message.seqnum())->state == LOG_STATE_COMMITTED ||
-      log.Find(message.seqnum())->state == LOG_STATE_EXECUTED)
-    return;
+void PbftReplica::TryReachCommitPoint(const proto::Common &msg) {
+  Assert(msg.seqnum() <= log.LastOpnum());
+  if (log.Find(msg.seqnum())->state == LOG_STATE_COMMITTED) return;
 
-  if (!CommittedLocal(message.seqnum(), message)) return;
+  if (!CommittedLocal(msg.seqnum(), msg)) return;
 
-  RDebug(PROTOCOL_FMT, "commit point", message.view(), message.seqnum());
-  log.SetStatus(message.seqnum(), LOG_STATE_COMMITTED);
+  RDebug(PROTOCOL_FMT, "commit point", msg.view(), msg.seqnum());
+  log.SetStatus(msg.seqnum(), LOG_STATE_COMMITTED);
 
   for (auto iter = pendingProposalList.begin();
        iter != pendingProposalList.end(); ++iter) {
-    if (iter->seqNum == message.seqnum()) {
+    if (iter->seqNum == msg.seqnum()) {
       iter->timeout->Stop();
       pendingProposalList.erase(iter);
       break;
     }
   }
 
-  opnum_t executing = message.seqnum();
-  if (executing != log.FirstOpnum() &&
-      log.Find(executing - 1)->state != LOG_STATE_EXECUTED)
-    return;
+  opnum_t executing = msg.seqnum();
+  if (lastExecuted != executing - 1) return;
   while (auto *entry = log.Find(executing)) {
-    Assert(entry->state != LOG_STATE_EXECUTED);
     if (entry->state != LOG_STATE_COMMITTED) break;
-    entry->state = LOG_STATE_EXECUTED;
+    entry->state = LOG_STATE_COMMITTED;
 
     const Request &req = log.Find(executing)->request;
     if (clientTable.count(req.clientid()) &&
         clientTable[req.clientid()].lastReqId >= req.clientreqid()) {
       RNotice("Skip execute duplicated; seq = %lu, req = %lu@%lu", executing,
               req.clientreqid(), req.clientid());
+      if (clientTable[req.clientid()].lastReqId == req.clientreqid()) {
+        Assert(clientAddressTable.count(req.clientid()));
+        transport->SendMessage(this, *clientAddressTable[req.clientid()],
+                               PBMessage(clientTable[req.clientid()].reply));
+      }
       executing += 1;
       continue;
     }
@@ -354,6 +356,7 @@ void PbftReplica::TryExecute(const proto::Common &message) {
     reply.set_view(view);
     *reply.mutable_req() = req;
     reply.set_replicaid(ReplicaId());
+    reply.set_speculative(false);
     reply.set_sig(std::string());
     security.GetReplicaSigner(ReplicaId())
         .Sign(reply.SerializeAsString(), *reply.mutable_sig());
@@ -364,9 +367,11 @@ void PbftReplica::TryExecute(const proto::Common &message) {
 
     executing += 1;
   }
+  lastExecuted = executing - 1;
+  // TODO try speculative the following one
 }
 
-void PbftReplica::ScheduleTransfer(opnum_t seqNum) {
+void PbftReplica::ScheduleStateTransfer(opnum_t seqNum) {
   for (auto &pp : pendingProposalList) {
     if (pp.seqNum == seqNum) {
       pp.timeout->Reset();

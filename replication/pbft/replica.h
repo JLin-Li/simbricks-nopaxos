@@ -98,7 +98,7 @@ class PbftReplica : public Replica {
   // system does not need any further preprepare resending to progress replicas
   // schedule state transfer after
   // * they broadcast prepare (backup only) (in HandlePrePrepare)
-  // * they broadcast commit (in TryEnterCommit)
+  // * they broadcast commit (in TryEnterCommitRound)
   // * they received out-of-order preprepare (backup only) (in HandlePrePrepare)
   // currently, a scheduled state transfer only get cancelled when the seqnum
   // reaches commit point i.e. LOG_STATE_COMMITTED, which indicates that no
@@ -133,45 +133,49 @@ class PbftReplica : public Replica {
   };
   std::list<PendingProposal> pendingProposalList;
 
-  // states and utils
+  // core states
   view_t view;
-  opnum_t seqNum;                               // only primary use this
+  opnum_t seqNum;        // only primary use this
+  opnum_t lastExecuted;  // include speculative
+  Log log;
+
+  // readibility helper
   int ReplicaId() const { return replicaIdx; }  // consistent naming to proto
   bool AmPrimary() const {  // following PBFT paper terminology
     return ReplicaId() == configuration.GetLeaderIndex(view);
   };
 
-  Log log;
+  // additional states that keep tracks of each proposal
+  // common data of a proposal includes viewstamp and request signature
   std::unordered_map<opnum_t, proto::Common> commonTable;
   ByzantineProtoQuorumSet<opnum_t, proto::Common> prepareSet, commitSet;
   // prepared(m, v, n, i) where v(view) and i(replica index) should
   // be fixed for each calling
   // theoretically this verb could use const this, but underlying CheckForQuorum
   // does not, and we actually don't need it to do so, so that's it
-  bool Prepared(opnum_t seqNum, const proto::Common &message) {
-    return commonTable.count(seqNum) && Match(commonTable[seqNum], message) &&
-           prepareSet.CheckForQuorum(seqNum, message);
+  bool Prepared(opnum_t seqNum, const proto::Common &msg) {
+    return commonTable.count(seqNum) && Match(commonTable[seqNum], msg) &&
+           prepareSet.CheckForQuorum(seqNum, msg);
   }
-  std::unordered_set<opnum_t> pastPrepared;
   // similar to prepared
-  bool CommittedLocal(opnum_t seqNum, const proto::Common &message) {
-    return Prepared(seqNum, message) &&
-           commitSet.CheckForQuorum(seqNum, message);
+  bool CommittedLocal(opnum_t seqNum, const proto::Common &msg) {
+    return Prepared(seqNum, msg) &&
+           commitSet.CheckForQuorum(seqNum, msg);
   }
-  // no need to record past committed, because no action is required for delayed
-  // commit message
+  bool LoggedPrepared(opnum_t seqNum) {
+    auto *entry = log.Find(seqNum);
+    if (entry == nullptr) return false;
+    return entry->state == LOG_STATE_PREPARED ||
+           entry->state == LOG_STATE_SPECULATIVE ||
+           entry->state == LOG_STATE_COMMITTED;
+  }
 
-  // multi-entry common actions
-  // HandleRequest, HandlePrePrepare
-  // PREPARED state maps to pre-prepared in PBFT
-  void AcceptPrePrepare(proto::PrePrepareMessage message);
-  // AcceptPrePrepare, HandlePrePrepare, HandlePrepare
-  void TryEnterCommit(const proto::Common &message);
-  // TryEnterCommit, HandleCommit
-  void TryExecute(const proto::Common &message);
-
-  // common logic of send prepare/commit message
-  template <typename MsgTy>
+  // common actions
+  void EnterPrepareRound(proto::PrePrepareMessage message);
+  void TryEnterCommitRound(const proto::Common &message);
+  void TryReachCommitPoint(const proto::Common &message);
+  void ScheduleStateTransfer(opnum_t target);
+  template <typename MsgTy>  // PrepareMessage/CommitMessage
   void CommonSend(const proto::Common &common,
                   const TransportAddress *address) {
     proto::ToReplicaMessage m;
@@ -187,8 +191,7 @@ class PbftReplica : public Replica {
     }
   }
 
-  void ScheduleTransfer(opnum_t target);
-
+  // client states, copied from unreplicated/vr
   struct ClientTableEntry {
     uint64_t lastReqId;
     proto::ToClientMessage reply;

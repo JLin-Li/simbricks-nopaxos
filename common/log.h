@@ -52,7 +52,8 @@ enum LogEntryState {
   LOG_STATE_FASTPREPARED,  // fastpaxos only
   LOG_STATE_RECEIVED,      // nopaxos only
   LOG_STATE_NOOP,          // nopaxos only
-  LOG_STATE_EXECUTED,      // granola, pbft
+  LOG_STATE_EXECUTED,      // granola
+  LOG_STATE_PREPREPARED,   // pbft
   LOG_STATE_EMPTY,         // pbft
 };
 
