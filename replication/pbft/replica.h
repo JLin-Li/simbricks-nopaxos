@@ -159,8 +159,7 @@ class PbftReplica : public Replica {
   }
   // similar to prepared
   bool CommittedLocal(opnum_t seqNum, const proto::Common &msg) {
-    return Prepared(seqNum, msg) &&
-           commitSet.CheckForQuorum(seqNum, msg);
+    return Prepared(seqNum, msg) && commitSet.CheckForQuorum(seqNum, msg);
   }
   bool LoggedPrepared(opnum_t seqNum) {
     auto *entry = log.Find(seqNum);
@@ -175,6 +174,9 @@ class PbftReplica : public Replica {
   void TryEnterCommitRound(const proto::Common &message);
   void TryReachCommitPoint(const proto::Common &message);
   void ScheduleStateTransfer(opnum_t target);
+  void TrySpeculative();
+  void ExecuteEntry(LogEntry *entry, bool speculative);
+
   template <typename MsgTy>  // PrepareMessage/CommitMessage
   void CommonSend(const proto::Common &common,
                   const TransportAddress *address) {

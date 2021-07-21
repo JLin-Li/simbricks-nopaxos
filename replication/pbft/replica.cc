@@ -90,9 +90,12 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
       return;
     }
     if (msg.req().clientreqid() == entry.lastReqId) {
-      Notice("Received duplicate request; resending reply");
-      if (!(transport->SendMessage(this, remote, PBMessage(entry.reply)))) {
-        Warning("Failed to resend reply to client");
+      RNotice("Received duplicate request; resending reply");
+      Assert(clientAddressTable.count(msg.req().clientid()));
+      if (!(transport->SendMessage(this,
+                                   *clientAddressTable[msg.req().clientid()],
+                                   PBMessage(entry.reply)))) {
+        RWarning("Failed to resend reply to client");
       }
       return;
     }
@@ -176,8 +179,8 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
   }
 
   opnum_t seqNum = msg.common().seqnum();
-  if (commonTable.count(seqNum) && !Match(commonTable[seqNum], msg.common()))
-    return;
+  // if (commonTable.count(seqNum) && !Match(commonTable[seqNum], msg.common()))
+  if (commonTable.count(seqNum)) return;
 
   // no impl high and low water mark, along with GC
 
@@ -243,6 +246,7 @@ void PbftReplica::HandleStateTransferRequest(
   // TODO view change along with state transfer
   if (commonTable.count(msg.seqnum())) {
     if (AmPrimary()) {
+      RNotice("Send PrePrepare on state transfer demand");
       ToReplicaMessage m;
       PrePrepareMessage &prePrepare = *m.mutable_pre_prepare();
       *prePrepare.mutable_common() = commonTable[msg.seqnum()];
@@ -255,10 +259,12 @@ void PbftReplica::HandleStateTransferRequest(
       prePrepare.mutable_message()->set_relayed(false);  // ok?
       transport->SendMessage(this, remote, PBMessage(m));
     } else {
+      RNotice("Send Prepare on state transfer demand");
       CommonSend<PrepareMessage>(commonTable[msg.seqnum()], &remote);
     }
   }
   if (LoggedPrepared(msg.seqnum())) {
+    RNotice("Send Commit on state transfer demand");
     CommonSend<CommitMessage>(commonTable[msg.seqnum()], &remote);
   }
 };
@@ -290,7 +296,7 @@ void PbftReplica::TryEnterCommitRound(const proto::Common &msg) {
 
   RDebug(PROTOCOL_FMT, "commit", msg.view(), msg.seqnum());
   log.Find(msg.seqnum())->state = LOG_STATE_PREPARED;
-  // TryReachCommitPoint(message, true);  // speculative execution
+  TrySpeculative();
 
   if (AmPrimary()) {
     for (auto iter = pendingPrePrepareList.begin();
@@ -331,44 +337,77 @@ void PbftReplica::TryReachCommitPoint(const proto::Common &msg) {
   opnum_t executing = msg.seqnum();
   if (lastExecuted != executing - 1) return;
   while (auto *entry = log.Find(executing)) {
-    if (entry->state != LOG_STATE_COMMITTED) break;
-    entry->state = LOG_STATE_COMMITTED;
+    // speculative case
+    if (entry->state == LOG_STATE_SPECULATIVE) {
+      Assert(clientTable.count(entry->request.clientid()));
+      Assert(clientTable[entry->request.clientid()].lastReqId ==
+             entry->request.clientreqid());
 
-    const Request &req = log.Find(executing)->request;
-    if (clientTable.count(req.clientid()) &&
-        clientTable[req.clientid()].lastReqId >= req.clientreqid()) {
-      RNotice("Skip execute duplicated; seq = %lu, req = %lu@%lu", executing,
-              req.clientreqid(), req.clientid());
-      if (clientTable[req.clientid()].lastReqId == req.clientreqid()) {
-        Assert(clientAddressTable.count(req.clientid()));
-        transport->SendMessage(this, *clientAddressTable[req.clientid()],
-                               PBMessage(clientTable[req.clientid()].reply));
-      }
+      entry->state = LOG_STATE_COMMITTED;
+      ToClientMessage m = clientTable[entry->request.clientid()].reply;
+      m.mutable_reply()->set_speculative(false);
+      transport->SendMessage(
+          this, *clientAddressTable[entry->request.clientid()], PBMessage(m));
       executing += 1;
       continue;
     }
+    // speculative case end
 
-    ToClientMessage m;
-    proto::ReplyMessage &reply = *m.mutable_reply();
-    UpcallArg arg;
-    arg.isLeader = AmPrimary();
-    Execute(executing, log.Find(executing)->request, reply, &arg);
-    reply.set_view(view);
-    *reply.mutable_req() = req;
-    reply.set_replicaid(ReplicaId());
-    reply.set_speculative(false);
-    reply.set_sig(std::string());
-    security.GetReplicaSigner(ReplicaId())
-        .Sign(reply.SerializeAsString(), *reply.mutable_sig());
-    UpdateClientTable(req, m);
-    if (clientAddressTable.count(req.clientid()))
-      transport->SendMessage(this, *clientAddressTable[req.clientid()],
-                             PBMessage(m));
-
+    if (entry->state != LOG_STATE_COMMITTED) break;
+    entry->state = LOG_STATE_COMMITTED;
+    ExecuteEntry(entry, false);
     executing += 1;
   }
   lastExecuted = executing - 1;
-  // TODO try speculative the following one
+  TrySpeculative();
+}
+
+void PbftReplica::TrySpeculative() {
+  opnum_t executing = lastExecuted + 1;
+  while (auto *entry = log.Find(executing)) {
+    Assert(entry->state != LOG_STATE_SPECULATIVE);
+    Assert(entry->state != LOG_STATE_COMMITTED);
+    if (entry->state != LOG_STATE_PREPARED) break;
+    RDebug(PROTOCOL_FMT, "spec execution", entry->viewstamp.view,
+           entry->viewstamp.opnum);
+    entry->state = LOG_STATE_SPECULATIVE;
+    ExecuteEntry(entry, true);
+    executing += 1;
+  }
+  lastExecuted = executing - 1;
+}
+
+void PbftReplica::ExecuteEntry(LogEntry *entry, bool speculative) {
+  const Request &req = entry->request;
+  opnum_t executing = entry->viewstamp.opnum;
+  if (clientTable.count(req.clientid()) &&
+      clientTable[req.clientid()].lastReqId >= req.clientreqid()) {
+    RNotice("Skip execute duplicated; seq = %lu, req = %lu@%lu", executing,
+            req.clientreqid(), req.clientid());
+    if (clientTable[req.clientid()].lastReqId == req.clientreqid()) {
+      Assert(clientAddressTable.count(req.clientid()));
+      transport->SendMessage(this, *clientAddressTable[req.clientid()],
+                             PBMessage(clientTable[req.clientid()].reply));
+    }
+    return;
+  }
+
+  ToClientMessage m;
+  proto::ReplyMessage &reply = *m.mutable_reply();
+  UpcallArg arg;
+  arg.isLeader = AmPrimary();
+  Execute(executing, log.Find(executing)->request, reply, &arg);
+  reply.set_view(view);
+  *reply.mutable_req() = req;
+  reply.set_replicaid(ReplicaId());
+  reply.set_speculative(speculative);
+  reply.set_sig(std::string());
+  security.GetReplicaSigner(ReplicaId())
+      .Sign(reply.SerializeAsString(), *reply.mutable_sig());
+  UpdateClientTable(req, m);
+  if (clientAddressTable.count(req.clientid()))
+    transport->SendMessage(this, *clientAddressTable[req.clientid()],
+                           PBMessage(m));
 }
 
 void PbftReplica::ScheduleStateTransfer(opnum_t seqNum) {
