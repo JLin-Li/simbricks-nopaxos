@@ -63,30 +63,8 @@ BenchmarkClient::Start()
 {
     n = 0;
 
-    if (tputInterval > 0) {
-        msSinceStart = 0;
-        opLastInterval = n;
-        transport.Timer(tputInterval, std::bind(&BenchmarkClient::TimeInterval,
-                    this));
-    }
     gettimeofday(&startTime, nullptr);
     SendNext();
-}
-
-void
-BenchmarkClient::TimeInterval()
-{
-    if (done) {
-        return;
-    }
-
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    msSinceStart += tputInterval;
-    Notice("Completed %d requests at %lu ms", n-opLastInterval, (((tv.tv_sec*1000000+tv.tv_usec)/1000)/10)*10);
-    opLastInterval = n;
-    transport.Timer(tputInterval, std::bind(&BenchmarkClient::TimeInterval,
-					    this));
 }
 
 void
@@ -115,6 +93,11 @@ BenchmarkClient::OnReply(const string &request, const string &reply)
 
     gettimeofday(&endTime, NULL);
     struct timeval diff = timeval_sub(endTime, startTime);
+
+    if (tputInterval > 0) {
+        uint64_t ms = (((endTime.tv_sec*1000000+endTime.tv_usec)/1000)/tputInterval)*tputInterval;
+        throughputs[ms]++;
+    }
 
     if (diff.tv_sec >= duration) {
         Finish();

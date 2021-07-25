@@ -299,11 +299,15 @@ int main(int argc, char **argv)
             Latency_t sum;
             _Latency_Init(&sum, "total");
             std::map<int, int> agg_latencies;
+            std::map<uint64_t, int> agg_throughputs;
             uint64_t agg_ops = 0;
             for (unsigned int i = 0; i < benchClients.size(); i++) {
                 Latency_Sum(&sum, &benchClients[i]->latency);
                 for (const auto &kv : benchClients[i]->latencies) {
                     agg_latencies[kv.first] += kv.second;
+                }
+                for (const auto &kv : benchClients[i]->throughputs) {
+                    agg_throughputs[kv.first] += kv.second * (1000/tputInterval);
                 }
                 agg_ops += benchClients[i]->completedOps;
             }
@@ -369,6 +373,14 @@ done:
                 for (const auto &kv : agg_latencies) {
                     fs << kv.first << " " << kv.second << std::endl;
                 }
+                fs.close();
+                if (agg_throughputs.size() > 0) {
+                    fs.open(statsFile.append("_tputs").c_str());
+                    for (const auto &kv : agg_throughputs) {
+                        fs << kv.first << " " << kv.second << std::endl;
+                    }
+                }
+                fs.close();
             }
             exit(0);
         });
