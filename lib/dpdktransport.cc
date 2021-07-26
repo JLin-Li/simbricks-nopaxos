@@ -28,7 +28,14 @@ static const Preamble NONFRAG_MAGIC = 0x20050318;
 
 DPDKTransportAddress::DPDKTransportAddress(const std::string &s)
 {
-    Parse(s);
+    const char *p = s.data();
+    ether_addr_ = *(struct rte_ether_addr *)p;
+    p += sizeof(ether_addr_);
+    ip_addr_ = *(rte_be32_t *)p;
+    p += sizeof(ip_addr_);
+    udp_addr_ = *(rte_be16_t *)p;
+    p += sizeof(udp_addr_);
+    dev_port_ = *(uint16_t *)p;
 }
 
 DPDKTransportAddress::DPDKTransportAddress(const struct rte_ether_addr &ether_addr,
@@ -42,30 +49,6 @@ DPDKTransportAddress *
 DPDKTransportAddress::clone() const
 {
     return new DPDKTransportAddress(*this);
-}
-
-std::string
-DPDKTransportAddress::Serialize() const
-{
-    std::string s;
-    s.append((const char *)&ether_addr_, sizeof(ether_addr_));
-    s.append((const char *)&ip_addr_, sizeof(ip_addr_));
-    s.append((const char *)&udp_addr_, sizeof(udp_addr_));
-    s.append((const char *)&dev_port_, sizeof(dev_port_));
-    return s;
-}
-
-void
-DPDKTransportAddress::Parse(const std::string &s)
-{
-    const char *p = s.data();
-    ether_addr_ = *(struct rte_ether_addr *)p;
-    p += sizeof(ether_addr_);
-    ip_addr_ = *(rte_be32_t *)p;
-    p += sizeof(ip_addr_);
-    udp_addr_ = *(rte_be16_t *)p;
-    p += sizeof(udp_addr_);
-    dev_port_ = *(uint16_t *)p;
 }
 
 bool
@@ -225,7 +208,7 @@ DPDKTransport::RegisterInternal(TransportReceiver *receiver,
     }
 
     receiver_ = receiver;
-    receiver_addr_ = new DPDKTransportAddress(LookupAddress(*addr));
+    receiver_addr_ = new DPDKTransportAddress(LookupAddressInternal(*addr));
     receiver->SetAddress(receiver_addr_);
 }
 
@@ -236,7 +219,7 @@ DPDKTransport::ListenOnMulticast(TransportReceiver *receiver,
     if (multicast_addr_ != nullptr) {
         return;
     }
-    multicast_addr_ = LookupAddress(*config.multicast()).clone();
+    multicast_addr_ = LookupAddressInternal(*config.multicast()).clone();
 }
 
 void
@@ -383,7 +366,7 @@ DPDKTransport::SendMessageInternal(TransportReceiver *src,
 }
 
 DPDKTransportAddress
-DPDKTransport::LookupAddress(const ReplicaAddress &addr)
+DPDKTransport::LookupAddressInternal(const ReplicaAddress &addr) const
 {
     struct rte_ether_addr ether_addr;
     if (rte_ether_unformat_addr(addr.dev.data(), &ether_addr) != 0) {
@@ -400,6 +383,19 @@ DPDKTransport::LookupAddress(const ReplicaAddress &addr)
     }
     rte_be16_t udp_addr = rte_cpu_to_be_16(udp_port);
     return DPDKTransportAddress(ether_addr, ip_addr, udp_addr, addr.dev_port);
+}
+
+ReplicaAddress
+DPDKTransport::ReverseLookupAddress(const TransportAddress &addr) const
+{
+    const DPDKTransportAddress *da = dynamic_cast<const DPDKTransportAddress *>(&addr);
+    char host_buf[16], dev_buf[16];
+    inet_ntop(AF_INET, &(da->ip_addr_), host_buf, 16);
+    rte_ether_format_addr(dev_buf, 16, &(da->ether_addr_));
+    return ReplicaAddress(std::string(host_buf),
+                          std::to_string(rte_be_to_cpu_16(da->udp_addr_)),
+                          std::string(dev_buf),
+                          da->dev_port_);
 }
 
 void

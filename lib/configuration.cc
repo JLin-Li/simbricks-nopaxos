@@ -49,6 +49,36 @@ ReplicaAddress::ReplicaAddress(const string &host, const string &port,
 
 }
 
+ReplicaAddress::ReplicaAddress(const string &addr)
+{
+    size_t start = 0, end;
+    auto Parse = [&] () {
+        end = addr.find('|', start);
+        size_t s = start;
+        start = end + 1;
+        return addr.substr(s, end-s);
+    };
+
+    host = Parse();
+    port = Parse();
+    dev = Parse();
+    dev_port = stoi(Parse());
+}
+
+string
+ReplicaAddress::Serialize() const
+{
+    string s;
+    s.append(host);
+    s.append("|");
+    s.append(port);
+    s.append("|");
+    s.append(dev);
+    s.append("|");
+    s.append(std::to_string(dev_port));
+    return s;
+}
+
 bool
 ReplicaAddress::operator==(const ReplicaAddress &other) const {
     return ((host == other.host) &&

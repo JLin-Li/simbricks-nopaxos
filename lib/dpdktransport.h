@@ -19,8 +19,6 @@ public:
                          rte_be16_t udp_addr,
                          uint16_t dev_port);
     virtual DPDKTransportAddress * clone() const override;
-    virtual std::string Serialize() const override;
-    virtual void Parse(const std::string &s) override;
 
 private:
     struct rte_ether_addr ether_addr_;
@@ -51,6 +49,8 @@ public:
     virtual int Timer(uint64_t ms, timer_callback_t cb) override;
     virtual bool CancelTimer(int id) override;
     virtual void CancelAllTimers() override;
+    virtual ReplicaAddress
+    ReverseLookupAddress(const TransportAddress &addr) const override;
 
 private:
     struct DPDKTransportTimerInfo
@@ -78,7 +78,7 @@ private:
                                      const DPDKTransportAddress &dst,
                                      const Message &m) override;
     virtual DPDKTransportAddress
-    LookupAddress(const ReplicaAddress &addr) override;
+    LookupAddressInternal(const ReplicaAddress &addr) const override;
     void RunTransport(int tid);
     bool FilterPacket(const DPDKTransportAddress &addr);
     static void TimerCallback(struct rte_timer *timer, void *arg);

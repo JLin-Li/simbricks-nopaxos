@@ -74,8 +74,8 @@ public:
 protected:
     Configuration config;
     Transport *transport;
-
     uint64_t clientid;
+    ReplicaAddress *node_addr_;
 };
 
 } // namespace dsnet

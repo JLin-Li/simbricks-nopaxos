@@ -52,10 +52,12 @@ struct ReplicaAddress
     int dev_port;
     ReplicaAddress(const string &host, const string &port,
                    const string &dev = "", int dev_port = -1);
+    ReplicaAddress(const string &addr);
     bool operator==(const ReplicaAddress &other) const;
     inline bool operator!=(const ReplicaAddress &other) const {
         return !(*this == other);
     }
+    string Serialize() const;
 };
 
 class Configuration

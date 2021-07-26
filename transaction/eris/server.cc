@@ -156,8 +156,6 @@ ErisServer::ErisServer(const Configuration &config, int myShard, int myIdx,
     } else {
         this->leaderSyncHeardTimeout->Start();
     }
-
-    client_addr_ = myAddress->clone();
 }
 
 ErisServer::~ErisServer()
@@ -175,7 +173,6 @@ ErisServer::~ErisServer()
     delete this->epochChangeAckTimeout;
     delete this->ecStateTransferTimeout;
     delete this->ecStateTransferAckTimeout;
-    delete client_addr_;
 }
 
 void
@@ -1096,11 +1093,13 @@ ErisServer::ProcessNextOperation(const RequestMessage &msg,
             reply.mutable_view()->set_sess_num(vs.sessnum);
             reply.set_op_num(vs.opnum);
 
-            client_addr_->Parse(msg.request().clientaddr());
-            if (!this->transport->SendMessage(this, *client_addr_,
+            TransportAddress *client_addr = transport->LookupAddress(
+                    ReplicaAddress(msg.request().clientaddr()));
+            if (!this->transport->SendMessage(this, *client_addr,
                         ErisMessage(reply))) {
                 RWarning("Failed to send reply to client");
             }
+            delete client_addr;
         }
     }
 
@@ -1205,11 +1204,14 @@ ErisServer::ExecuteUptoOp(opnum_t opnum) {
                         entry.reply.mutable_view()->set_sess_num(this->sessnum);
                         entry.reply.set_op_num(op);
 
-                        client_addr_->Parse(logEntry->request.clientaddr());
-                        if (!this->transport->SendMessage(this, *client_addr_,
+                        TransportAddress *client_addr =
+                            transport->LookupAddress(
+                                    ReplicaAddress(logEntry->request.clientaddr()));
+                        if (!this->transport->SendMessage(this, *client_addr,
                                         ErisMessage(entry.reply))) {
                                 RWarning("Failed to send reply to client");
                         }
+                        delete client_addr;
                     }
                     continue;
                 }
@@ -1297,11 +1299,14 @@ ErisServer::ExecuteTxn(opnum_t opnum) {
         cte.replied = true;
         cte.reply = reply;
 
-        client_addr_->Parse(logEntry->request.clientaddr());
-        if (!this->transport->SendMessage(this, *client_addr_,
+        TransportAddress *client_addr =
+            transport->LookupAddress(
+                    ReplicaAddress(logEntry->request.clientaddr()));
+        if (!this->transport->SendMessage(this, *client_addr,
                     ErisMessage(reply))) {
             RWarning("Failed to send reply to client");
         }
+        delete client_addr;
     }
 }
 

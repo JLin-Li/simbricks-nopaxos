@@ -35,19 +35,19 @@ namespace dsnet {
 
 TransportReceiver::~TransportReceiver()
 {
-    delete this->myAddress;
+    delete transport_addr_;
 }
 
 void
 TransportReceiver::SetAddress(const TransportAddress *addr)
 {
-    this->myAddress = addr;
+    transport_addr_ = addr;
 }
 
 const TransportAddress &
 TransportReceiver::GetAddress()
 {
-    return *(this->myAddress);
+    return *transport_addr_;
 }
 
 Timeout::Timeout(Transport *transport, uint64_t ms, timer_callback_t cb)
