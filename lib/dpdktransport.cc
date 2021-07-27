@@ -11,7 +11,7 @@
 namespace dsnet {
 
 #define TIMER_RESOLUTION_MS 1
-#define NUM_MBUFS 2048
+#define NUM_MBUFS 8192
 #define MAX_PKT_BURST 32
 #define MEMPOOL_CACHE_SIZE 256
 #define RTE_RX_DESC 4096
