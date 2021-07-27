@@ -66,9 +66,9 @@ private:
         RUNNING,
         STOPPED,
     } status_;
-    TransportReceiver *receiver_;
-    DPDKTransportAddress *receiver_addr_;
+    std::unordered_map<uint16_t, TransportReceiver *> receivers_;
     DPDKTransportAddress *multicast_addr_;
+    std::vector<TransportReceiver *> multicast_receivers_;
     std::unordered_map<int, DPDKTransportTimerInfo *> timers_;
     std::mutex timers_lock_;
     int last_timer_id_;
@@ -80,7 +80,7 @@ private:
     virtual DPDKTransportAddress
     LookupAddressInternal(const ReplicaAddress &addr) const override;
     void RunTransport(int tid);
-    bool FilterPacket(const DPDKTransportAddress &addr);
+    TransportReceiver *RouteToReceiver(const DPDKTransportAddress &addr);
     static void TimerCallback(struct rte_timer *timer, void *arg);
     void OnTimer(DPDKTransportTimerInfo *info);
 };

@@ -86,8 +86,7 @@ ConstructArguments(int argc, char **argv, const std::string &cmdline)
 
 DPDKTransport::DPDKTransport(int dev_port, double drop_rate, const std::string &cmdline)
     : dev_port_(dev_port), drop_rate_(drop_rate), status_(STOPPED),
-    receiver_(nullptr), receiver_addr_(nullptr), multicast_addr_(nullptr),
-    last_timer_id_(0)
+    multicast_addr_(nullptr), last_timer_id_(0)
 {
     // Initialize DPDK
     int argc = 4;
@@ -189,7 +188,6 @@ DPDKTransport::DPDKTransport(int dev_port, double drop_rate, const std::string &
 
 DPDKTransport::~DPDKTransport()
 {
-    delete receiver_addr_;
     delete multicast_addr_;
 }
 
@@ -198,13 +196,10 @@ DPDKTransport::RegisterInternal(TransportReceiver *receiver,
                                 const ReplicaAddress *addr,
                                 int group_id, int replica_id)
 {
-    if (receiver_ != nullptr) {
-        // TODO: currently only support one transport receiver
-        Panic("DPDKTransport currently only supports one transport receiver");
-    }
-    receiver_ = receiver;
-    receiver_addr_ = new DPDKTransportAddress(LookupAddressInternal(*addr));
-    receiver->SetAddress(receiver_addr_);
+    ASSERT(addr != nullptr);
+    DPDKTransportAddress *da = new DPDKTransportAddress(LookupAddressInternal(*addr));
+    receiver->SetAddress(da);
+    receivers_[da->udp_addr_] = receiver;
 }
 
 void
@@ -215,12 +210,13 @@ DPDKTransport::ListenOnMulticast(TransportReceiver *receiver,
         return;
     }
     multicast_addr_ = LookupAddressInternal(*config.multicast()).clone();
+    multicast_receivers_.push_back(receiver);
 }
 
 void
 DPDKTransport::Run()
 {
-    if (receiver_addr_ == nullptr) {
+    if (receivers_.empty()) {
         Panic("No transport receiver registered");
     }
     status_ = RUNNING;
@@ -419,31 +415,39 @@ DPDKTransport::RunTransport(int tid)
             struct rte_udp_hdr *udp_hdr;
             size_t offset = 0;
             ether_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ether_hdr*, offset);
-            offset += RTE_ETHER_HDR_LEN;
-            ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
-            offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) * RTE_IPV4_IHL_MULTIPLIER;
-            udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
-            offset += sizeof(struct rte_udp_hdr);
+            if (ether_hdr->ether_type ==
+                    rte_be_to_cpu_16(RTE_ETHER_TYPE_IPV4)) {
+                offset += RTE_ETHER_HDR_LEN;
+                ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
+                if (ip_hdr->next_proto_id == IPPROTO_UDP) {
+                    offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) *
+                        RTE_IPV4_IHL_MULTIPLIER;
+                    udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
+                    offset += sizeof(struct rte_udp_hdr);
 
-            // Deliver packet
-            if (FilterPacket(DPDKTransportAddress(ether_hdr->d_addr,
-                                                  ip_hdr->dst_addr,
-                                                  udp_hdr->dst_port))) {
-                void *msg_buf = rte_pktmbuf_mtod_offset(m, void*, offset);
-                char *ptr = (char *)msg_buf;
-                Preamble magic = *(Preamble *)ptr;
-                ptr += sizeof(Preamble);
+                    // Deliver packet
+                    TransportReceiver *receiver =
+                        RouteToReceiver(DPDKTransportAddress(ether_hdr->d_addr,
+                                                             ip_hdr->dst_addr,
+                                                             udp_hdr->dst_port));
+                    if (receiver != nullptr) {
+                        void *msg_buf = rte_pktmbuf_mtod_offset(m, void*, offset);
+                        char *ptr = (char *)msg_buf;
+                        Preamble magic = *(Preamble *)ptr;
+                        ptr += sizeof(Preamble);
 
-                if (magic == NONFRAG_MAGIC) {
-                    // Construct source address
-                    DPDKTransportAddress src(ether_hdr->s_addr,
-                                             ip_hdr->src_addr,
-                                             udp_hdr->src_port);
-                    receiver_->ReceiveMessage(src,
-                                              ptr,
-                                              rte_be_to_cpu_16(udp_hdr->dgram_len)
-                                              - sizeof(struct rte_udp_hdr)
-                                              - sizeof(Preamble));
+                        if (magic == NONFRAG_MAGIC) {
+                            // Construct source address
+                            DPDKTransportAddress src(ether_hdr->s_addr,
+                                                     ip_hdr->src_addr,
+                                                     udp_hdr->src_port);
+                            receiver->ReceiveMessage(src,
+                                                     ptr,
+                                                     rte_be_to_cpu_16(udp_hdr->dgram_len)
+                                                     - sizeof(struct rte_udp_hdr)
+                                                     - sizeof(Preamble));
+                        }
+                    }
                 }
             }
             rte_pktmbuf_free(m);
@@ -451,16 +455,17 @@ DPDKTransport::RunTransport(int tid)
     }
 }
 
-bool
-DPDKTransport::FilterPacket(const DPDKTransportAddress &addr)
+TransportReceiver *
+DPDKTransport::RouteToReceiver(const DPDKTransportAddress &addr)
 {
-    if (receiver_ == nullptr) {
-        return false;
+    if (multicast_addr_ != nullptr && addr == *multicast_addr_) {
+        // For multicast packets, just deliver to the first receiver
+        return multicast_receivers_.empty() ? nullptr :
+                                              multicast_receivers_.front();
     }
-
-    // Only accept multicast packets and packets destined to the receiver
-    return (multicast_addr_ != nullptr && addr == *multicast_addr_) ||
-        (addr == *receiver_addr_);
+    auto it = receivers_.find(addr.udp_addr_);
+    return it == receivers_.end() ? nullptr :
+                                    it->second;
 }
 
 void
