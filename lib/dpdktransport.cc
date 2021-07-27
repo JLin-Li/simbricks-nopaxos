@@ -19,7 +19,6 @@ namespace dsnet {
 #define IPV4_HDR_SIZE 5
 #define IPV4_TTL 0xFF
 
-thread_local static uint16_t thread_dev_port;
 thread_local static int thread_rx_queue_id;
 thread_local static int thread_tx_queue_id;
 
@@ -34,16 +33,12 @@ DPDKTransportAddress::DPDKTransportAddress(const std::string &s)
     ip_addr_ = *(rte_be32_t *)p;
     p += sizeof(ip_addr_);
     udp_addr_ = *(rte_be16_t *)p;
-    p += sizeof(udp_addr_);
-    dev_port_ = *(uint16_t *)p;
 }
 
 DPDKTransportAddress::DPDKTransportAddress(const struct rte_ether_addr &ether_addr,
                                            rte_be32_t ip_addr,
-                                           rte_be16_t udp_addr,
-                                           uint16_t dev_port)
-    : ether_addr_(ether_addr), ip_addr_(ip_addr), udp_addr_(udp_addr),
-    dev_port_(dev_port) { }
+                                           rte_be16_t udp_addr)
+    : ether_addr_(ether_addr), ip_addr_(ip_addr), udp_addr_(udp_addr) { }
 
 DPDKTransportAddress *
 DPDKTransportAddress::clone() const
@@ -54,7 +49,6 @@ DPDKTransportAddress::clone() const
 bool
 operator==(const DPDKTransportAddress &a, const DPDKTransportAddress &b)
 {
-    // Do not compare device port number
     return (memcmp(&a.ether_addr_, &b.ether_addr_, sizeof(a.ether_addr_)) == 0 &&
             a.ip_addr_ == b.ip_addr_ &&
             a.udp_addr_ == b.udp_addr_);
@@ -90,8 +84,8 @@ ConstructArguments(int argc, char **argv, const std::string &cmdline)
     }
 }
 
-DPDKTransport::DPDKTransport(double drop_rate, const std::string &cmdline)
-    : drop_rate_(drop_rate), status_(STOPPED),
+DPDKTransport::DPDKTransport(int dev_port, double drop_rate, const std::string &cmdline)
+    : dev_port_(dev_port), drop_rate_(drop_rate), status_(STOPPED),
     receiver_(nullptr), receiver_addr_(nullptr), multicast_addr_(nullptr),
     last_timer_id_(0)
 {
@@ -127,6 +121,70 @@ DPDKTransport::DPDKTransport(double drop_rate, const std::string &cmdline)
     if (rte_timer_subsystem_init() != 0) {
         Panic("rte_timer_subsystem_init failed");
     }
+
+    // Initialize port
+    struct rte_eth_conf port_conf;
+    memset(&port_conf, 0, sizeof(port_conf));
+    port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
+    port_conf.rx_adv_conf.rss_conf.rss_key = nullptr;
+    //port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_NONFRAG_IPV4_UDP;
+
+    struct rte_eth_dev_info dev_info;
+    if (rte_eth_dev_info_get(dev_port_, &dev_info) != 0) {
+        Panic("rte_eth_dev_info_get failed");
+    }
+    if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE) {
+        port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
+    }
+
+    int num_rx_queues = 1;
+    int num_tx_queues = 1;
+    if (rte_eth_dev_configure(dev_port_,
+                              num_rx_queues,
+                              num_tx_queues,
+                              &port_conf) < 0) {
+        Panic("rte_eth_dev_configure failed");
+    }
+    uint16_t nb_rxd = RTE_RX_DESC, nb_txd = RTE_TX_DESC;
+    if (rte_eth_dev_adjust_nb_rx_tx_desc(dev_port_, &nb_rxd, &nb_txd) < 0) {
+        Panic("rte_eth_dev_adjust_nb_rx_tx_desc failed");
+    }
+
+    // Initialize RX queues
+    struct rte_eth_rxconf rxconf = dev_info.default_rxconf;
+    rxconf.offloads = port_conf.rxmode.offloads;
+    for (int i = 0; i < num_rx_queues; i++) {
+        if (rte_eth_rx_queue_setup(dev_port_,
+                                   i,
+                                   nb_rxd,
+                                   rte_eth_dev_socket_id(dev_port_),
+                                   &rxconf,
+                                   pktmbuf_pool_) < 0) {
+            Panic("rte_eth_rx_queue_setup failed");
+        }
+    }
+
+    // Initialize TX queues
+    struct rte_eth_txconf txconf = dev_info.default_txconf;
+    txconf.offloads = port_conf.txmode.offloads;
+    for (int i = 0; i < num_tx_queues; i++) {
+        if (rte_eth_tx_queue_setup(dev_port_,
+                                   i,
+                                   nb_txd,
+                                   rte_eth_dev_socket_id(dev_port_),
+                                   &txconf) < 0) {
+            Panic("rte_eth_tx_queue_setup failed");
+        }
+    }
+
+    // Start device
+    if (rte_eth_dev_start(dev_port_) < 0) {
+        Panic("rte_eth_dev_start failed");
+    }
+    if (rte_eth_promiscuous_enable(dev_port_) != 0) {
+        Panic("rte_eth_promiscuous_enable failed");
+    }
+
 }
 
 DPDKTransport::~DPDKTransport()
@@ -144,69 +202,6 @@ DPDKTransport::RegisterInternal(TransportReceiver *receiver,
         // TODO: currently only support one transport receiver
         Panic("DPDKTransport currently only supports one transport receiver");
     }
-    // Initialize port
-    struct rte_eth_conf port_conf;
-    memset(&port_conf, 0, sizeof(port_conf));
-    port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
-    port_conf.rx_adv_conf.rss_conf.rss_key = nullptr;
-    //port_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_NONFRAG_IPV4_UDP;
-
-    struct rte_eth_dev_info dev_info;
-    if (rte_eth_dev_info_get(addr->dev_port, &dev_info) != 0) {
-        Panic("rte_eth_dev_info_get failed");
-    }
-    if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE) {
-        port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
-    }
-
-    int num_rx_queues = 1;
-    int num_tx_queues = 1;
-    if (rte_eth_dev_configure(addr->dev_port,
-                              num_rx_queues,
-                              num_tx_queues,
-                              &port_conf) < 0) {
-        Panic("rte_eth_dev_configure failed");
-    }
-    uint16_t nb_rxd = RTE_RX_DESC, nb_txd = RTE_TX_DESC;
-    if (rte_eth_dev_adjust_nb_rx_tx_desc(addr->dev_port, &nb_rxd, &nb_txd) < 0) {
-        Panic("rte_eth_dev_adjust_nb_rx_tx_desc failed");
-    }
-
-    // Initialize RX queues
-    struct rte_eth_rxconf rxconf = dev_info.default_rxconf;
-    rxconf.offloads = port_conf.rxmode.offloads;
-    for (int i = 0; i < num_rx_queues; i++) {
-        if (rte_eth_rx_queue_setup(addr->dev_port,
-                                   i,
-                                   nb_rxd,
-                                   rte_eth_dev_socket_id(addr->dev_port),
-                                   &rxconf,
-                                   pktmbuf_pool_) < 0) {
-            Panic("rte_eth_rx_queue_setup failed");
-        }
-    }
-
-    // Initialize TX queues
-    struct rte_eth_txconf txconf = dev_info.default_txconf;
-    txconf.offloads = port_conf.txmode.offloads;
-    for (int i = 0; i < num_tx_queues; i++) {
-        if (rte_eth_tx_queue_setup(addr->dev_port,
-                                   i,
-                                   nb_txd,
-                                   rte_eth_dev_socket_id(addr->dev_port),
-                                   &txconf) < 0) {
-            Panic("rte_eth_tx_queue_setup failed");
-        }
-    }
-
-    // Start device
-    if (rte_eth_dev_start(addr->dev_port) < 0) {
-        Panic("rte_eth_dev_start failed");
-    }
-    if (rte_eth_promiscuous_enable(addr->dev_port) != 0) {
-        Panic("rte_eth_promiscuous_enable failed");
-    }
-
     receiver_ = receiver;
     receiver_addr_ = new DPDKTransportAddress(LookupAddressInternal(*addr));
     receiver->SetAddress(receiver_addr_);
@@ -230,7 +225,6 @@ DPDKTransport::Run()
     }
     status_ = RUNNING;
     // Currently only use master core for transport
-    thread_dev_port = receiver_addr_->dev_port_;
     thread_rx_queue_id = 0;
     thread_tx_queue_id = 0;
     RunTransport(0);
@@ -357,7 +351,7 @@ DPDKTransport::SendMessageInternal(TransportReceiver *src,
     ptr += sizeof(Preamble);
     m.Serialize(ptr);
     /* Send packet */
-    if (rte_eth_tx_burst(thread_dev_port, thread_tx_queue_id, &mbuf, 1) == 1) {
+    if (rte_eth_tx_burst(dev_port_, thread_tx_queue_id, &mbuf, 1) == 1) {
         return true;
     } else {
         rte_pktmbuf_free(mbuf);
@@ -382,7 +376,7 @@ DPDKTransport::LookupAddressInternal(const ReplicaAddress &addr) const
         udp_port = rand() % 65535;
     }
     rte_be16_t udp_addr = rte_cpu_to_be_16(udp_port);
-    return DPDKTransportAddress(ether_addr, ip_addr, udp_addr, addr.dev_port);
+    return DPDKTransportAddress(ether_addr, ip_addr, udp_addr);
 }
 
 ReplicaAddress
@@ -394,8 +388,7 @@ DPDKTransport::ReverseLookupAddress(const TransportAddress &addr) const
     rte_ether_format_addr(dev_buf, 16, &(da->ether_addr_));
     return ReplicaAddress(std::string(host_buf),
                           std::to_string(rte_be_to_cpu_16(da->udp_addr_)),
-                          std::string(dev_buf),
-                          da->dev_port_);
+                          std::string(dev_buf));
 }
 
 void
@@ -414,7 +407,7 @@ DPDKTransport::RunTransport(int tid)
             rte_timer_manage();
             prev_tsc = cur_tsc;
         }
-        n_rx = rte_eth_rx_burst(thread_dev_port,
+        n_rx = rte_eth_rx_burst(dev_port_,
                                 thread_rx_queue_id,
                                 pkt_burst,
                                 MAX_PKT_BURST);
@@ -435,8 +428,7 @@ DPDKTransport::RunTransport(int tid)
             // Deliver packet
             if (FilterPacket(DPDKTransportAddress(ether_hdr->d_addr,
                                                   ip_hdr->dst_addr,
-                                                  udp_hdr->dst_port,
-                                                  thread_dev_port))) {
+                                                  udp_hdr->dst_port))) {
                 void *msg_buf = rte_pktmbuf_mtod_offset(m, void*, offset);
                 char *ptr = (char *)msg_buf;
                 Preamble magic = *(Preamble *)ptr;
@@ -446,8 +438,7 @@ DPDKTransport::RunTransport(int tid)
                     // Construct source address
                     DPDKTransportAddress src(ether_hdr->s_addr,
                                              ip_hdr->src_addr,
-                                             udp_hdr->src_port,
-                                             thread_dev_port);
+                                             udp_hdr->src_port);
                     receiver_->ReceiveMessage(src,
                                               ptr,
                                               rte_be_to_cpu_16(udp_hdr->dgram_len)

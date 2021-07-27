@@ -16,15 +16,13 @@ public:
     DPDKTransportAddress(const std::string &s);
     DPDKTransportAddress(const struct rte_ether_addr &ether_addr,
                          rte_be32_t ip_addr,
-                         rte_be16_t udp_addr,
-                         uint16_t dev_port);
+                         rte_be16_t udp_addr);
     virtual DPDKTransportAddress * clone() const override;
 
 private:
     struct rte_ether_addr ether_addr_;
     rte_be32_t ip_addr_;
     rte_be16_t udp_addr_;
-    uint16_t dev_port_;
 
     friend bool operator==(const DPDKTransportAddress &a,
                            const DPDKTransportAddress &b);
@@ -37,7 +35,8 @@ private:
 class DPDKTransport : public TransportCommon<DPDKTransportAddress>
 {
 public:
-    DPDKTransport(double drop_rate = 0.0, const std::string &cmdline = "");
+    DPDKTransport(int dev_port, double drop_rate = 0.0,
+                  const std::string &cmdline = "");
     virtual ~DPDKTransport();
     virtual void RegisterInternal(TransportReceiver *receiver,
                                   const ReplicaAddress *addr,
@@ -61,6 +60,7 @@ private:
         int id;
     };
 
+    int dev_port_;
     double drop_rate_;
     volatile enum {
         RUNNING,

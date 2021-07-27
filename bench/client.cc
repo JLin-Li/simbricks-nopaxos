@@ -240,13 +240,13 @@ int main(int argc, char **argv)
             transport = new dsnet::UDPTransport(0, 0);
             break;
         case TRANSPORT_DPDK:
-            transport = new dsnet::DPDKTransport(0, transport_cmdline);
+            transport = new dsnet::DPDKTransport(dev_port, 0, transport_cmdline);
             break;
     }
 
     std::vector<dsnet::Client *> clients;
     std::vector<dsnet::BenchmarkClient *> benchClients;
-    dsnet::ReplicaAddress addr(host, "0", dev, dev_port);
+    dsnet::ReplicaAddress addr(host, "0", dev);
 
     for (int i = 0; i < numClients; i++) {
         dsnet::Client *client;

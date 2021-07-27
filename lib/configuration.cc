@@ -43,8 +43,8 @@ namespace dsnet {
 ReplicaAddress ParseReplicaAddress(const char *);
 
 ReplicaAddress::ReplicaAddress(const string &host, const string &port,
-                               const string &dev, int dev_port)
-    : host(host), port(port), dev(dev), dev_port(dev_port)
+                               const string &dev)
+    : host(host), port(port), dev(dev)
 {
 
 }
@@ -62,7 +62,6 @@ ReplicaAddress::ReplicaAddress(const string &addr)
     host = Parse();
     port = Parse();
     dev = Parse();
-    dev_port = stoi(Parse());
 }
 
 string
@@ -74,17 +73,14 @@ ReplicaAddress::Serialize() const
     s.append(port);
     s.append("|");
     s.append(dev);
-    s.append("|");
-    s.append(std::to_string(dev_port));
     return s;
 }
 
 bool
 ReplicaAddress::operator==(const ReplicaAddress &other) const {
-    return ((host == other.host) &&
-            (port == other.port) &&
-            (dev == other.dev) &&
-            (dev_port == other.dev_port));
+    return (host == other.host) &&
+           (port == other.port) &&
+           (dev == other.dev);
 }
 
 
@@ -276,15 +272,13 @@ ParseReplicaAddress(const char *name)
 
     char *host = strtok(arg, ":");
     char *port = strtok(nullptr, "|");
-    char *dev = strtok(nullptr, "|");
-    char *dev_port = strtok(nullptr, "");
+    char *dev = strtok(nullptr, "");
     if (!host || !port) {
-        Panic("Configuration line format: '%s host:port[|dev|dev_port]'", name);
+        Panic("Configuration line format: '%s host:port[|dev]'", name);
     }
 
     return ReplicaAddress(string(host), string(port),
-                          dev == nullptr ? "" : string(dev),
-                          dev_port == nullptr ? -1 : std::stoul(dev_port));
+                          dev == nullptr ? "" : string(dev));
 }
 
 } // namespace dsnet
