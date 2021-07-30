@@ -57,8 +57,6 @@ class TransportAddress
 public:
     virtual ~TransportAddress() { }
     virtual TransportAddress *clone() const = 0;
-    virtual std::string Serialize() const = 0;
-    virtual void Parse(const std::string &s) = 0;
 };
 
 class TransportReceiver
@@ -71,7 +69,7 @@ public:
                                 void *buf, size_t size) = 0;
 
 protected:
-    const TransportAddress *myAddress;
+    const TransportAddress *transport_addr_;
 };
 
 typedef std::function<void (void)> timer_callback_t;
@@ -88,6 +86,10 @@ public:
     virtual void RegisterAddress(TransportReceiver *receiver,
                                  const Configuration &config,
                                  const ReplicaAddress *addr) = 0;
+    virtual TransportAddress *
+    LookupAddress(const dsnet::ReplicaAddress &addr) const = 0;
+    virtual ReplicaAddress
+    ReverseLookupAddress(const TransportAddress &addr) const = 0;
     virtual void ListenOnMulticast(TransportReceiver *receiver,
                                    const Configuration &config) = 0;
     virtual bool SendMessage(TransportReceiver *src,

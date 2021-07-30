@@ -48,12 +48,12 @@ public:
     bool done;
     int tputInterval;
     std::map<int, int> latencies;
+    std::map<uint64_t, int> throughputs;
     uint64_t completedOps;
 
 private:
     void SendNext();
     void Finish();
-    void TimeInterval();
     Client &client;
     Transport &transport;
     int duration;
@@ -61,8 +61,6 @@ private:
     int n;
     struct timeval startTime;
     struct timeval endTime;
-    int msSinceStart;
-    int opLastInterval;
 };
 
 } // namespace dsnet

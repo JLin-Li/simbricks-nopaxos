@@ -54,11 +54,12 @@ Client::Client(const Configuration &config, const ReplicaAddress &addr,
     }
 
     transport->RegisterAddress(this, config, &addr);
+    node_addr_ = new ReplicaAddress(transport->ReverseLookupAddress(*transport_addr_));
 }
 
 Client::~Client()
 {
-
+    delete node_addr_;
 }
 
 void

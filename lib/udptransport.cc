@@ -70,7 +70,7 @@ using std::pair;
 
 UDPTransportAddress::UDPTransportAddress(const std::string &s)
 {
-    Parse(s);
+    memcpy(&addr, s.data(), sizeof(addr));
 }
 
 UDPTransportAddress::UDPTransportAddress(const sockaddr_in &addr)
@@ -84,20 +84,6 @@ UDPTransportAddress::clone() const
 {
     UDPTransportAddress *c = new UDPTransportAddress(*this);
     return c;
-}
-
-std::string
-UDPTransportAddress::Serialize() const
-{
-    std::string s;
-    s.append((const char *)&addr, sizeof(addr));
-    return s;
-}
-
-void
-UDPTransportAddress::Parse(const std::string &s)
-{
-    memcpy(&addr, s.data(), sizeof(addr));
 }
 
 bool operator==(const UDPTransportAddress &a, const UDPTransportAddress &b)
@@ -116,7 +102,7 @@ bool operator<(const UDPTransportAddress &a, const UDPTransportAddress &b)
 }
 
 UDPTransportAddress
-UDPTransport::LookupAddress(const dsnet::ReplicaAddress &addr)
+UDPTransport::LookupAddressInternal(const dsnet::ReplicaAddress &addr) const
 {
     int res;
     struct addrinfo hints;
@@ -136,6 +122,15 @@ UDPTransport::LookupAddress(const dsnet::ReplicaAddress &addr)
         UDPTransportAddress(*((sockaddr_in *)ai->ai_addr));
     freeaddrinfo(ai);
     return out;
+}
+
+ReplicaAddress
+UDPTransport::ReverseLookupAddress(const TransportAddress &addr) const
+{
+    const UDPTransportAddress *ua = dynamic_cast<const UDPTransportAddress *>(&addr);
+    char buf[16];
+    inet_ntop(AF_INET, &(ua->addr.sin_addr), buf, 16);
+    return ReplicaAddress(std::string(buf), std::to_string(ntohs(ua->addr.sin_port)));
 }
 
 static void
@@ -359,10 +354,9 @@ UDPTransport::ListenOnMulticast(TransportReceiver *src,
     multicastFds[canonical] = fd;
     multicastConfigs[fd] = canonical;
 
-    Notice("Listening for multicast requests on %s:%s (interface %s)",
+    Notice("Listening for multicast requests on %s:%s",
            canonical->multicast()->host.c_str(),
-           canonical->multicast()->port.c_str(),
-           canonical->multicast()->interface.c_str());
+           canonical->multicast()->port.c_str());
 }
 
 bool

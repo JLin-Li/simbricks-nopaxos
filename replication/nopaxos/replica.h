@@ -79,7 +79,6 @@ private:
     opnum_t lastExecutedOp;
 
     /* Client information */
-    TransportAddress *client_addr_;
     struct ClientTableEntry
     {
         uint64_t lastReqId;

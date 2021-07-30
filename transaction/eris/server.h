@@ -130,7 +130,6 @@ private:
     std::map<shardnum_t, msgnum_t> shardToMsgnum;
 
     /* Client information */
-    TransportAddress *client_addr_;
     struct ClientTableEntry
     {
         uint64_t lastReqId;

@@ -48,12 +48,15 @@ struct ReplicaAddress
 {
     string host;
     string port;
-    string interface;
-    ReplicaAddress(const string &host, const string &port, const string &interface = "");
+    string dev;
+    ReplicaAddress(const string &host, const string &port,
+                   const string &dev = "");
+    ReplicaAddress(const string &addr);
     bool operator==(const ReplicaAddress &other) const;
     inline bool operator!=(const ReplicaAddress &other) const {
         return !(*this == other);
     }
+    string Serialize() const;
 };
 
 class Configuration

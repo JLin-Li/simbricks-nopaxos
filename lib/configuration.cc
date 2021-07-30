@@ -36,23 +36,51 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <string.h>
+#include <cstring>
 
 namespace dsnet {
 
 ReplicaAddress ParseReplicaAddress(const char *);
 
-ReplicaAddress::ReplicaAddress(const string &host, const string &port, const string &interface)
-    : host(host), port(port), interface(interface)
+ReplicaAddress::ReplicaAddress(const string &host, const string &port,
+                               const string &dev)
+    : host(host), port(port), dev(dev)
 {
 
 }
 
+ReplicaAddress::ReplicaAddress(const string &addr)
+{
+    size_t start = 0, end;
+    auto Parse = [&] () {
+        end = addr.find('|', start);
+        size_t s = start;
+        start = end + 1;
+        return addr.substr(s, end-s);
+    };
+
+    host = Parse();
+    port = Parse();
+    dev = Parse();
+}
+
+string
+ReplicaAddress::Serialize() const
+{
+    string s;
+    s.append(host);
+    s.append("|");
+    s.append(port);
+    s.append("|");
+    s.append(dev);
+    return s;
+}
+
 bool
 ReplicaAddress::operator==(const ReplicaAddress &other) const {
-    return ((host == other.host) &&
-            (port == other.port) &&
-            (interface == other.interface));
+    return (host == other.host) &&
+           (port == other.port) &&
+           (dev == other.dev);
 }
 
 
@@ -243,14 +271,14 @@ ParseReplicaAddress(const char *name)
     }
 
     char *host = strtok(arg, ":");
-    char *port = strtok(nullptr, ":");
-    char *interface = strtok(nullptr, "");
+    char *port = strtok(nullptr, "|");
+    char *dev = strtok(nullptr, "");
     if (!host || !port) {
-        Panic("Configuration line format: '%s host:port[:interface]'", name);
+        Panic("Configuration line format: '%s host:port[|dev]'", name);
     }
 
     return ReplicaAddress(string(host), string(port),
-            interface == nullptr ? string() : string(interface));
+                          dev == nullptr ? "" : string(dev));
 }
 
 } // namespace dsnet

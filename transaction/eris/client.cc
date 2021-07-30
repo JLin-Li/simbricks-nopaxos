@@ -125,7 +125,7 @@ ErisClient::InvokeTxn(const map<shardnum_t, string> &requests,
     // request will look for the corresponding ShardOp and set
     // op accordingly.
     request->set_op(std::string());
-    request->set_clientaddr(myAddress->Serialize());
+    request->set_clientaddr(node_addr_->Serialize());
     for (const auto &kv : requests) {
         dsnet::ShardOp shard_op;
         shard_op.set_shard(kv.first);

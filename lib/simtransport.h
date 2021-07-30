@@ -46,8 +46,6 @@ class SimulatedTransportAddress : public TransportAddress
 {
 public:
     virtual SimulatedTransportAddress * clone() const override;
-    virtual std::string Serialize() const override;
-    virtual void Parse(const std::string &s) override;
     int GetAddr() const;
     bool operator==(const SimulatedTransportAddress &other) const;
     inline bool operator!=(const SimulatedTransportAddress &other) const
@@ -80,6 +78,8 @@ public:
     int Timer(uint64_t ms, timer_callback_t cb) override;
     bool CancelTimer(int id) override;
     void CancelAllTimers() override;
+    virtual ReplicaAddress
+    ReverseLookupAddress(const TransportAddress &addr) const override;
 
     // Returns if simtransport still have timers
     bool HasTimers() {
@@ -92,7 +92,7 @@ protected:
                              const Message &m) override;
 
     SimulatedTransportAddress
-    LookupAddress(const dsnet::ReplicaAddress &addr) override;
+    LookupAddressInternal(const dsnet::ReplicaAddress &addr) const override;
 
 private:
     struct QueuedMessage {
@@ -114,6 +114,7 @@ private:
     int lastAddr;
     std::map<int, std::pair<int, int> > replicaIdxs; // address to <groupIdx, replicaIdx>
     std::unordered_map<dsnet::ReplicaAddress, SimulatedTransportAddress> addrLookupMap;
+    std::unordered_map<int, dsnet::ReplicaAddress> reverseAddrLookupMap;
     std::multimap<int, filter_t> filters;
     std::multimap<uint64_t, PendingTimer> timers;
     std::mutex timersLock;

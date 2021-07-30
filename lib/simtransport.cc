@@ -55,18 +55,6 @@ SimulatedTransportAddress::clone() const
     return c;
 }
 
-std::string
-SimulatedTransportAddress::Serialize() const
-{
-    return std::to_string(addr);
-}
-
-void
-SimulatedTransportAddress::Parse(const std::string &s)
-{
-    addr = std::stoi(s);
-}
-
 bool
 SimulatedTransportAddress::operator==(const SimulatedTransportAddress &other) const
 {
@@ -101,7 +89,13 @@ SimulatedTransport::RegisterInternal(TransportReceiver *receiver,
 
     // Store address for future lookups
     if (addr != nullptr) {
-        addrLookupMap.insert(std::make_pair(*addr, SimulatedTransportAddress(saddr)));
+        // In case the addr has port 0 (any port), assign it a random port
+        ReplicaAddress r = *addr;
+        if (stoul(r.port) == 0) {
+            r.port = std::to_string(rand() % 65535);
+        }
+        addrLookupMap.insert(std::make_pair(r, SimulatedTransportAddress(saddr)));
+        reverseAddrLookupMap.insert(std::make_pair(saddr, r));
     }
     // Tell the receiver its address
     receiver->SetAddress(new SimulatedTransportAddress(saddr));
@@ -153,7 +147,7 @@ SimulatedTransport::SendMessageInternal(TransportReceiver *src,
 }
 
 SimulatedTransportAddress
-SimulatedTransport::LookupAddress(const dsnet::ReplicaAddress &addr)
+SimulatedTransport::LookupAddressInternal(const dsnet::ReplicaAddress &addr) const
 {
     if (addrLookupMap.find(addr) != addrLookupMap.end()) {
         return addrLookupMap.at(addr);
@@ -162,6 +156,18 @@ SimulatedTransport::LookupAddress(const dsnet::ReplicaAddress &addr)
     Warning("No address with host %s port %s was registered",
             addr.host.c_str(), addr.port.c_str());
     return SimulatedTransportAddress(-1);
+}
+
+ReplicaAddress
+SimulatedTransport::ReverseLookupAddress(const TransportAddress &addr) const
+{
+    const SimulatedTransportAddress *sa =
+        dynamic_cast<const SimulatedTransportAddress *>(&addr);
+    if (reverseAddrLookupMap.find(sa->addr) != reverseAddrLookupMap.end()) {
+        return reverseAddrLookupMap.at(sa->addr);
+    }
+
+    Panic("No address %d was registered", sa->addr);
 }
 
 void

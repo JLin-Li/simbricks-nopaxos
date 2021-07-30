@@ -31,6 +31,7 @@
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/udptransport.h"
+#include "lib/dpdktransport.h"
 
 #include "bench/benchmark.h"
 #include "common/client.h"
@@ -47,7 +48,7 @@
 static void
 Usage(const char *progName)
 {
-    fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-d delay-ms] [-u duration-sec] -c conf-file -h address -m unreplicated|vr|fastpaxos|nopaxos\n",
+    fprintf(stderr, "usage: %s [-n requests] [-t threads] [-w warmup-secs] [-s stats-file] [-d delay-ms] [-u duration-sec] [-p udp|dpdk] [-v device] [-x device-port] [-z transport-cmdline] -c conf-file -h host-address -m unreplicated|vr|fastpaxos|nopaxos\n",
             progName);
         exit(1);
 }
@@ -65,7 +66,8 @@ int main(int argc, char **argv)
     int duration = 1;
     uint64_t delay = 0;
     int tputInterval = 0;
-    std::string host;
+    std::string host, dev, transport_cmdline;
+    int dev_port = 0;
 
     enum
     {
@@ -77,11 +79,17 @@ int main(int argc, char **argv)
         PROTO_NOPAXOS
     } proto = PROTO_UNKNOWN;
 
+    enum
+    {
+        TRANSPORT_UDP,
+        TRANSPORT_DPDK
+    } transport_type = TRANSPORT_UDP;
+
     string statsFile;
 
     // Parse arguments
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:h:s:m:t:i:u:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:h:s:m:t:i:u:p:v:x:z:")) != -1) {
         switch (opt) {
         case 'c':
             configPath = optarg;
@@ -103,6 +111,23 @@ int main(int argc, char **argv)
         case 'h':
             host = std::string(optarg);
             break;
+
+        case 'v':
+            dev = std::string(optarg);
+            break;
+
+        case 'x':
+        {
+            char *strtol_ptr;
+            dev_port = strtoul(optarg, &strtol_ptr, 10);
+            if ((*optarg == '\0') || (*strtol_ptr != '\0')) {
+                fprintf(stderr,
+                        "option -x requires a numeric arg\n");
+                Usage(argv[0]);
+            }
+            break;
+        }
+
 
         case 's':
             statsFile = string(optarg);
@@ -165,6 +190,21 @@ int main(int argc, char **argv)
             break;
         }
 
+        case 'p':
+            if (strcasecmp(optarg, "udp") == 0) {
+                transport_type = TRANSPORT_UDP;
+            } else if (strcasecmp(optarg, "dpdk") == 0) {
+                transport_type = TRANSPORT_DPDK;
+            } else {
+                fprintf(stderr, "unknown transport '%s'\n", optarg);
+                Usage(argv[0]);
+            }
+            break;
+
+        case 'z':
+            transport_cmdline = std::string(optarg);
+            break;
+
         default:
             fprintf(stderr, "Unknown argument %s\n", argv[optind]);
             Usage(argv[0]);
@@ -194,10 +234,19 @@ int main(int argc, char **argv)
     }
     dsnet::Configuration config(configStream);
 
-    dsnet::UDPTransport transport(0, 0);
+    dsnet::Transport *transport;
+    switch (transport_type) {
+        case TRANSPORT_UDP:
+            transport = new dsnet::UDPTransport(0, 0);
+            break;
+        case TRANSPORT_DPDK:
+            transport = new dsnet::DPDKTransport(dev_port, 0, transport_cmdline);
+            break;
+    }
+
     std::vector<dsnet::Client *> clients;
     std::vector<dsnet::BenchmarkClient *> benchClients;
-    dsnet::ReplicaAddress addr(host, "0");
+    dsnet::ReplicaAddress addr(host, "0", dev);
 
     for (int i = 0; i < numClients; i++) {
         dsnet::Client *client;
@@ -206,23 +255,23 @@ int main(int argc, char **argv)
             client =
                 new dsnet::unreplicated::UnreplicatedClient(config,
                                                             addr,
-                                                            &transport);
+                                                            transport);
             break;
 
         case PROTO_VR:
-            client = new dsnet::vr::VRClient(config, addr, &transport);
+            client = new dsnet::vr::VRClient(config, addr, transport);
             break;
 
         case PROTO_FASTPAXOS:
             client = new dsnet::fastpaxos::FastPaxosClient(config,
                                                            addr,
-                                                           &transport);
+                                                           transport);
             break;
 
         case PROTO_NOPAXOS:
             client = new dsnet::nopaxos::NOPaxosClient(config,
                                                        addr,
-                                                       &transport);
+                                                       transport);
             break;
 
         default:
@@ -230,16 +279,16 @@ int main(int argc, char **argv)
         }
 
         dsnet::BenchmarkClient *bench =
-            new dsnet::BenchmarkClient(*client, transport,
-                                           duration, delay,
-                                           tputInterval);
+            new dsnet::BenchmarkClient(*client, *transport,
+                                       duration, delay,
+                                       tputInterval);
 
-        transport.Timer(0, [=]() { bench->Start(); });
+        transport->Timer(0, [=]() { bench->Start(); });
         clients.push_back(client);
         benchClients.push_back(bench);
     }
 
-    dsnet::Timeout checkTimeout(&transport, 100, [&]() {
+    dsnet::Timeout checkTimeout(transport, 100, [&]() {
             for (auto x : benchClients) {
                 if (!x->done) {
                     return;
@@ -250,11 +299,15 @@ int main(int argc, char **argv)
             Latency_t sum;
             _Latency_Init(&sum, "total");
             std::map<int, int> agg_latencies;
+            std::map<uint64_t, int> agg_throughputs;
             uint64_t agg_ops = 0;
             for (unsigned int i = 0; i < benchClients.size(); i++) {
                 Latency_Sum(&sum, &benchClients[i]->latency);
                 for (const auto &kv : benchClients[i]->latencies) {
                     agg_latencies[kv.first] += kv.second;
+                }
+                for (const auto &kv : benchClients[i]->throughputs) {
+                    agg_throughputs[kv.first] += kv.second * (1000/tputInterval);
                 }
                 agg_ops += benchClients[i]->completedOps;
             }
@@ -320,10 +373,20 @@ done:
                 for (const auto &kv : agg_latencies) {
                     fs << kv.first << " " << kv.second << std::endl;
                 }
+                fs.close();
+                if (agg_throughputs.size() > 0) {
+                    fs.open(statsFile.append("_tputs").c_str());
+                    for (const auto &kv : agg_throughputs) {
+                        fs << kv.first << " " << kv.second << std::endl;
+                    }
+                }
+                fs.close();
             }
             exit(0);
         });
     checkTimeout.Start();
 
-    transport.Run();
+    transport->Run();
+
+    delete transport;
 }

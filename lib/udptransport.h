@@ -53,8 +53,6 @@ class UDPTransportAddress : public TransportAddress
 public:
     UDPTransportAddress(const std::string &s);
     virtual UDPTransportAddress * clone() const override;
-    virtual std::string Serialize() const override;
-    virtual void Parse(const std::string &s) override;
 
 private:
     UDPTransportAddress(const sockaddr_in &addr);
@@ -84,6 +82,8 @@ public:
     int Timer(uint64_t ms, timer_callback_t cb) override;
     bool CancelTimer(int id) override;
     void CancelAllTimers() override;
+    virtual ReplicaAddress
+    ReverseLookupAddress(const TransportAddress &addr) const override;
 
 private:
     struct UDPTransportTimerInfo
@@ -127,7 +127,7 @@ private:
                              const UDPTransportAddress &dst,
                              const Message &m) override;
     UDPTransportAddress
-    LookupAddress(const dsnet::ReplicaAddress &addr) override;
+    LookupAddressInternal(const dsnet::ReplicaAddress &addr) const override;
     void OnReadable(int fd);
     void ProcessPacket(int fd, sockaddr_in sender, socklen_t senderSize,
                      char *buf, ssize_t sz);

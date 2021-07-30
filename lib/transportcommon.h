@@ -252,6 +252,12 @@ public:
         return SendMessageInternal(src, kv->second.at(index), m);
     }
 
+    virtual TransportAddress *
+    LookupAddress(const dsnet::ReplicaAddress &addr) const override
+    {
+        return new ADDR(LookupAddressInternal(addr));
+    }
+
 protected:
     virtual void RegisterInternal(TransportReceiver *receiver,
                                   const dsnet::ReplicaAddress *addr,
@@ -259,7 +265,7 @@ protected:
     virtual bool SendMessageInternal(TransportReceiver *src,
                                      const ADDR &dst,
                                      const Message &m) = 0;
-    virtual ADDR LookupAddress(const dsnet::ReplicaAddress &addr) = 0;
+    virtual ADDR LookupAddressInternal(const dsnet::ReplicaAddress &addr) const = 0;
 
     std::unordered_map<dsnet::Configuration,
         dsnet::Configuration *> canonicalConfigs;
@@ -328,25 +334,25 @@ protected:
 
             for (int i = 0; i < cfg->g; i++) {
                 for (int j = 0; j < cfg->n; j++) {
-                    const ADDR addr = LookupAddress(cfg->replica(i, j));
+                    const ADDR addr = LookupAddressInternal(cfg->replica(i, j));
                     replicaAddresses[cfg][i].insert(std::make_pair(j, addr));
                 }
             }
 
             // Add sequencer addresses
             for (int i = 0; i < cfg->NumSequencers(); i++) {
-                sequencerAddresses[cfg].push_back(LookupAddress(cfg->sequencer(i)));
+                sequencerAddresses[cfg].push_back(LookupAddressInternal(cfg->sequencer(i)));
             }
 
             // And check if there's a multicast address
             if (cfg->multicast()) {
                 multicastAddresses.insert(std::make_pair(cfg,
-                            LookupAddress(*cfg->multicast())));
+                            LookupAddressInternal(*cfg->multicast())));
             }
 
             // Failure coordinator address
             if (cfg->fc()) {
-                fcAddresses.insert(std::make_pair(cfg, LookupAddress(*cfg->fc())));
+                fcAddresses.insert(std::make_pair(cfg, LookupAddressInternal(*cfg->fc())));
             }
         }
 

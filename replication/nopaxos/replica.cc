@@ -137,8 +137,6 @@ NOPaxosReplica::NOPaxosReplica(const Configuration &config, int myIdx, bool init
     } else {
         this->leaderSyncHeardTimeout->Start();
     }
-
-    client_addr_ = myAddress->clone();
 }
 
 NOPaxosReplica::~NOPaxosReplica()
@@ -150,9 +148,7 @@ NOPaxosReplica::~NOPaxosReplica()
     delete startViewTimeout;
     delete syncTimeout;
     delete leaderSyncHeardTimeout;
-    delete client_addr_;
 }
-
 
 void
 NOPaxosReplica::ReceiveMessage(const TransportAddress &remote,
@@ -1029,11 +1025,13 @@ NOPaxosReplica::ProcessNextOperation(const Request &request,
             reply->set_opnum(vs.opnum);
             reply->set_sessnum(vs.sessnum);
 
-            client_addr_->Parse(request.clientaddr());
-            if (!this->transport->SendMessage(this, *client_addr_,
+            TransportAddress *client_addr =
+                transport->LookupAddress(ReplicaAddress(request.clientaddr()));
+            if (!this->transport->SendMessage(this, *client_addr,
                         NOPaxosMessage(m))) {
                 RWarning("Failed to send reply to client");
             }
+            delete client_addr;
         }
     }
 
@@ -1115,11 +1113,13 @@ NOPaxosReplica::ExecuteUptoOp(opnum_t opnum)
                 reply->set_opnum(op);
                 reply->set_sessnum(entry->viewstamp.sessnum);
 
-                client_addr_->Parse(request.clientaddr());
-                if (!this->transport->SendMessage(this, *client_addr_,
+                TransportAddress *client_addr =
+                    transport->LookupAddress(ReplicaAddress(request.clientaddr()));
+                if (!this->transport->SendMessage(this, *client_addr,
                             NOPaxosMessage(m))) {
                     RWarning("Failed to send reply to client");
                 }
+                delete client_addr;
             }
         }
     }
