@@ -1,0 +1,16 @@
+syntax = "proto2";
+
+import "common/request.proto";
+
+package dsnet.tombft.proto;
+
+message Message {
+    oneof msg {
+        RequestMessage request = 1;
+        //
+    }
+}
+
+message RequestMessage {
+    required dsnet.Request req = 1;
+}
