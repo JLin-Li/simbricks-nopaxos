@@ -20,7 +20,7 @@ $(d)simtransport-test: $(o)simtransport-test.o $(LIB-simtransport) $(LIB-pbmessa
 
 TEST_BINS += $(d)simtransport-test
 
-$(d)signature-test: $(o)signature-test.o $(LIB-signature) $(LIB-message) $(GTEST_MAIN)
+$(d)signature-test: $(o)signature-test.o $(LIB-signature) $(LIB-message) $(LIB-configuration) $(GTEST_MAIN)
 
 TEST_BINS += $(d)signature-test
 
