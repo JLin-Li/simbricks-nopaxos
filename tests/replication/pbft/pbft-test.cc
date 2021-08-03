@@ -69,7 +69,9 @@ class PbftTestApp : public AppReplica {
   }
 };
 
-FixSingleKeySecp256k1Security defaultSecurity;
+Secp256k1Signer defaultSigner;
+Secp256k1Verifier defaultVerifier(defaultSigner);
+HomogeneousSecurity defaultSecurity(defaultSigner, defaultVerifier);
 
 template <int numberClient>
 struct System {
@@ -144,20 +146,14 @@ TEST(Pbft, 1Op) {
   OneClientMultiOp(1, security);
 }
 
-TEST(Pbft, 1OpSign) {
-  FixSingleKeySecp256k1Security security;
-  OneClientMultiOp(1, security);
-}
+TEST(Pbft, 1OpSign) { OneClientMultiOp(1, defaultSecurity); }
 
 TEST(Pbft, 100Op) {
   NopSecurity security;
   OneClientMultiOp(100, security);
 }
 
-TEST(Pbft, 100OpSign) {
-  FixSingleKeySecp256k1Security security;
-  OneClientMultiOp(100, security);
-}
+TEST(Pbft, 100OpSign) { OneClientMultiOp(100, defaultSecurity); }
 
 using filter_t = std::function<bool(TransportReceiver *, std::pair<int, int>,
                                     TransportReceiver *, std::pair<int, int>,

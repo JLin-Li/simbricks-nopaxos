@@ -47,8 +47,8 @@ void PbftClient::SendRequest(bool broadcast) {
   reqMsg.mutable_req()->set_clientid(clientid);
   reqMsg.mutable_req()->set_clientreqid(lastReqId);
 
-  security.GetClientSigner(GetAddress())
-      .Sign(reqMsg.req().SerializeAsString(), *reqMsg.mutable_sig());
+  security.ClientSigner().Sign(reqMsg.req().SerializeAsString(),
+                               *reqMsg.mutable_sig());
   reqMsg.set_relayed(false);
 
   if (broadcast)
@@ -97,7 +97,7 @@ void PbftClient::HandleReply(const TransportAddress &remote,
 
   proto::ReplyMessage copy(msg);
   copy.set_sig(std::string());
-  if (!security.GetReplicaVerifier(msg.replicaid())
+  if (!security.ReplicaVerifier(msg.replicaid())
            .Verify(copy.SerializeAsString(), msg.sig())) {
     Warning("Received wrong signature");
     return;

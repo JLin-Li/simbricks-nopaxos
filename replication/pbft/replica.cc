@@ -72,8 +72,8 @@ void PbftReplica::ReceiveMessage(const TransportAddress &remote, void *buf,
 
 void PbftReplica::HandleRequest(const TransportAddress &remote,
                                 const RequestMessage &msg) {
-  if (!security.GetClientVerifier(remote).Verify(msg.req().SerializeAsString(),
-                                                 msg.sig())) {
+  if (!security.ClientVerifier().Verify(msg.req().SerializeAsString(),
+                                        msg.sig())) {
     RWarning("Wrong signature for client");
     return;
   }
@@ -128,7 +128,7 @@ void PbftReplica::HandleRequest(const TransportAddress &remote,
   prePrepare.mutable_common()->set_view(view);
   prePrepare.mutable_common()->set_seqnum(seqNum);
   prePrepare.mutable_common()->set_digest(std::string());  // TODO
-  security.GetReplicaSigner(ReplicaId())
+  security.ReplicaSigner(ReplicaId())
       .Sign(prePrepare.common().SerializeAsString(), *prePrepare.mutable_sig());
   *prePrepare.mutable_message() = msg;
   Assert(prePrepare.common().seqnum() == log.LastOpnum() + 1);
@@ -161,19 +161,18 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
 
   if (view != msg.common().view()) return;
 
-  if (!security.GetReplicaVerifier(configuration.GetLeaderIndex(view))
+  if (!security.ReplicaVerifier(configuration.GetLeaderIndex(view))
            .Verify(msg.common().SerializeAsString(), msg.sig())) {
     RWarning("Wrong signature for PrePrepare");
     return;
   }
-  uint64_t clientid = msg.message().req().clientid();
-  if (!clientAddressTable.count(clientid)) {
-    RWarning("sig@PrePrepare: no client address record");
-    return;
-  }
-  if (!security.GetClientVerifier(*clientAddressTable[clientid])
-           .Verify(msg.message().req().SerializeAsString(),
-                   msg.message().sig())) {
+  // uint64_t clientid = msg.message().req().clientid();
+  // if (!clientAddressTable.count(clientid)) {
+  //   RWarning("sig@PrePrepare: no client address record");
+  //   return;
+  // }
+  if (!security.ClientVerifier().Verify(msg.message().req().SerializeAsString(),
+                                        msg.message().sig())) {
     RWarning("Wrong signature for client in PrePrepare");
     return;
   }
@@ -208,7 +207,7 @@ void PbftReplica::HandlePrePrepare(const TransportAddress &remote,
 
 void PbftReplica::HandlePrepare(const TransportAddress &remote,
                                 const proto::PrepareMessage &msg) {
-  if (!security.GetReplicaVerifier(msg.replicaid())
+  if (!security.ReplicaVerifier(msg.replicaid())
            .Verify(msg.common().SerializeAsString(), msg.sig())) {
     RWarning("Wrong signature for Prepare");
     return;
@@ -227,7 +226,7 @@ void PbftReplica::HandlePrepare(const TransportAddress &remote,
 
 void PbftReplica::HandleCommit(const TransportAddress &remote,
                                const proto::CommitMessage &msg) {
-  if (!security.GetReplicaVerifier(msg.replicaid())
+  if (!security.ReplicaVerifier(msg.replicaid())
            .Verify(msg.common().SerializeAsString(), msg.sig())) {
     RWarning("Wrong signature for Commit");
     return;
@@ -250,7 +249,7 @@ void PbftReplica::HandleStateTransferRequest(
       ToReplicaMessage m;
       PrePrepareMessage &prePrepare = *m.mutable_pre_prepare();
       *prePrepare.mutable_common() = commonTable[msg.seqnum()];
-      security.GetReplicaSigner(ReplicaId())
+      security.ReplicaSigner(ReplicaId())
           .Sign(prePrepare.common().SerializeAsString(),
                 *prePrepare.mutable_sig());
       auto *entry = log.Find(msg.seqnum());
@@ -402,7 +401,7 @@ void PbftReplica::ExecuteEntry(LogEntry *entry, bool speculative) {
   reply.set_replicaid(ReplicaId());
   reply.set_speculative(speculative);
   reply.set_sig(std::string());
-  security.GetReplicaSigner(ReplicaId())
+  security.ReplicaSigner(ReplicaId())
       .Sign(reply.SerializeAsString(), *reply.mutable_sig());
   UpdateClientTable(req, m);
   if (clientAddressTable.count(req.clientid()))

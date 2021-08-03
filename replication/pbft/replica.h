@@ -184,7 +184,7 @@ class PbftReplica : public Replica {
     MsgTy &msg = *Downcast<MsgTy>::GetMutable(m);
     *msg.mutable_common() = common;
     msg.set_replicaid(ReplicaId());
-    security.GetReplicaSigner(ReplicaId())
+    security.ReplicaSigner(ReplicaId())
         .Sign(msg.common().SerializeAsString(), *msg.mutable_sig());
     if (address == nullptr) {
       transport->SendMessageToAll(this, PBMessage(m));

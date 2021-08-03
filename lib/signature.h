@@ -85,25 +85,21 @@ class Secp256k1Verifier : public Verifier {
 // proper signature impl can be injected
 class Security {
  private:
-  const Configuration &config;
+  const Signer &client_signer;
+  const Verifier &client_verifier;
+
+ protected:
+  Security(const Signer &client_signer, const Verifier &client_verifier)
+      : client_signer(client_signer), client_verifier(client_verifier) {}
 
  public:
-  Security(const Configuration &config) : config(config) {}
-  virtual const Signer &GetSigner(const ReplicaAddress &address) const = 0;
-  virtual const Verifier &GetVerifier(const ReplicaAddress &address) const = 0;
+  const Signer &ClientSigner() const { return client_signer; }
+  const Verifier &ClientVerifier() const { return client_verifier; }
 
-  virtual const Signer &GetReplicaSigner(int replica_id) const {
-    return GetSigner(config.replica(0, replica_id));
-  }
-  virtual const Verifier &GetReplicaVerifier(int replica_id) const {
-    return GetVerifier(config.replica(0, replica_id));
-  }
-  virtual const Signer &GetSequencerSigner(int index = 0) const {
-    return GetSigner(config.sequencer(index));
-  }
-  virtual const Verifier &GetSequencerVerifier(int index = 0) const {
-    return GetVerifier(config.sequencer(index));
-  }
+  virtual const Signer &ReplicaSigner(int replica_id) const = 0;
+  virtual const Verifier &ReplicaVerifier(int replica_id) const = 0;
+  virtual const Signer &SequencerSigner(int index = 0) const = 0;
+  virtual const Verifier &SequencerVerifier(int index = 0) const = 0;
 };
 
 // for bench
@@ -113,26 +109,18 @@ class HomogeneousSecurity : public Security {
   const Verifier &v, &seq_v;
 
  public:
-  HomogeneousSecurity(const Configuration &config, const Signer &s,
-                      const Verifier &v, const Signer &seq_s,
+  HomogeneousSecurity(const Signer &s, const Verifier &v, const Signer &seq_s,
                       const Verifier &seq_v)
-      : Security(config), s(s), v(v), seq_s(s), seq_v(v) {}
-  HomogeneousSecurity(const Configuration &config, const Signer &s,
-                      const Verifier &v)
-      : HomogeneousSecurity(config, s, v, s, v) {}
+      : Security(s, v), s(s), seq_s(s), v(v), seq_v(v) {}
+  HomogeneousSecurity(const Signer &s, const Verifier &v)
+      : HomogeneousSecurity(s, v, s, v) {}
 
-  virtual const Signer &GetSigner(
-      const ReplicaAddress &address) const override {
-    return s;
-  }
-  virtual const Verifier &GetVerifier(
-      const ReplicaAddress &address) const override {
-    return v;
-  }
-  virtual const Signer &GetSequencerSigner(int index) const override {
+  virtual const Signer &ReplicaSigner(int replica_id) const { return s; }
+  virtual const Verifier &ReplicaVerifier(int replica_id) const { return v; }
+  virtual const Signer &SequencerSigner(int index) const override {
     return seq_s;
   }
-  virtual const Verifier &GetSequencerVerifier(int index) const override {
+  virtual const Verifier &SequencerVerifier(int index) const override {
     return seq_v;
   }
 };
@@ -145,8 +133,7 @@ class NopSecurity : public HomogeneousSecurity {
   const static Verifier v;
 
  public:
-  NopSecurity(const Configuration &config)
-      : HomogeneousSecurity(config, NopSecurity::s, NopSecurity::v) {}
+  NopSecurity() : HomogeneousSecurity(NopSecurity::s, NopSecurity::v) {}
 };
 
 }  // namespace dsnet
