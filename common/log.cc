@@ -115,7 +115,6 @@ Log::SetRequest(opnum_t op, const Request &req, const string &sig)
     }
 
     entry->request = req;
-    entry->signature = sig;
     return true;
 }
 

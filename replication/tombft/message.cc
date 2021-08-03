@@ -14,6 +14,11 @@ void TomBFTMessage::Parse(const void *buf, size_t size) {
   Assert(size > header_size);
   auto bytes = reinterpret_cast<const uint8_t *>(buf);
   std::memcpy(&meta, bytes, header_size);
+
+  if (meta.sess_num != 0) {
+    // TODO verify
+  }
+
   pb_msg.Parse(bytes + header_size, size - header_size);
 }
 

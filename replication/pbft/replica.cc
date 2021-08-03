@@ -252,7 +252,7 @@ void PbftReplica::HandleStateTransferRequest(
       security.ReplicaSigner(ReplicaId())
           .Sign(prePrepare.common().SerializeAsString(),
                 *prePrepare.mutable_sig());
-      auto *entry = log.Find(msg.seqnum());
+      auto *entry = static_cast<LogEntry *>(log.Find(msg.seqnum()));
       *prePrepare.mutable_message()->mutable_req() = entry->request;
       prePrepare.mutable_message()->set_sig(entry->signature);
       prePrepare.mutable_message()->set_relayed(false);  // ok?
@@ -273,14 +273,13 @@ void PbftReplica::OnViewChange() { NOT_IMPLEMENTED(); }
 void PbftReplica::EnterPrepareRound(proto::PrePrepareMessage msg) {
   commonTable[msg.common().seqnum()] = msg.common();
   if (log.LastOpnum() < msg.common().seqnum()) {
-    log.Append(
-        new LogEntry(viewstamp_t(msg.common().view(), msg.common().seqnum()),
-                     LOG_STATE_PREPREPARED, msg.message().req(),
-                     msg.message().sig(), EMPTY_HASH));
+    log.Append(new LogEntry(
+        viewstamp_t(msg.common().view(), msg.common().seqnum()),
+        LOG_STATE_PREPREPARED, msg.message().req(), msg.message().sig()));
     return;
   }
 
-  LogEntry *entry = log.Find(msg.common().seqnum());
+  auto *entry = static_cast<LogEntry *>(log.Find(msg.common().seqnum()));
   if (entry->state != LOG_STATE_EMPTY) return;
 
   RNotice("PrePrepare gap at seq = %lu is filled", msg.common().seqnum());
@@ -335,7 +334,7 @@ void PbftReplica::TryReachCommitPoint(const proto::Common &msg) {
 
   opnum_t executing = msg.seqnum();
   if (lastExecuted != executing - 1) return;
-  while (auto *entry = log.Find(executing)) {
+  while (auto *entry = static_cast<LogEntry *>(log.Find(executing))) {
     // speculative case
     if (entry->state == LOG_STATE_SPECULATIVE) {
       Assert(clientTable.count(entry->request.clientid()));
@@ -363,7 +362,7 @@ void PbftReplica::TryReachCommitPoint(const proto::Common &msg) {
 
 void PbftReplica::TrySpeculative() {
   opnum_t executing = lastExecuted + 1;
-  while (auto *entry = log.Find(executing)) {
+  while (auto *entry = static_cast<LogEntry *>(log.Find(executing))) {
     Assert(entry->state != LOG_STATE_SPECULATIVE);
     Assert(entry->state != LOG_STATE_COMMITTED);
     if (entry->state != LOG_STATE_PREPARED) break;

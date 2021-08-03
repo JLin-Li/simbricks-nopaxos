@@ -63,6 +63,14 @@ struct Downcast<proto::CommitMessage> {
   }
 };
 
+struct LogEntry : public dsnet::LogEntry {
+  std::string signature;
+
+  LogEntry(viewstamp_t vs, LogEntryState state, const Request &req,
+           const std::string &sig = "")
+      : dsnet::LogEntry(vs, state, req), signature(sig) {}
+};
+
 class PbftReplica : public Replica {
  public:
   PbftReplica(const Configuration &config, int myIdx, bool initialize,

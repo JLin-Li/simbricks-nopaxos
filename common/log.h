@@ -78,17 +78,12 @@ class LogEntry {
   }
 
   LogEntry(viewstamp_t viewstamp, LogEntryState state, const Request &request,
-           const string &signature, const string &hash)
+           const string &hash = EMPTY_HASH)
       : viewstamp(viewstamp),
         state(state),
         request(request),
-        signature(signature),
         hash(hash),
         replyMessage(NULL) {}
-
-  LogEntry(viewstamp_t viewstamp, LogEntryState state, const Request &request,
-           const string &hash = EMPTY_HASH)
-      : LogEntry(viewstamp, state, request, "", hash) {}
 
   virtual ~LogEntry() {
     if (replyMessage) {
@@ -99,7 +94,6 @@ class LogEntry {
   viewstamp_t viewstamp;
   LogEntryState state;
   Request request;
-  string signature;
   string hash;
   // Speculative client table stuff
   opnum_t prevClientReqOpnum;

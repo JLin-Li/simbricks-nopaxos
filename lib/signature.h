@@ -62,7 +62,7 @@ class Secp256k1Signer : public Signer {
   friend class Secp256k1Verifier;
 
  public:
-  // if not specify secert key then random key will be generate
+  // if nullptr is passed then random key will be generate
   Secp256k1Signer(
       const unsigned char *secKey = Secp256k1Signer::kDefaultSecret);
   ~Secp256k1Signer();

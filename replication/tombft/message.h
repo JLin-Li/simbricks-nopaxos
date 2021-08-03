@@ -18,7 +18,11 @@ class TomBFTMessage : public Message {
   };
   Header meta;
 
-  TomBFTMessage(::google::protobuf::Message &msg) : pb_msg(PBMessage(msg)) {}
+  TomBFTMessage(::google::protobuf::Message &msg) : pb_msg(PBMessage(msg)) {
+    // session number = 0 -> invalid header
+    // signature verification will not be performed
+    meta.sess_num = 0;
+  }
   ~TomBFTMessage() {}
 
  private:
