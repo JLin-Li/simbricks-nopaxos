@@ -91,6 +91,16 @@ class LogEntry {
     }
   }
 
+  template <typename EntryTy>
+  const EntryTy &As() const {
+    return static_cast<const EntryTy &>(*this);
+  }
+
+  template <typename EntryTy>
+  EntryTy &As() {
+    return static_cast<EntryTy &>(*this);
+  }
+
   viewstamp_t viewstamp;
   LogEntryState state;
   Request request;

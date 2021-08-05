@@ -99,7 +99,8 @@ class Security {
   virtual const Signer &ReplicaSigner(int replica_id) const = 0;
   virtual const Verifier &ReplicaVerifier(int replica_id) const = 0;
   virtual const Signer &SequencerSigner(int index = 0) const = 0;
-  virtual const Verifier &SequencerVerifier(int index = 0) const = 0;
+  virtual const Verifier &SequencerVerifier(int replica_id,
+                                            int index = 0) const = 0;
 };
 
 // for bench
@@ -120,7 +121,8 @@ class HomogeneousSecurity : public Security {
   virtual const Signer &SequencerSigner(int index) const override {
     return seq_s;
   }
-  virtual const Verifier &SequencerVerifier(int index) const override {
+  virtual const Verifier &SequencerVerifier(int replica_id,
+                                            int index) const override {
     return seq_v;
   }
 };

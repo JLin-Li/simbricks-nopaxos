@@ -3,6 +3,7 @@
 #include <openssl/sha.h>
 
 #include "common/pbmessage.h"
+#include "lib/signature.h"
 
 namespace dsnet {
 namespace tombft {
