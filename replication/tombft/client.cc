@@ -10,6 +10,7 @@ TomBFTClient::TomBFTClient(const Configuration &config,
                            const Security &security, uint64_t client_id)
     : Client(config, addr, transport, client_id),
       security(security),
+      pending_request(nullptr),
       reply_set(config.f * 2 + 1) {
   last_req_id = 0;
 
@@ -53,6 +54,7 @@ void TomBFTClient::SendRequest() {
   } else {
     transport->SendMessageToMulticast(this, TomBFTMessage(msg, true));
   }
+  request_timeout->Start();
 }
 
 void TomBFTClient::ReceiveMessage(const TransportAddress &remote, void *buf,
@@ -90,9 +92,11 @@ void TomBFTClient::HandleReply(const TransportAddress &remote,
     return;
   }
   Debug("received 2f + 1 matched replies, pending request done");
-  pending_request->continuation(pending_request->request, msg.reply());
+  continuation_t cont = pending_request->continuation;
+  string req = pending_request->request;
   delete pending_request;
   pending_request = nullptr;
+  cont(req, msg.reply());
 }
 
 }  // namespace tombft

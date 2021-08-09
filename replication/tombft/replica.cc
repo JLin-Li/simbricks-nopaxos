@@ -43,11 +43,11 @@ void TomBFTReplica::HandleRequest(const proto::RequestMessage &msg,
                                   const TomBFTMessage &m) {
   Assert(meta.sess_num != 0);
   std::string seq_sig(meta.hmac_list[replicaIdx], 32);
-  if (!security.SequencerVerifier(replicaIdx)
-           .Verify(msg.SerializeAsString(), seq_sig)) {
-    RWarning("Incorrect sequencer signature");
-    return;
-  }
+  // if (!security.SequencerVerifier(replicaIdx)
+  //          .Verify(msg.SerializeAsString(), seq_sig)) {
+  //   RWarning("Incorrect sequencer signature");
+  //   return;
+  // }
   if (!security.ClientVerifier().Verify(msg.req().SerializeAsString(),
                                         msg.sig())) {
     RWarning("Incorrect client signature");

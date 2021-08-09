@@ -6,7 +6,7 @@ CC = gcc
 CXX = g++
 LD = g++
 
-# CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -Wno-array-bounds -O3
+# CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -Wno-array-bounds -O3 -DNASSERT
 CFLAGS := -g -Wall -pthread -iquote.obj/gen -Wno-uninitialized -Wno-array-bounds
 CXXFLAGS := -std=c++0x
 LDFLAGS := -levent_pthreads -ldl
@@ -142,9 +142,9 @@ endef
 
 include lib/Rules.mk
 include common/Rules.mk
-include sequencer/Rules.mk
 include replication/Rules.mk
 include transaction/Rules.mk
+include sequencer/Rules.mk
 include bench/Rules.mk
 include tests/Rules.mk
 
@@ -196,16 +196,16 @@ endef
 # position-independent.  PIC objects end in -pic.o instead of just .o.
 # Link targets that build shared objects must depend on the -pic.o
 # versions.
-$(OBJS): .obj/%.o: %.cc $(PROTOSRCS)
+$(OBJS): .obj/%.o: %.cc $(PROTOSRCS) Makefile
 	$(call compilecxx,CC,)
 
-$(OBJS:%.o=%-pic.o): .obj/%-pic.o: %.cc $(PROTOSRCS)
+$(OBJS:%.o=%-pic.o): .obj/%-pic.o: %.cc $(PROTOSRCS) Makefile
 	$(call compilecxx,CCPIC,-fPIC)
 
-$(PROTOOBJS): .obj/%.o: .obj/gen/%.pb.cc
+$(PROTOOBJS): .obj/%.o: .obj/gen/%.pb.cc Makefile
 	$(call compilecxx,CC,)
 
-$(PROTOOBJS:%.o=%-pic.o): .obj/%-pic.o: .obj/gen/%.pb.cc $(PROTOSRCS)
+$(PROTOOBJS:%.o=%-pic.o): .obj/%-pic.o: .obj/gen/%.pb.cc $(PROTOSRCS) Makefile
 	$(call compilecxx,CCPIC,-fPIC)
 #
 # Linking

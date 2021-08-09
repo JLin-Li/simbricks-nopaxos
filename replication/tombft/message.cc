@@ -11,7 +11,7 @@ namespace tombft {
 
 void TomBFTMessage::Parse(const void *buf, size_t size) {
   auto bytes = reinterpret_cast<const uint8_t *>(buf);
-  if (reinterpret_cast<const Header *>(buf)->sess_num != 0) {
+  if (NTOH_SESSNUM(reinterpret_cast<const Header *>(buf)->sess_num != 0)) {
     const size_t header_size = sizeof(Header);
     Assert(size > header_size);
     std::memcpy(&meta, buf, header_size);

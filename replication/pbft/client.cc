@@ -19,7 +19,9 @@ PbftClient::PbftClient(const Configuration &config, const ReplicaAddress &addr,
     : Client(config, addr, transport, clientid), security(sec) {
   lastReqId = 0;
   pendingRequest = nullptr;
-  requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
+  // requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
+  // workaround for bench
+  requestTimeout = new Timeout(transport, 10, [this]() { ResendRequest(); });
 
   view = 0;
 }
