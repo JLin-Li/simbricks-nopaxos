@@ -13,3 +13,5 @@ OBJS-tombft-client := $(o)client.o $(o)tombft-proto.o $(o)message.o \
 OBJS-tombft-replica := $(o)replica.o $(o)tombft-proto.o $(o)message.o \
                    $(OBJS-replica) $(LIB-message) \
                    $(LIB-configuration) $(LIB-pbmessage)
+
+OBJS-tombft-sequencer := $(OBJS-sequencer)

@@ -42,8 +42,7 @@ void TomBFTReplica::HandleRequest(const proto::RequestMessage &msg,
                                   const TomBFTMessage::Header &meta,
                                   const TomBFTMessage &m) {
   Assert(meta.sess_num != 0);
-  std::string seq_sig(
-      reinterpret_cast<const char *>(meta.hmac_list[replicaIdx]), 32);
+  std::string seq_sig(meta.hmac_list[replicaIdx], 32);
   if (!security.SequencerVerifier(replicaIdx)
            .Verify(msg.SerializeAsString(), seq_sig)) {
     RWarning("Incorrect sequencer signature");
@@ -70,7 +69,14 @@ void TomBFTReplica::HandleRequest(const proto::RequestMessage &msg,
 
   Execute(vs.opnum, msg.req(), *reply_msg.mutable_reply());
 
-  transport->SendMessage(this, remote, TomBFTMessage(reply_msg));
+  reply_msg.mutable_reply()->set_sig(string());
+  security.ReplicaSigner(replicaIdx)
+      .Sign(reply_msg.SerializeAsString(),
+            *reply_msg.mutable_reply()->mutable_sig());
+
+  TransportAddress *client_addr =
+      transport->LookupAddress(ReplicaAddress(msg.req().clientaddr()));
+  transport->SendMessage(this, *client_addr, TomBFTMessage(reply_msg));
 }
 
 }  // namespace tombft

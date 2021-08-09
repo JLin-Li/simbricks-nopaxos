@@ -35,6 +35,7 @@
 #include <google/protobuf/message.h>
 
 #include <map>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -121,7 +122,11 @@ class ByzantineQuorumSet {
   }
 };
 
-template <typename SeqNumType, typename MsgType>
+template <typename SeqNumType, typename MsgType,
+          // would be `typename = enable_if_t<is_base_of_v<Message, MsgType>>`
+          // if we have C++17
+          typename = typename std::enable_if<
+              std::is_base_of<google::protobuf::Message, MsgType>::value>::type>
 class ByzantineProtoQuorumSet {
  private:
   ByzantineQuorumSet<SeqNumType, std::string> inner;

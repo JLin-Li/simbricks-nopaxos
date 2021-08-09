@@ -29,7 +29,7 @@ class Verifier {
   // return false on both signature mismatching and verification failure
   virtual bool Verify(const std::string &message,
                       const std::string &signature) const {
-    return signature == "signed";
+    return signature.substr(0, 6) == "signed";
   }
 };
 
@@ -98,7 +98,8 @@ class Security {
 
   virtual const Signer &ReplicaSigner(int replica_id) const = 0;
   virtual const Verifier &ReplicaVerifier(int replica_id) const = 0;
-  virtual const Signer &SequencerSigner(int index = 0) const = 0;
+  virtual const Signer &SequencerSigner(int replica_id,
+                                        int index = 0) const = 0;
   virtual const Verifier &SequencerVerifier(int replica_id,
                                             int index = 0) const = 0;
 };
@@ -118,7 +119,8 @@ class HomogeneousSecurity : public Security {
 
   virtual const Signer &ReplicaSigner(int replica_id) const { return s; }
   virtual const Verifier &ReplicaVerifier(int replica_id) const { return v; }
-  virtual const Signer &SequencerSigner(int index) const override {
+  virtual const Signer &SequencerSigner(int replica_id,
+                                        int index) const override {
     return seq_s;
   }
   virtual const Verifier &SequencerVerifier(int replica_id,
