@@ -32,6 +32,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 
 #include "common/client.h"
 #include "common/replica.h"
@@ -47,8 +48,10 @@ using namespace dsnet;
 using namespace dsnet::pbft;
 using namespace dsnet::pbft::proto;
 using std::map;
+using std::pair;
 using std::sprintf;
 using std::string;
+using std::unique_ptr;
 using std::vector;
 
 class PbftTestApp : public AppReplica {
@@ -66,20 +69,51 @@ class PbftTestApp : public AppReplica {
   }
 };
 
+Secp256k1Signer defaultSigner;
+Secp256k1Verifier defaultVerifier(defaultSigner);
+HomogeneousSecurity defaultSecurity(defaultSigner, defaultVerifier);
+
+template <int numberClient>
+struct System {
+  Security &security;
+  SimulatedTransport transport;
+  PbftTestApp apps[4];
+  unique_ptr<PbftReplica> *replicas;
+  unique_ptr<PbftClient> *clients;
+
+  System(Security &security) : security(security), transport(true) {
+    map<int, vector<ReplicaAddress> > replicaAddrs = {
+        {0,
+         {{"localhost", "1509"},
+          {"localhost", "1510"},
+          {"localhost", "1511"},
+          {"localhost", "1512"}}}};
+    Configuration c(1, 4, 1, replicaAddrs);
+
+    replicas = new unique_ptr<PbftReplica>[4];
+    for (int i = 0; i < 4; i += 1) {
+      replicas[i] = unique_ptr<PbftReplica>(
+          new PbftReplica(c, i, true, &transport, security, &apps[i]));
+    }
+    clients = new unique_ptr<PbftClient>[numberClient];
+    for (int i = 0; i < numberClient; i += 1) {
+      clients[i] = unique_ptr<PbftClient>(new PbftClient(
+          c, ReplicaAddress("localhost", "0"), &transport, security));
+    }
+  }
+
+  System() : System(defaultSecurity) {}
+
+  ~System() {
+    delete[] replicas;
+    delete[] clients;
+  }
+};
+
 void OneClientMultiOp(int numberOp, Security &security) {
-  map<int, vector<ReplicaAddress> > replicaAddrs = {{0,
-                                                     {{"localhost", "1509"},
-                                                      {"localhost", "1510"},
-                                                      {"localhost", "1511"},
-                                                      {"localhost", "1512"}}}};
-  Configuration c(1, 4, 1, replicaAddrs);
-  SimulatedTransport transport(true);
-  PbftTestApp app1, app2, app3, app4;
-  PbftReplica replica0(c, 0, true, &transport, security, &app1);
-  PbftReplica replica1(c, 1, true, &transport, security, &app2);
-  PbftReplica replica2(c, 2, true, &transport, security, &app3);
-  PbftReplica replica3(c, 3, true, &transport, security, &app4);
-  PbftClient client(c, ReplicaAddress("localhost", "0"), &transport, security);
+  System<1> system(security);
+  Client &client = *system.clients[0];
+  Transport &transport = system.transport;
 
   int opIndex = 0;
   std::function<void(const string &, const string &)> onResp;
@@ -87,6 +121,10 @@ void OneClientMultiOp(int numberOp, Security &security) {
     char buf[100];
     sprintf(buf, "test%d", opIndex);
     ASSERT_EQ(req, buf);
+    for (int i = 0; i < 4; i += 1) {
+      ASSERT_EQ(system.apps[i].LastOp(), buf);
+    }
+
     sprintf(buf, "reply: test%d", opIndex);
     ASSERT_EQ(reply, buf);
     opIndex += 1;
@@ -108,17 +146,80 @@ TEST(Pbft, 1Op) {
   OneClientMultiOp(1, security);
 }
 
-TEST(Pbft, 1OpSign) {
-  FixSingleKeySecp256k1Security security;
-  OneClientMultiOp(1, security);
-}
+TEST(Pbft, 1OpSign) { OneClientMultiOp(1, defaultSecurity); }
 
 TEST(Pbft, 100Op) {
   NopSecurity security;
   OneClientMultiOp(100, security);
 }
 
-TEST(Pbft, 100OpSign) {
-  FixSingleKeySecp256k1Security security;
-  OneClientMultiOp(100, security);
+TEST(Pbft, 100OpSign) { OneClientMultiOp(100, defaultSecurity); }
+
+using filter_t = std::function<bool(TransportReceiver *, std::pair<int, int>,
+                                    TransportReceiver *, std::pair<int, int>,
+                                    Message &, uint64_t &delay)>;
+
+filter_t DisableRx(TransportReceiver *r) {
+  return [=](TransportReceiver *src, pair<int, int> srcId,
+             TransportReceiver *dst, pair<int, int> dstId, Message &msg,
+             uint64_t &delay) { return dst != r; };
+}
+
+filter_t DisableTraffic(TransportReceiver *src, TransportReceiver *dst) {
+  return [=](TransportReceiver *src_, pair<int, int> srcId,
+             TransportReceiver *dst_, pair<int, int> dstId, Message &msg,
+             uint64_t &delay) { return src != src_ || dst != dst_; };
+}
+
+TEST(Pbft, ResendPrePrepare) {
+  System<1> system;
+  Client &client = *system.clients[0];
+  bool done = false;
+  client.Invoke("warmup", [&](const string &, const string &) {
+    // prevent replica rx, so no prepreare and client request is delivered
+    for (int i = 1; i < 4; i += 1) {
+      system.transport.AddFilter(i, DisableRx(system.replicas[i].get()));
+    }
+    client.Invoke("test", [&](const string &, const string &) { done = true; });
+    system.transport.AddFilter(0, DisableRx(system.replicas[0].get()));
+
+    system.transport.Timer(1000, [&]() {
+      for (int i = 0; i < 4; i += 1) {
+        system.transport.RemoveFilter(i);
+      }
+    });
+  });
+  system.transport.Timer(1800, [&]() { system.transport.Stop(); });
+  system.transport.Run();
+  ASSERT_FALSE(done);
+
+  system.transport.Timer(800, [&]() { system.transport.Stop(); });
+  system.transport.Run();
+  ASSERT_TRUE(done);
+}
+
+TEST(Pbft, SimpleStateTransfer) {
+  System<1> system;
+  Client &client = *system.clients[0];
+  bool done = false;
+  client.Invoke("warmup", [&](const string &, const string &) {
+    for (int i = 1; i < 4; i += 1) {
+      for (int j = 1; j < 4; j += 1) {
+        system.transport.AddFilter(
+            (i << 2) | j,
+            DisableTraffic(system.replicas[i].get(), system.replicas[j].get()));
+      }
+    }
+    client.Invoke("test", [&](const string &, const string &) { done = true; });
+    system.transport.Timer(100, [&]() {
+      for (int i = 1; i < 4; i += 1) {
+        for (int j = 1; j < 4; j += 1) {
+          system.transport.RemoveFilter((i << 2) | j);
+        }
+      }
+    });
+  });
+  system.transport.Timer(3000, [&]() { system.transport.Stop(); });
+  system.transport.Run();
+  ASSERT_TRUE(done);
 }

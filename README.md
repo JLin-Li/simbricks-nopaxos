@@ -42,9 +42,7 @@ Eris and can be built using `make`. It has been tested on Ubuntu 14.04,
 16.04 and Debian 8. Regression tests can be run with `make check`
 
 Dependencies include (Debian/Ubuntu packages):
-  protobuf-compiler pkg-config libunwind-dev libssl-dev libprotobuf-dev libevent-dev libgtest-dev libboost-dev
-
-You also need to manully install [secp256k1](https://github.com/bitcoin-core/secp256k1).
+  protobuf-compiler pkg-config libunwind-dev libssl-dev libprotobuf-dev libevent-dev libgtest-dev libboost-dev libsecp256k1-dev
 
 You will need to create a configuration file with the following
 syntax:

@@ -29,7 +29,7 @@ class Verifier {
   // return false on both signature mismatching and verification failure
   virtual bool Verify(const std::string &message,
                       const std::string &signature) const {
-    return signature == "signed";
+    return signature.substr(0, 6) == "signed";
   }
 };
 
@@ -38,8 +38,7 @@ class RsaSigner : public Signer {
   EVP_PKEY *pkey;
 
  public:
-  RsaSigner() : pkey(nullptr) {}
-  bool SetKey(const std::string &privateKey);
+  RsaSigner(const std::string &privateKey);
   ~RsaSigner();
   bool Sign(const std::string &message, std::string &signature) const override;
 };
@@ -49,8 +48,7 @@ class RsaVerifier : public Verifier {
   EVP_PKEY *pkey;
 
  public:
-  RsaVerifier() : pkey(nullptr) {}
-  bool SetKey(const std::string &publicKey);
+  RsaVerifier(const std::string &publicKey);
   ~RsaVerifier();
   bool Verify(const std::string &message,
               const std::string &signature) const override;
@@ -58,13 +56,15 @@ class RsaVerifier : public Verifier {
 
 class Secp256k1Signer : public Signer {
  private:
+  static const unsigned char *kDefaultSecret;
   secp256k1_context *ctx;
   unsigned char secKey[32];
   friend class Secp256k1Verifier;
 
  public:
-  // if not specify secert key then random key will be generate
-  Secp256k1Signer(const unsigned char *secKey = nullptr);
+  // if nullptr is passed then random key will be generate
+  Secp256k1Signer(
+      const unsigned char *secKey = Secp256k1Signer::kDefaultSecret);
   ~Secp256k1Signer();
   bool Sign(const std::string &message, std::string &signature) const override;
 };
@@ -84,53 +84,60 @@ class Secp256k1Verifier : public Verifier {
 // each BFT replica/client should accept a &Security in its constructor so
 // proper signature impl can be injected
 class Security {
+ private:
+  const Signer &client_signer;
+  const Verifier &client_verifier;
+
+ protected:
+  Security(const Signer &client_signer, const Verifier &client_verifier)
+      : client_signer(client_signer), client_verifier(client_verifier) {}
+
  public:
-  virtual const Signer &GetReplicaSigner(int replicaIndex) const = 0;
-  virtual const Verifier &GetReplicaVerifier(int replicaIndex) const = 0;
-  virtual const Signer &GetClientSigner(const TransportAddress &addr) const = 0;
-  virtual const Verifier &GetClientVerifier(
-      const TransportAddress &addr) const = 0;
+  const Signer &ClientSigner() const { return client_signer; }
+  const Verifier &ClientVerifier() const { return client_verifier; }
+
+  virtual const Signer &ReplicaSigner(int replica_id) const = 0;
+  virtual const Verifier &ReplicaVerifier(int replica_id) const = 0;
+  virtual const Signer &SequencerSigner(int replica_id,
+                                        int index = 0) const = 0;
+  virtual const Verifier &SequencerVerifier(int replica_id,
+                                            int index = 0) const = 0;
 };
 
-class NopSecurity : public Security {
+// for bench
+class HomogeneousSecurity : public Security {
  private:
-  Signer s;
-  Verifier v;
+  const Signer &s, &seq_s;
+  const Verifier &v, &seq_v;
 
  public:
-  NopSecurity() {}
-  const Signer &GetReplicaSigner(int replicaIndex) const override { return s; }
-  const Signer &GetClientSigner(const TransportAddress &addr) const override {
-    return s;
+  HomogeneousSecurity(const Signer &s, const Verifier &v, const Signer &seq_s,
+                      const Verifier &seq_v)
+      : Security(s, v), s(s), seq_s(s), v(v), seq_v(v) {}
+  HomogeneousSecurity(const Signer &s, const Verifier &v)
+      : HomogeneousSecurity(s, v, s, v) {}
+
+  virtual const Signer &ReplicaSigner(int replica_id) const { return s; }
+  virtual const Verifier &ReplicaVerifier(int replica_id) const { return v; }
+  virtual const Signer &SequencerSigner(int replica_id,
+                                        int index) const override {
+    return seq_s;
   }
-  const Verifier &GetReplicaVerifier(int replicaIndex) const override {
-    return v;
-  }
-  const Verifier &GetClientVerifier(
-      const TransportAddress &addr) const override {
-    return v;
+  virtual const Verifier &SequencerVerifier(int replica_id,
+                                            int index) const override {
+    return seq_v;
   }
 };
 
-class FixSingleKeySecp256k1Security : public Security {
+// for debug
+// the only way to fail NopSecurity is to Verify without Sign
+class NopSecurity : public HomogeneousSecurity {
  private:
-  Secp256k1Signer s;
-  Secp256k1Verifier v;
-  static const unsigned char *SECRET;
+  const static Signer s;
+  const static Verifier v;
 
  public:
-  FixSingleKeySecp256k1Security() : s(SECRET), v(s) {}
-  const Signer &GetReplicaSigner(int replicaIndex) const override { return s; }
-  const Signer &GetClientSigner(const TransportAddress &addr) const override {
-    return s;
-  }
-  const Verifier &GetReplicaVerifier(int replicaIndex) const override {
-    return v;
-  }
-  const Verifier &GetClientVerifier(
-      const TransportAddress &addr) const override {
-    return v;
-  }
+  NopSecurity() : HomogeneousSecurity(NopSecurity::s, NopSecurity::v) {}
 };
 
 }  // namespace dsnet

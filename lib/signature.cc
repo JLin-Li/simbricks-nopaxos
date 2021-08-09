@@ -23,7 +23,10 @@
 
 // https://stackoverflow.com/a/34477445
 static const unsigned char SEC[] = "01234567890123456789012345678901";
-const unsigned char *dsnet::FixSingleKeySecp256k1Security::SECRET = SEC;
+const unsigned char *dsnet::Secp256k1Signer::kDefaultSecret = SEC;
+
+const dsnet::Signer dsnet::NopSecurity::s;
+const dsnet::Verifier dsnet::NopSecurity::v;
 
 namespace {
 
@@ -41,17 +44,16 @@ size_t calcDecodeLength(const char *b64input) {
 
 }  // namespace
 
-bool dsnet::RsaSigner::SetKey(const std::string &privateKey) {
+dsnet::RsaSigner::RsaSigner(const std::string &privateKey) {
   BIO *keybio = BIO_new_mem_buf(privateKey.c_str(), -1);
-  if (!keybio) return false;
+  Assert(keybio);
   RSA *rsa = nullptr;
   rsa = PEM_read_bio_RSAPrivateKey(keybio, &rsa, nullptr, nullptr);
-  if (!rsa) return false;
+  Assert(rsa);
   pkey = EVP_PKEY_new();
-  if (!pkey) return false;
+  Assert(pkey);
 
   EVP_PKEY_assign_RSA(pkey, rsa);
-  return true;
 }
 
 dsnet::RsaSigner::~RsaSigner() {
@@ -92,17 +94,16 @@ bool dsnet::RsaSigner::Sign(const std::string &message,
   return true;
 }
 
-bool dsnet::RsaVerifier::SetKey(const std::string &publicKey) {
+dsnet::RsaVerifier::RsaVerifier(const std::string &publicKey) {
   BIO *keybio = BIO_new_mem_buf(publicKey.c_str(), -1);
-  if (!keybio) return false;
+  Assert(keybio);
   RSA *rsa = nullptr;
   rsa = PEM_read_bio_RSA_PUBKEY(keybio, &rsa, nullptr, nullptr);
-  if (!rsa) return false;
+  Assert(rsa);
   pkey = EVP_PKEY_new();
-  if (!pkey) return false;
+  Assert(pkey);
 
   EVP_PKEY_assign_RSA(pkey, rsa);
-  return true;
 }
 
 dsnet::RsaVerifier::~RsaVerifier() {

@@ -19,7 +19,9 @@ PbftClient::PbftClient(const Configuration &config, const ReplicaAddress &addr,
     : Client(config, addr, transport, clientid), security(sec) {
   lastReqId = 0;
   pendingRequest = nullptr;
-  requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
+  // requestTimeout = new Timeout(transport, 1000, [this]() { ResendRequest(); });
+  // workaround for bench
+  requestTimeout = new Timeout(transport, 10, [this]() { ResendRequest(); });
 
   view = 0;
 }
@@ -36,8 +38,7 @@ void PbftClient::Invoke(const string &request, continuation_t continuation) {
     Panic("Client only supports one pending request");
   }
   lastReqId += 1;
-  pendingRequest =
-      new PendingRequest(request, lastReqId, continuation, config.f + 1);
+  pendingRequest = new PendingRequest(request, lastReqId, continuation, config);
   SendRequest();
 }
 
@@ -48,8 +49,8 @@ void PbftClient::SendRequest(bool broadcast) {
   reqMsg.mutable_req()->set_clientid(clientid);
   reqMsg.mutable_req()->set_clientreqid(lastReqId);
 
-  security.GetClientSigner(GetAddress())
-      .Sign(reqMsg.req().SerializeAsString(), *reqMsg.mutable_sig());
+  security.ClientSigner().Sign(reqMsg.req().SerializeAsString(),
+                               *reqMsg.mutable_sig());
   reqMsg.set_relayed(false);
 
   if (broadcast)
@@ -98,7 +99,7 @@ void PbftClient::HandleReply(const TransportAddress &remote,
 
   proto::ReplyMessage copy(msg);
   copy.set_sig(std::string());
-  if (!security.GetReplicaVerifier(msg.replicaid())
+  if (!security.ReplicaVerifier(msg.replicaid())
            .Verify(copy.SerializeAsString(), msg.sig())) {
     Warning("Received wrong signature");
     return;
@@ -108,13 +109,25 @@ void PbftClient::HandleReply(const TransportAddress &remote,
     return;
   }
 
-  Debug("Client received reply");
-  if (!pendingRequest->replySet.Add(msg.req().clientreqid(), msg.replicaid(),
-                                    msg.reply())) {
-    return;
+  Debug("Client received reply, spec = %d", msg.speculative());
+  if (!msg.speculative()) {
+    if (!pendingRequest->replySet.Add(msg.req().clientreqid(), msg.replicaid(),
+                                      msg.reply())) {
+      return;
+    } else {
+      Debug("f + 1 replies received, done req = %lu",
+            pendingRequest->clientreqid);
+    }
+  } else {
+    if (!pendingRequest->specReplySet.Add(msg.req().clientreqid(),
+                                          msg.replicaid(), msg.reply())) {
+      return;
+    } else {
+      Debug("2f + 1 speculative replies received, done req = %lu",
+            pendingRequest->clientreqid);
+    }
   }
 
-  Debug("f + 1 replies received, current request done");
   requestTimeout->Stop();
   PendingRequest *req = pendingRequest;
   pendingRequest = nullptr;

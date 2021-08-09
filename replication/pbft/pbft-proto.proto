@@ -21,7 +21,8 @@ message ReplyMessage {
     required dsnet.Request req = 2;
     required uint64 replicaid = 3;
     required bytes reply = 4;
-    required bytes sig = 5;
+    required bool speculative = 5;
+    required bytes sig = 6;
 }
 
 message ToReplicaMessage {
@@ -31,6 +32,7 @@ message ToReplicaMessage {
         PrePrepareMessage pre_prepare = 3;
         PrepareMessage prepare = 4;
         CommitMessage commit = 5;
+        StateTransferRequestMessage state_transfer_request = 6;
     }
 }
 
@@ -43,6 +45,10 @@ message RequestMessage {
 
 message UnloggedRequestMessage {
     required dsnet.UnloggedRequest req = 1;
+}
+
+message StateTransferRequestMessage {
+    required uint64 seqnum = 1;
 }
 
 // signed part
