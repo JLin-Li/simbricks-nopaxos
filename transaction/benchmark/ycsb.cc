@@ -61,10 +61,12 @@ main(int argc, char **argv)
     struct timeval startTime, endTime, initialTime, currTime, lastInterval;
     struct Latency_t latency;
     vector<uint64_t> latencies;
+    std::map<uint64_t, int> throughputs, latency_dist;
     phase_t phase = WARMUP;
     int tputInterval = 0;
     bool indep = true;
     string host;
+    string stats_file;
 
     KVClient *kvClient;
     TxnClient *txnClient;
@@ -73,7 +75,7 @@ main(int argc, char **argv)
     protomode_t mode = PROTO_UNKNOWN;
 
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:h:N:k:f:v:m:z:i:r:u:w:g")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:h:N:k:f:v:m:z:i:r:u:w:s:g")) != -1) {
         switch (opt) {
         case 'c': // Configuration path
         {
@@ -214,6 +216,12 @@ main(int argc, char **argv)
             break;
         }
 
+        case 's': // statistics file
+        {
+            stats_file = string(optarg);
+            break;
+        }
+
         default:
             fprintf(stderr, "Unknown argument %s\n", argv[optind]);
             break;
@@ -321,8 +329,9 @@ main(int argc, char **argv)
             int time_since_interval = (currTime.tv_sec - lastInterval.tv_sec)*1000 + (currTime.tv_usec - lastInterval.tv_usec)/1000;
 
             if (tputInterval > 0 && time_since_interval >= tputInterval) {
-                Notice("Completed %lu transactions at %lu ms", commit_transactions-last_interval_txns,
-                       ((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval);
+                //Notice("Completed %lu transactions at %lu ms", commit_transactions-last_interval_txns,
+                       //((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval);
+                throughputs[((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval] += commit_transactions - last_interval_txns;
                 lastInterval = currTime;
                 last_interval_txns = commit_transactions;
             }
@@ -373,6 +382,7 @@ main(int argc, char **argv)
                 commit_transactions++;
             }
             latencies.push_back(ns);
+            latency_dist[ns/1000]++;
             total_latency += (ns/1000);
         }
     }
@@ -388,22 +398,39 @@ main(int argc, char **argv)
     char buf[1024];
     std::sort(latencies.begin(), latencies.end());
 
-    uint64_t ns  = latencies[total_transactions / 2];
-    LatencyFmtNS(ns, buf);
-    Notice("Median latency is %ld ns (%s)", ns, buf);
+    uint64_t median  = latencies[total_transactions / 2];
+    LatencyFmtNS(median, buf);
+    Notice("Median latency is %ld ns (%s)", median, buf);
     Notice("Average latency is %lu us", total_latency/total_transactions);
 
-    ns = latencies[total_transactions * 90 / 100];
-    LatencyFmtNS(ns, buf);
-    Notice("90th percentile latency is %ld ns (%s)", ns, buf);
+    uint64_t p90 = latencies[total_transactions * 90 / 100];
+    LatencyFmtNS(p90, buf);
+    Notice("90th percentile latency is %ld ns (%s)", p90, buf);
 
-    ns = latencies[total_transactions * 95 / 100];
-    LatencyFmtNS(ns, buf);
-    Notice("95th percentile latency is %ld ns (%s)", ns, buf);
+    uint64_t p95 = latencies[total_transactions * 95 / 100];
+    LatencyFmtNS(p95, buf);
+    Notice("95th percentile latency is %ld ns (%s)", p95, buf);
 
-    ns = latencies[total_transactions * 99 / 100];
-    LatencyFmtNS(ns, buf);
-    Notice("99th percentile latency is %ld ns (%s)", ns, buf);
+    uint64_t p99 = latencies[total_transactions * 99 / 100];
+    LatencyFmtNS(p95, buf);
+    Notice("99th percentile latency is %ld ns (%s)", p95, buf);
+
+    if (stats_file.size() > 0) {
+        std::ofstream fs(stats_file.c_str(), std::ios::out);
+        fs << commit_transactions / (diff.tv_sec + (float)diff.tv_usec / 1000000.0) << std::endl;
+        fs << median/1000 << " " << p90/1000 << " " << p95/1000 << " " << p99/1000 << std::endl;
+        for (const auto &kv : latency_dist) {
+            fs << kv.first << " " << kv.second << std::endl;
+        }
+        fs.close();
+        if (throughputs.size() > 0) {
+            fs.open(stats_file.append("_tputs").c_str());
+            for (const auto &kv : throughputs) {
+                fs << kv.first << " " << kv.second << std::endl;
+            }
+            fs.close();
+        }
+    }
 
     delete kvClient;
     // destructor of kvClient will deallocate txnClient
