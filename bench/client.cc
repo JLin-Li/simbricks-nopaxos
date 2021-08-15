@@ -365,8 +365,8 @@ int main(int argc, char **argv) {
         for (const auto &kv : agg_throughputs) {
           fs << kv.first << " " << kv.second << std::endl;
         }
+        fs.close();
       }
-      fs.close();
     }
     exit(0);
   });
