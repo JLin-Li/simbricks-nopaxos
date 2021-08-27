@@ -60,13 +60,11 @@ public:
 private:
     Transport *transport;
     Client *protoClient;
-    std::thread *proxyTransport;
     Promise *waiting;
 
     void InvokeCallback(const std::map<shardnum_t, std::string> &requests,
                         const std::map<shardnum_t, std::string> &replies,
                         bool commit);
-    void RunProxy();
 };
 
 } // namespace transaction

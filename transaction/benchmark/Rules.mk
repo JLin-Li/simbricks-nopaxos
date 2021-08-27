@@ -21,7 +21,7 @@ $(d)txnServer: $(OBJS-all-app-txnservers) $(OBJS-all-proto-servers) $(LIB-udptra
 
 $(d)fcor: $(OBJS-eris-fcor) $(OBJS-vr-replica) $(o)fcor.o
 
-$(d)ycsb: $(OBJS-all-app-clients) $(OBJS-all-proto-clients) $(LIB-configuration) $(LIB-udptransport) \
-    $(LIB-latency) $(o)ycsb.o
+$(d)ycsb: $(OBJS-all-app-clients) $(OBJS-all-proto-clients) $(LIB-configuration) \
+		$(LIB-udptransport) $(LIB-dpdktransport) $(LIB-latency) $(o)ycsb.o
 
 BINS += $(d)terminalClient $(d)kvClient $(d)tpccClient $(d)txnServer $(d)fcor $(d)ycsb

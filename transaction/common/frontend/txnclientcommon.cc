@@ -39,19 +39,10 @@ TxnClientCommon::TxnClientCommon(Transport *transport,
                                  Client *proto_client)
     : transport(transport), protoClient(proto_client)
 {
-    proxyTransport = new thread(&TxnClientCommon::RunProxy, this);
 }
 
 TxnClientCommon::~TxnClientCommon()
 {
-    this->transport->Stop();
-    this->proxyTransport->join();
-}
-
-void
-TxnClientCommon::RunProxy()
-{
-    transport->Run();
 }
 
 bool

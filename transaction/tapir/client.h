@@ -33,6 +33,7 @@
 #ifndef __TAPIR_CLIENT_H__
 #define __TAPIR_CLIENT_H__
 
+#include <thread>
 #include "lib/assert.h"
 #include "lib/message.h"
 #include "lib/transport.h"

@@ -16,6 +16,7 @@
 #include "lib/configuration.h"
 #include "lib/message.h"
 #include "lib/udptransport.h"
+#include "lib/dpdktransport.h"
 #include "transaction/common/frontend/txnclientcommon.h"
 #include "transaction/apps/kvstore/client.h"
 #include "transaction/eris/client.h"
@@ -65,17 +66,18 @@ main(int argc, char **argv)
     phase_t phase = WARMUP;
     int tputInterval = 0;
     bool indep = true;
-    string host;
-    string stats_file;
+    string host, dev, transport_cmdline, stats_file;
+    int dev_port = 0;
 
     KVClient *kvClient;
     TxnClient *txnClient;
     Client *protoClient = nullptr;
 
     protomode_t mode = PROTO_UNKNOWN;
+    enum { TRANSPORT_UDP, TRANSPORT_DPDK } transport_type = TRANSPORT_UDP;
 
     int opt;
-    while ((opt = getopt(argc, argv, "c:d:h:N:k:f:v:m:z:i:r:u:w:s:g")) != -1) {
+    while ((opt = getopt(argc, argv, "c:d:e:f:gh:i:k:m:N:p:r:s:u:v:w:x:z:Z:")) != -1) {
         switch (opt) {
         case 'c': // Configuration path
         {
@@ -94,9 +96,43 @@ main(int argc, char **argv)
             break;
         }
 
-        case 'h':
+        case 'h': // host
             host = string(optarg);
             break;
+
+        case 'e': // device
+        {
+            dev = string(optarg);
+            break;
+        }
+
+        case 'x': // device port
+        {
+            char *strtol_ptr;
+            dev_port = strtoul(optarg, &strtol_ptr, 10);
+            if ((*optarg == '\0') || (*strtol_ptr != '\0')) {
+                fprintf(stderr, "option -x requires a numeric arg\n");
+            }
+            break;
+        }
+
+        case 'Z': // transport command line
+        {
+            transport_cmdline = string(optarg);
+            break;
+        }
+
+        case 'p':
+        {
+            if (strcasecmp(optarg, "udp") == 0) {
+                transport_type = TRANSPORT_UDP;
+            } else if (strcasecmp(optarg, "dpdk") == 0) {
+                transport_type = TRANSPORT_DPDK;
+            } else {
+                fprintf(stderr, "unknown transport '%s'\n", optarg);
+            }
+            break;
+        }
 
         case 'N': // Number of shards.
         {
@@ -258,8 +294,17 @@ main(int argc, char **argv)
     }
 
     Configuration config(configStream);
-    UDPTransport *transport = new UDPTransport();
-    ReplicaAddress addr(host, "0");
+    ReplicaAddress addr(host, "0", dev);
+
+    dsnet::Transport *transport;
+    switch (transport_type) {
+        case TRANSPORT_UDP:
+            transport = new dsnet::UDPTransport(0, 0);
+            break;
+        case TRANSPORT_DPDK:
+            transport = new dsnet::DPDKTransport(dev_port, 0, transport_cmdline);
+            break;
+    }
 
     switch (mode) {
     case PROTO_ERIS: {
