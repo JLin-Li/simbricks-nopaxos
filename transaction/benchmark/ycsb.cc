@@ -376,7 +376,7 @@ main(int argc, char **argv)
             if (tputInterval > 0 && time_since_interval >= tputInterval) {
                 //Notice("Completed %lu transactions at %lu ms", commit_transactions-last_interval_txns,
                        //((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval);
-                throughputs[((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval] += commit_transactions - last_interval_txns;
+                throughputs[((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval] += (commit_transactions - last_interval_txns) * (1000 / tputInterval);
                 lastInterval = currTime;
                 last_interval_txns = commit_transactions;
             }
