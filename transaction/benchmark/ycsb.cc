@@ -34,19 +34,111 @@ using namespace dsnet::transaction::kvstore;
 DEFINE_LATENCY(op);
 
 // Function to pick a random key according to some distribution.
-int rand_key();
-int rand_value();
+static int rand_key();
+static int rand_value();
 
-bool ready = false;
-double alpha = -1;
-double *zipf;
+static bool ready = false;
+static double alpha = -1;
+static double *zipf;
 
-vector<string> keys;
-vector<string> values;
-int nKeys = 1000;
-int nValues = 1000;
+static vector<string> keys;
+static vector<string> values;
+static int nKeys = 1000;
+static int nValues = 1000;
+
+static int duration = 10;
+static int tputInterval = 0;
+static uint64_t total_latency = 0;
+static uint64_t commit_transactions = 0;
+static std::map<uint64_t, int> throughputs, latency_dist;
+static int readportion = 50;
+static int updateportion = 50;
+static int rmwportion = 0;
+static bool indep = true;
+static uint64_t total_transactions = 0;
+static struct timeval startTime, endTime;
+static KVClient *kvClient;
+static TxnClient *txnClient;
+static dsnet::Transport *transport;
 
 uint64_t key_to_shard(const std::string &key, uint64_t nshards);
+
+static void
+client_thread()
+{
+    phase_t phase = WARMUP;
+    uint64_t last_interval_txns = 0;
+    struct timeval initialTime, currTime, lastInterval;
+    struct Latency_t latency;
+
+    _Latency_Init(&latency, "op");
+    gettimeofday(&initialTime, NULL);
+    while (true) {
+        gettimeofday(&currTime, NULL);
+        uint64_t time_elapsed = currTime.tv_sec - initialTime.tv_sec;
+
+        if (phase == MEASURE) {
+            int time_since_interval = (currTime.tv_sec - lastInterval.tv_sec)*1000 + (currTime.tv_usec - lastInterval.tv_usec)/1000;
+
+            if (tputInterval > 0 && time_since_interval >= tputInterval) {
+                throughputs[((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval] += (commit_transactions - last_interval_txns) * (1000 / tputInterval);
+                lastInterval = currTime;
+                last_interval_txns = commit_transactions;
+            }
+        }
+
+        if (phase == WARMUP) {
+            if (time_elapsed >= (uint64_t)duration / 3) {
+                phase = MEASURE;
+                startTime = currTime;
+                gettimeofday(&lastInterval, NULL);
+            }
+        } else if (phase == MEASURE) {
+            if (time_elapsed >= (uint64_t)duration * 2 / 3) {
+                phase = COOLDOWN;
+                endTime = currTime;
+            }
+        } else if (phase == COOLDOWN) {
+            if (time_elapsed >= (uint64_t)duration) {
+                break;
+            }
+        }
+
+        Latency_Start(&latency);
+
+        int ttype = rand() % 100;
+        bool commit;
+
+        if (ttype < readportion) {
+            string key = keys[rand_key()];
+            string value;
+            commit = kvClient->InvokeGetTxn(key, value);
+        } else if (ttype < readportion + updateportion) {
+            string key = keys[rand_key()];
+            string value = values[rand_value()];
+            commit = kvClient->InvokePutTxn(key, value);
+        } else {
+            string key1 = keys[rand_key()];
+            string key2 = keys[rand_key()];
+            string value1 = values[rand_value()];
+            string value2 = values[rand_value()];
+            commit = kvClient->InvokeRMWTxn(key1, key2, value1, value2, indep);
+        }
+
+        uint64_t ns = Latency_End(&latency);
+
+        if (phase == MEASURE) {
+            if (commit) {
+                commit_transactions++;
+            }
+            latency_dist[ns/1000]++;
+            total_transactions++;
+            total_latency += (ns/1000);
+        }
+    }
+    txnClient->Done();
+    transport->Stop();
+}
 
 int
 main(int argc, char **argv)
@@ -54,23 +146,10 @@ main(int argc, char **argv)
     const char *configPath = nullptr;
     const char *keysPath = nullptr;
     const char *valuesPath = nullptr;
-    int duration = 10;
     int nShards = 1;
-    int readportion = 50;
-    int updateportion = 50;
-    int rmwportion = 0;
-    struct timeval startTime, endTime, initialTime, currTime, lastInterval;
-    struct Latency_t latency;
-    vector<uint64_t> latencies;
-    std::map<uint64_t, int> throughputs, latency_dist;
-    phase_t phase = WARMUP;
-    int tputInterval = 0;
-    bool indep = true;
     string host, dev, transport_cmdline, stats_file;
     int dev_port = 0;
 
-    KVClient *kvClient;
-    TxnClient *txnClient;
     Client *protoClient = nullptr;
 
     protomode_t mode = PROTO_UNKNOWN;
@@ -285,9 +364,6 @@ main(int argc, char **argv)
     gettimeofday(&tv, NULL);
     srand(tv.tv_usec);
 
-    latencies.reserve(duration * 10000);
-    _Latency_Init(&latency, "op");
-
     ifstream configStream(configPath);
     if (configStream.fail()) {
         Panic("unable to read configuration file: %s", configPath);
@@ -296,7 +372,6 @@ main(int argc, char **argv)
     Configuration config(configStream);
     ReplicaAddress addr(host, "0", dev);
 
-    dsnet::Transport *transport;
     switch (transport_type) {
         case TRANSPORT_UDP:
             transport = new dsnet::UDPTransport(0, 0);
@@ -361,109 +436,66 @@ main(int argc, char **argv)
     }
     in.close();
 
-
-    uint64_t commit_transactions = 0;
-    uint64_t last_interval_txns = 0;
-    uint64_t total_latency = 0;
-    gettimeofday(&initialTime, NULL);
-    while (true) {
-        gettimeofday(&currTime, NULL);
-        uint64_t time_elapsed = currTime.tv_sec - initialTime.tv_sec;
-
-        if (phase == MEASURE) {
-            int time_since_interval = (currTime.tv_sec - lastInterval.tv_sec)*1000 + (currTime.tv_usec - lastInterval.tv_usec)/1000;
-
-            if (tputInterval > 0 && time_since_interval >= tputInterval) {
-                //Notice("Completed %lu transactions at %lu ms", commit_transactions-last_interval_txns,
-                       //((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval);
-                throughputs[((currTime.tv_sec*1000+currTime.tv_usec/1000)/tputInterval)*tputInterval] += (commit_transactions - last_interval_txns) * (1000 / tputInterval);
-                lastInterval = currTime;
-                last_interval_txns = commit_transactions;
-            }
-        }
-
-        if (phase == WARMUP) {
-            if (time_elapsed >= (uint64_t)duration / 3) {
-                phase = MEASURE;
-                startTime = currTime;
-                gettimeofday(&lastInterval, NULL);
-            }
-        } else if (phase == MEASURE) {
-            if (time_elapsed >= (uint64_t)duration * 2 / 3) {
-                phase = COOLDOWN;
-                endTime = currTime;
-            }
-        } else if (phase == COOLDOWN) {
-            if (time_elapsed >= (uint64_t)duration) {
-                break;
-            }
-        }
-
-        Latency_Start(&latency);
-
-        int ttype = rand() % 100;
-        bool commit;
-
-        if (ttype < readportion) {
-            string key = keys[rand_key()];
-            string value;
-            commit = kvClient->InvokeGetTxn(key, value);
-        } else if (ttype < readportion + updateportion) {
-            string key = keys[rand_key()];
-            string value = values[rand_value()];
-            commit = kvClient->InvokePutTxn(key, value);
-        } else {
-            string key1 = keys[rand_key()];
-            string key2 = keys[rand_key()];
-            string value1 = values[rand_value()];
-            string value2 = values[rand_value()];
-            commit = kvClient->InvokeRMWTxn(key1, key2, value1, value2, indep);
-        }
-
-        uint64_t ns = Latency_End(&latency);
-
-        if (phase == MEASURE) {
-            if (commit) {
-                commit_transactions++;
-            }
-            latencies.push_back(ns);
-            latency_dist[ns/1000]++;
-            total_latency += (ns/1000);
-        }
-    }
-    txnClient->Done();
+    std::thread t(client_thread);
+    transport->Run();
+    t.join();
 
     struct timeval diff = timeval_sub(endTime, startTime);
-    uint64_t total_transactions = latencies.size();
 
     Notice("Completed %lu transactions in " FMT_TIMEVAL_DIFF " seconds",
            commit_transactions, VA_TIMEVAL_DIFF(diff));
     Notice("Commit rate %.3f", (double)commit_transactions / total_transactions);
 
-    char buf[1024];
-    std::sort(latencies.begin(), latencies.end());
-
-    uint64_t median  = latencies[total_transactions / 2];
-    LatencyFmtNS(median, buf);
-    Notice("Median latency is %ld ns (%s)", median, buf);
     Notice("Average latency is %lu us", total_latency/total_transactions);
-
-    uint64_t p90 = latencies[total_transactions * 90 / 100];
-    LatencyFmtNS(p90, buf);
-    Notice("90th percentile latency is %ld ns (%s)", p90, buf);
-
-    uint64_t p95 = latencies[total_transactions * 95 / 100];
-    LatencyFmtNS(p95, buf);
-    Notice("95th percentile latency is %ld ns (%s)", p95, buf);
-
-    uint64_t p99 = latencies[total_transactions * 99 / 100];
-    LatencyFmtNS(p95, buf);
-    Notice("99th percentile latency is %ld ns (%s)", p95, buf);
-
+    enum class Mode { kMedian, k90, k95, k99 };
+    Mode m = Mode::kMedian;
+    uint64_t sum = 0;
+    uint64_t median, p90, p95, p99;
+    for (auto kv : latency_dist) {
+        sum += kv.second;
+        switch (m) {
+            case Mode::kMedian:
+                if (sum >= total_transactions / 2) {
+                    median = kv.first;
+                    Notice("Median latency is %ld", median);
+                    m = Mode::k90;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k90:
+                if (sum >= total_transactions * 90 / 100) {
+                    p90 = kv.first;
+                    Notice("90th percentile latency is  latency is %ld", p90);
+                    m = Mode::k95;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k95:
+                if (sum >= total_transactions * 95 / 100) {
+                    p95 = kv.first;
+                    Notice("95th percentile latency is  latency is %ld", p95);
+                    m = Mode::k99;
+                    // fall through
+                } else {
+                    break;
+                }
+            case Mode::k99:
+                if (sum >= total_transactions * 99 / 100) {
+                    p99 = kv.first;
+                    Notice("99th percentile latency is  latency is %ld", p99);
+                    goto done;
+                } else {
+                    break;
+                }
+        }
+    }
+done:
     if (stats_file.size() > 0) {
         std::ofstream fs(stats_file.c_str(), std::ios::out);
         fs << commit_transactions / (diff.tv_sec + (float)diff.tv_usec / 1000000.0) << std::endl;
-        fs << median/1000 << " " << p90/1000 << " " << p95/1000 << " " << p99/1000 << std::endl;
+        fs << median << " " << p90 << " " << p95 << " " << p99 << std::endl;
         for (const auto &kv : latency_dist) {
             fs << kv.first << " " << kv.second << std::endl;
         }
