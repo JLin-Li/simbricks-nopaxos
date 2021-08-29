@@ -37,7 +37,6 @@
 #include "transaction/common/frontend/txnclient.h"
 #include "transaction/common/promise.h"
 
-#include <thread>
 #include <string>
 #include <map>
 
