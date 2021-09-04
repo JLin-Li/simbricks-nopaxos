@@ -45,11 +45,6 @@ LIBSECP256K1_CFLAGS := $(shell pkg-config --cflags libsecp256k1)
 LIBSECP256K1_LDFLAGS := $(shell pkg-config --libs libsecp256k1)
 CFLAGS += $(LIBSECP256K1_CFLAGS)
 LDFLAGS += $(LIBSECP256K1_LDFLAGS)
-# DPDK
-LIBDPDK_CFLAGS := $(shell pkg-config --cflags libdpdk)
-LIBDPDK_LDFLAGS := $(shell pkg-config --libs libdpdk)
-CFLAGS += $(LIBDPDK_CFLAGS)
-LDFLAGS += $(LIBDPDK_LDFLAGS)
 
 # Google test framework. This doesn't use pkgconfig
 GTEST_DIR := /usr/src/gtest
@@ -143,10 +138,8 @@ endef
 include lib/Rules.mk
 include common/Rules.mk
 include replication/Rules.mk
-include transaction/Rules.mk
 include sequencer/Rules.mk
 include bench/Rules.mk
-include tests/Rules.mk
 
 ##################################################################
 # General rules

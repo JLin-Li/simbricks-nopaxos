@@ -44,8 +44,6 @@
 #include "lib/udptransport.h"
 #include "replication/fastpaxos/replica.h"
 #include "replication/nopaxos/replica.h"
-#include "replication/pbft/replica.h"
-#include "replication/tombft/replica.h"
 #include "replication/unreplicated/replica.h"
 #include "replication/vr/replica.h"
 
@@ -194,12 +192,6 @@ int main(int argc, char **argv) {
   dsnet::UDPTransport transport(dropRate, reorderRate, nullptr);
 
   dsnet::Replica *replica;
-  dsnet::Secp256k1Signer signer;
-  dsnet::Secp256k1Verifier verifier(signer);
-  dsnet::Signer seq_signer;
-  dsnet::Verifier seq_verifier;
-  dsnet::HomogeneousSecurity security(signer, verifier, seq_signer,
-                                      seq_verifier);
   // dsnet::NopSecurity security;
   switch (proto) {
     case PROTO_UNREPLICATED:
@@ -220,16 +212,6 @@ int main(int argc, char **argv) {
     case PROTO_NOPAXOS:
       replica = new dsnet::nopaxos::NOPaxosReplica(config, index, !recover,
                                                    &transport, nullApp);
-      break;
-
-    case PROTO_PBFT:
-      replica = new dsnet::pbft::PbftReplica(config, index, !recover,
-                                             &transport, security, nullApp);
-      break;
-
-    case PROTO_TOMBFT:
-      replica = new dsnet::tombft::TomBFTReplica(config, index, !recover,
-                                                 &transport, security, nullApp);
       break;
 
     default:

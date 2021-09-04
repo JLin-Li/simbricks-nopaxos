@@ -38,16 +38,12 @@
 #include "bench/benchmark.h"
 #include "lib/assert.h"
 #include "lib/configuration.h"
-#include "lib/dpdktransport.h"
 #include "lib/message.h"
-#include "lib/signature.h"
 #include "lib/udptransport.h"
 #include "replication/fastpaxos/client.h"
 #include "replication/nopaxos/client.h"
-#include "replication/pbft/client.h"
 #include "replication/unreplicated/client.h"
 #include "replication/vr/client.h"
-#include "replication/tombft/client.h"
 
 static void Usage(const char *progName) {
   fprintf(stderr,
@@ -70,7 +66,6 @@ int main(int argc, char **argv) {
   uint64_t delay = 0;
   int tputInterval = 0;
   std::string host, dev, transport_cmdline;
-  int dev_port = 0;
 
   enum {
     PROTO_UNKNOWN,
@@ -82,8 +77,6 @@ int main(int argc, char **argv) {
     PROTO_PBFT,
     PROTO_TOMBFT,
   } proto = PROTO_UNKNOWN;
-
-  enum { TRANSPORT_UDP, TRANSPORT_DPDK } transport_type = TRANSPORT_UDP;
 
   string statsFile;
 
@@ -112,16 +105,6 @@ int main(int argc, char **argv) {
       case 'v':
         dev = std::string(optarg);
         break;
-
-      case 'x': {
-        char *strtol_ptr;
-        dev_port = strtoul(optarg, &strtol_ptr, 10);
-        if ((*optarg == '\0') || (*strtol_ptr != '\0')) {
-          fprintf(stderr, "option -x requires a numeric arg\n");
-          Usage(argv[0]);
-        }
-        break;
-      }
 
       case 's':
         statsFile = string(optarg);
@@ -176,17 +159,6 @@ int main(int argc, char **argv) {
         break;
       }
 
-      case 'p':
-        if (strcasecmp(optarg, "udp") == 0) {
-          transport_type = TRANSPORT_UDP;
-        } else if (strcasecmp(optarg, "dpdk") == 0) {
-          transport_type = TRANSPORT_DPDK;
-        } else {
-          fprintf(stderr, "unknown transport '%s'\n", optarg);
-          Usage(argv[0]);
-        }
-        break;
-
       case 'z':
         transport_cmdline = std::string(optarg);
         break;
@@ -220,25 +192,12 @@ int main(int argc, char **argv) {
   dsnet::Configuration config(configStream);
 
   dsnet::Transport *transport;
-  switch (transport_type) {
-    case TRANSPORT_UDP:
-      transport = new dsnet::UDPTransport(0, 0);
-      break;
-    case TRANSPORT_DPDK:
-      transport = new dsnet::DPDKTransport(dev_port, 0, transport_cmdline);
-      break;
-  }
+  transport = new dsnet::UDPTransport(0, 0);
 
   std::vector<dsnet::Client *> clients;
   std::vector<dsnet::BenchmarkClient *> benchClients;
   dsnet::ReplicaAddress addr(host, "0", dev);
 
-  dsnet::Secp256k1Signer signer;
-  dsnet::Secp256k1Verifier verifier(signer);
-  dsnet::Signer seq_signer;
-  dsnet::Verifier seq_verifier;
-  dsnet::HomogeneousSecurity security(signer, verifier, seq_signer,
-                                      seq_verifier);
   // dsnet::NopSecurity security;
   for (int i = 0; i < numClients; i++) {
     dsnet::Client *client;
@@ -258,14 +217,6 @@ int main(int argc, char **argv) {
 
       case PROTO_NOPAXOS:
         client = new dsnet::nopaxos::NOPaxosClient(config, addr, transport);
-        break;
-
-      case PROTO_PBFT:
-        client = new dsnet::pbft::PbftClient(config, addr, transport, security);
-        break;
-
-      case PROTO_TOMBFT:
-        client = new dsnet::tombft::TomBFTClient(config, addr, transport, security);
         break;
 
       default:

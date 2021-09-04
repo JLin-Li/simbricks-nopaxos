@@ -4,9 +4,7 @@
 #include "lib/signature.h"
 #include "lib/udptransport.h"
 #include "replication/nopaxos/sequencer.h"
-#include "replication/tombft/sequencer.h"
 #include "sequencer/sequencer.h"
-#include "transaction/eris/sequencer.h"
 
 static void Usage(const char *name) {
   fprintf(stderr, "usage: %s -c conf-file -m nopaxos\n", name);
@@ -70,14 +68,6 @@ int main(int argc, char *argv[]) {
   switch (proto) {
     case PROTO_NOPAXOS:
       sequencer = new dsnet::nopaxos::NOPaxosSequencer(config, &transport, 0);
-      break;
-    case PROTO_ERIS:
-      sequencer =
-          new dsnet::transaction::eris::ErisSequencer(config, &transport, 0);
-      break;
-    case PROTO_TOMBFT:
-      sequencer =
-          new dsnet::tombft::TomBFTSequencer(config, &transport, security, 0);
       break;
     default:
       NOT_REACHABLE();
