@@ -1,7 +1,6 @@
 #include <cstring>
 #include <fstream>
 
-#include "lib/signature.h"
 #include "lib/udptransport.h"
 #include "replication/nopaxos/sequencer.h"
 #include "sequencer/sequencer.h"
@@ -19,8 +18,6 @@ int main(int argc, char *argv[]) {
   enum {
     PROTO_UNKNOWN,
     PROTO_NOPAXOS,
-    PROTO_ERIS,
-    PROTO_TOMBFT
   } proto = PROTO_UNKNOWN;
 
   while ((opt = getopt(argc, argv, "c:m:")) != -1) {
@@ -32,10 +29,6 @@ int main(int argc, char *argv[]) {
       case 'm':
         if (strcasecmp(optarg, "nopaxos") == 0) {
           proto = PROTO_NOPAXOS;
-        } else if (strcasecmp(optarg, "eris") == 0) {
-          proto = PROTO_ERIS;
-        } else if (strcasecmp(optarg, "tombft") == 0) {
-          proto = PROTO_TOMBFT;
         } else {
           Panic("Unknown sequencer mode '%s'", optarg);
         }
@@ -64,7 +57,6 @@ int main(int argc, char *argv[]) {
 
   dsnet::Configuration config(config_stream);
   dsnet::UDPTransport transport;
-  dsnet::NopSecurity security;
   switch (proto) {
     case PROTO_NOPAXOS:
       sequencer = new dsnet::nopaxos::NOPaxosSequencer(config, &transport, 0);

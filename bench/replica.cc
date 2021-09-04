@@ -40,7 +40,6 @@
 #include <vector>
 
 #include "lib/configuration.h"
-#include "lib/signature.h"
 #include "lib/udptransport.h"
 #include "replication/fastpaxos/replica.h"
 #include "replication/nopaxos/replica.h"

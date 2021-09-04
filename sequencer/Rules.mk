@@ -6,6 +6,6 @@ SRCS += $(addprefix $(d), \
 OBJS-sequencer := $(o)sequencer.o $(LIB-message) $(LIB-configuration)
 
 $(d)sequencer: $(o)sequencer_main.o $(OBJS-sequencer) $(LIB-udptransport) \
-		$(OBJS-nopaxos-sequencer) $(OBJS-eris-sequencer) $(LIB-signature)
+		$(OBJS-nopaxos-sequencer) $(OBJS-eris-sequencer)
 
 BINS += $(d)sequencer
