@@ -66,6 +66,7 @@ int main(int argc, char **argv) {
   uint64_t delay = 0;
   int tputInterval = 0;
   std::string host, dev, transport_cmdline;
+  bool use_ehseq = false;
 
   enum {
     PROTO_UNKNOWN,
@@ -82,7 +83,7 @@ int main(int argc, char **argv) {
 
   // Parse arguments
   int opt;
-  while ((opt = getopt(argc, argv, "c:d:h:s:m:t:i:u:p:v:x:z:")) != -1) {
+  while ((opt = getopt(argc, argv, "c:d:eh:s:m:t:i:u:p:v:x:z:")) != -1) {
     switch (opt) {
       case 'c':
         configPath = optarg;
@@ -97,6 +98,10 @@ int main(int argc, char **argv) {
         }
         break;
       }
+
+      case 'e':
+        use_ehseq = true;
+        break;
 
       case 'h':
         host = std::string(optarg);
@@ -189,7 +194,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "unable to read configuration file: %s\n", configPath);
     Usage(argv[0]);
   }
-  dsnet::Configuration config(configStream);
+  dsnet::Configuration config(configStream, use_ehseq);
 
   dsnet::Transport *transport;
   transport = new dsnet::UDPTransport(0, 0);

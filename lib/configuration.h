@@ -68,7 +68,7 @@ public:
                   const ReplicaAddress *multicast_address = nullptr,
                   const std::vector<ReplicaAddress> &sequencers = std::vector<ReplicaAddress>(),
                   const ReplicaAddress *fc_address = nullptr);
-    Configuration(std::ifstream &file);
+    Configuration(std::ifstream &file, bool use_ehseq = true);
     virtual ~Configuration();
     const ReplicaAddress &replica(int group, int id) const;
     int NumSequencers() const;
