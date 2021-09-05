@@ -126,11 +126,9 @@ NOPaxosClient::SendRequest()
     reqMsg->set_sessnum(0);
 
     if (config.NumSequencers() > 0) {
-        printf("Sending request to eh sequencer\n");
         transport->SendMessageToSequencer(this, 0,
                 NOPaxosMessage(m, true));
     } else {
-        printf("Sending request to sw sequencer\n");
         transport->SendMessageToMulticast(this,
                 NOPaxosMessage(m, true));
     }
