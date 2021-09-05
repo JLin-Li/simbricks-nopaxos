@@ -152,8 +152,10 @@ Configuration::Configuration(std::ifstream &file, bool use_ehseq)
             multicast_ = new ReplicaAddress(ParseReplicaAddress("multicast"));
         } else if (strcasecmp(cmd, "fc") == 0) {
             fc_ = new ReplicaAddress(ParseReplicaAddress("fc"));
-        } else if (strcasecmp(cmd, "sequencer") == 0 && use_ehseq) {
-            sequencers_.push_back(ParseReplicaAddress("sequencer"));
+        } else if (strcasecmp(cmd, "sequencer") == 0) {
+            if (use_ehseq) {
+                sequencers_.push_back(ParseReplicaAddress("sequencer"));
+            }
         } else {
             Panic("Unknown configuration directive: %s", cmd);
         }
