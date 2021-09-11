@@ -949,32 +949,36 @@ NOPaxosReplica::TryProcessClientRequest(const RequestMessage &msg)
 
     if (msg.msgnum() < this->nextMsgnum) {
         return true;
-    } else if (msg.msgnum() > this->nextMsgnum) {
-        // Detected message gap
-        // None leader replicas ask the leader for the
-        // missing message. Leader replica as an optimization
-        // will ask other replicas for the missing message
-        // before initiating a gap agreement protocol. Do
-        // not ask again if we have already done so: timeout
-        // will make sure we resend the request.
-        if (!gapRequestTimeout->Active() &&
-            !gapCommitTimeout->Active()) {
-            SendGapRequest();
-        }
-        // Try the request later once we received all
-        // previous requests.
-        return false;
-    } else {
-        // Received the next message in the session
-        viewstamp_t vs;
-        vs.view = this->view;
-        vs.opnum = this->lastOp+1;
-        vs.sessnum = msg.sessnum();
-        vs.msgnum = msg.msgnum();
-
-        ProcessNextOperation(msg.req(), vs, LOG_STATE_RECEIVED);
-        return true;
     }
+    if (msg.msgnum() > this->nextMsgnum) {
+        if (this->nextMsgnum == 1) {
+            this->nextMsgnum = msg.msgnum();
+        } else {
+            // Detected message gap
+            // None leader replicas ask the leader for the
+            // missing message. Leader replica as an optimization
+            // will ask other replicas for the missing message
+            // before initiating a gap agreement protocol. Do
+            // not ask again if we have already done so: timeout
+            // will make sure we resend the request.
+            if (!gapRequestTimeout->Active() &&
+                    !gapCommitTimeout->Active()) {
+                SendGapRequest();
+            }
+            // Try the request later once we received all
+            // previous requests.
+            return false;
+        }
+    }
+    // Received the next message in the session
+    viewstamp_t vs;
+    vs.view = this->view;
+    vs.opnum = this->lastOp+1;
+    vs.sessnum = msg.sessnum();
+    vs.msgnum = msg.msgnum();
+
+    ProcessNextOperation(msg.req(), vs, LOG_STATE_RECEIVED);
+    return true;
 }
 
 void
