@@ -114,7 +114,7 @@ private:
     Timeout *syncTimeout;
     const int SYNC_TIMEOUT = 1000;
     Timeout *leaderSyncHeardTimeout;
-    const int LEADER_SYNC_HEARD_TIMEOUT = 2000;
+    const int LEADER_SYNC_HEARD_TIMEOUT = 20000;
 
     /* State transfer */
     opnum_t stateTransferOpBegin;
