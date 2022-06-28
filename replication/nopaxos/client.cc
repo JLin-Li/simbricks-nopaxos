@@ -52,8 +52,7 @@ NOPaxosClient::NOPaxosClient(const Configuration &config,
     pendingUnloggedRequest = NULL;
     lastReqID = 0;
 
-    requestTimeout = new Timeout(transport, 2000, [this]() {
-        exit(1);
+    requestTimeout = new Timeout(transport, 200, [this]() {
         ResendRequest();
     });
     unloggedRequestTimeout = new Timeout(transport, 100, [this]() {
