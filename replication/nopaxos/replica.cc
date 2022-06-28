@@ -221,7 +221,6 @@ void
 NOPaxosReplica::HandleClientRequest(const TransportAddress &remote,
                                     const RequestMessage &msg)
 {
-    Warning("Received client request cid %u, rid %u", msg.req().clientid(), msg.req().clientreqid());
     if (msg.sessnum() == 0 && msg.msgnum() == 0) {
         Panic("Client request has no ordering timestamp");
     }

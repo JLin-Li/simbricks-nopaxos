@@ -63,6 +63,7 @@ int main(int argc, char **argv) {
   const char *configPath = NULL;
   int numClients = 1;
   int duration = 1;
+  uint64_t client_id = 0;
   uint64_t delay = 0;
   int tputInterval = 0;
   std::string host, dev, transport_cmdline;
@@ -83,8 +84,18 @@ int main(int argc, char **argv) {
 
   // Parse arguments
   int opt;
-  while ((opt = getopt(argc, argv, "c:d:eh:s:m:t:i:u:p:v:x:z:")) != -1) {
+  while ((opt = getopt(argc, argv, "a:c:d:eh:s:m:t:i:u:p:v:x:z:")) != -1) {
     switch (opt) {
+      case 'a': {
+        char *strtolPtr;
+        client_id = strtoul(optarg, &strtolPtr, 10);
+        if ((*optarg == '\0') || (*strtolPtr != '\0')) {
+          fprintf(stderr, "option -a requires a numeric arg\n");
+          Usage(argv[0]);
+        }
+        break;
+      }
+
       case 'c':
         configPath = optarg;
         break;
@@ -209,19 +220,21 @@ int main(int argc, char **argv) {
     switch (proto) {
       case PROTO_UNREPLICATED:
         client = new dsnet::unreplicated::UnreplicatedClient(config, addr,
-                                                             transport);
+                                                             transport,
+                                                             client_id);
         break;
 
       case PROTO_VR:
-        client = new dsnet::vr::VRClient(config, addr, transport);
+        client = new dsnet::vr::VRClient(config, addr, transport, client_id);
         break;
 
       case PROTO_FASTPAXOS:
-        client = new dsnet::fastpaxos::FastPaxosClient(config, addr, transport);
+        client = new dsnet::fastpaxos::FastPaxosClient(config, addr, transport,
+                                                       client_id);
         break;
 
       case PROTO_NOPAXOS:
-        client = new dsnet::nopaxos::NOPaxosClient(config, addr, transport);
+        client = new dsnet::nopaxos::NOPaxosClient(config, addr, transport, client_id);
         break;
 
       default:
